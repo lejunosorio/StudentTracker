@@ -9,9 +9,19 @@ import androidx.navigation.compose.rememberNavController
 fun AppNavigation() {
     val navController = rememberNavController()
 
-    NavHost(navController = navController, startDestination = "view_all") {
+    // Enforce Security Gate as the starting point for every app launch
+    NavHost(navController = navController, startDestination = "security_gate") {
+        composable("security_gate") {
+            SecurityGateScreen(
+                onUnlockSuccess = {
+                    // Navigate to View All and clear security gate from backstack history
+                    navController.navigate("view_all") {
+                        popUpTo("security_gate") { inclusive = true }
+                    }
+                }
+            )
+        }
         composable("view_all") {
-            // LOAD DYNAMIC VIEW ALL SCREEN HERE
             ViewAllScreen()
         }
         composable("settings") {

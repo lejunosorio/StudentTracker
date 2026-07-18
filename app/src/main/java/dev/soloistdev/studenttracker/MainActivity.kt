@@ -3,17 +3,18 @@ package dev.soloistdev.studenttracker
 import android.os.Bundle
 import android.view.WindowManager
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.fragment.app.FragmentActivity // <-- IMPORT FRAGMENT ACTIVITY
 import dev.soloistdev.studenttracker.security.IntegrityChecker
 import dev.soloistdev.studenttracker.ui.AppNavigation
 import dev.soloistdev.studenttracker.ui.theme.StudentTrackerTheme
 
-class MainActivity : ComponentActivity() {
+// CHANGE BASE CLASS TO FragmentActivity
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -21,7 +22,7 @@ class MainActivity : ComponentActivity() {
         val integrityChecker = IntegrityChecker(this)
         if (integrityChecker.isDeviceRooted()) {
             Toast.makeText(this, "Security Error: Rooted environment detected. App closing.", Toast.LENGTH_LONG).show()
-            finishAffinity() // Safe exit
+            finishAffinity()
             return
         }
 

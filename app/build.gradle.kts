@@ -78,4 +78,5 @@ dependencies {
 
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.security.crypto)
+    implementation(libs.androidx.biometric)
 }
