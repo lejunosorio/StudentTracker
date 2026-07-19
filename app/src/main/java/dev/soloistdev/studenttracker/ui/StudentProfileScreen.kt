@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.*
@@ -36,6 +37,7 @@ fun StudentProfileScreen(
     onBack: () -> Unit,
     onEdit: (Int) -> Unit,
     onViewMap: (Int) -> Unit,
+    onDeleteStudent: (Int) -> Unit,
     repository: StudentRepository = StudentRepository(LocalContext.current)
 ) {
     val context = LocalContext.current
@@ -58,6 +60,16 @@ fun StudentProfileScreen(
                 actions = {
                     IconButton(onClick = { onEdit(studentId) }) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit Profile")
+                    }
+                    IconButton(onClick = {
+                        // Soft deletes the student and triggers the callback
+                        onDeleteStudent(studentId)
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Delete, // Trash icon
+                            contentDescription = "Delete Student",
+                            tint = MaterialTheme.colorScheme.error // Warning red
+                        )
                     }
                 }
             )

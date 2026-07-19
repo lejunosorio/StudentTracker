@@ -7,7 +7,7 @@ import androidx.room.Query
 
 @Dao
 interface StudentDao {
-    // Student Queries
+    // Core Student Queries
     @Query("SELECT * FROM students WHERE isDeleted = 0 ORDER BY lastName ASC")
     fun getAllActiveStudents(): List<StudentEntity>
 
@@ -17,7 +17,7 @@ interface StudentDao {
     @Query("UPDATE students SET isDeleted = 1 WHERE id = :studentId")
     fun softDeleteStudent(studentId: Int)
 
-    // Form Template Queries
+    // Dynamic Form Template Queries
     @Query("SELECT * FROM form_templates ORDER BY fieldName ASC")
     fun getAllFormTemplates(): List<FormTemplateEntity>
 
@@ -27,7 +27,7 @@ interface StudentDao {
     @Query("DELETE FROM form_templates WHERE id = :templateId")
     fun deleteFormTemplate(templateId: Int)
 
-    // Map Archive Queries (Sprint 7)
+    // Map Archive Queries
     @Query("SELECT * FROM map_archives ORDER BY fileName ASC")
     fun getAllMapArchives(): List<MapArchiveEntity>
 
@@ -39,4 +39,14 @@ interface StudentDao {
 
     @Query("DELETE FROM map_archives WHERE id = :archiveId")
     fun deleteMapArchive(archiveId: Int)
+
+    // SPRINT 9 ADDITIONS: Recycle Bin & Data Purging Queries
+    @Query("SELECT * FROM students WHERE isDeleted = 1 ORDER BY lastName ASC")
+    fun getAllDeletedStudents(): List<StudentEntity>
+
+    @Query("UPDATE students SET isDeleted = 0 WHERE id = :studentId")
+    fun restoreStudent(studentId: Int)
+
+    @Query("DELETE FROM students WHERE id = :studentId")
+    fun permanentDeleteStudent(studentId: Int)
 }

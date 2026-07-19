@@ -18,6 +18,10 @@ class StudentRepository(private val context: Context) {
         studentDao.insertStudent(student)
     }
 
+    suspend fun softDeleteStudent(studentId: Int) = withContext(Dispatchers.IO) {
+        studentDao.softDeleteStudent(studentId)
+    }
+
     // Template Accessors
     suspend fun getAllFormTemplates(): List<FormTemplateEntity> = withContext(Dispatchers.IO) {
         studentDao.getAllFormTemplates()
@@ -31,7 +35,7 @@ class StudentRepository(private val context: Context) {
         studentDao.deleteFormTemplate(templateId)
     }
 
-    // Map Archive Accessors (Sprint 7)
+    // Map Archive Accessors
     suspend fun getAllMapArchives(): List<MapArchiveEntity> = withContext(Dispatchers.IO) {
         studentDao.getAllMapArchives()
     }
@@ -46,5 +50,18 @@ class StudentRepository(private val context: Context) {
 
     suspend fun deleteMapArchive(archiveId: Int) = withContext(Dispatchers.IO) {
         studentDao.deleteMapArchive(archiveId)
+    }
+
+    // SPRINT 9 ACCESSORS: Recycle Bin & Data Purging
+    suspend fun getAllDeletedStudents(): List<StudentEntity> = withContext(Dispatchers.IO) {
+        studentDao.getAllDeletedStudents()
+    }
+
+    suspend fun restoreStudent(studentId: Int) = withContext(Dispatchers.IO) {
+        studentDao.restoreStudent(studentId)
+    }
+
+    suspend fun permanentDeleteStudent(studentId: Int) = withContext(Dispatchers.IO) {
+        studentDao.permanentDeleteStudent(studentId)
     }
 }

@@ -1,15 +1,23 @@
 package dev.soloistdev.studenttracker.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import dev.soloistdev.studenttracker.data.StudentRepository
+import kotlinx.coroutines.launch
 
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
+    val context = LocalContext.current
+
+    // SPRINT 9 INSTANTIATION: Binds repository safely using Compose Context & Memory Cache
+    val repository = remember { StudentRepository(context) }
 
     NavHost(navController = navController, startDestination = "security_gate") {
 
@@ -40,15 +48,14 @@ fun AppNavigation() {
                         navController.navigate("templates")
                     }
                 },
-                onOpenMapArchives = {
-                    if (navController.currentDestination?.route == "view_all") {
-                        navController.navigate("map_archives")
-                    }
-                },
-                // NEW: Route to global map!
                 onOpenMap = {
                     if (navController.currentDestination?.route == "view_all") {
                         navController.navigate("global_map")
+                    }
+                },
+                onOpenRecycleBin = {
+                    if (navController.currentDestination?.route == "view_all") {
+                        navController.navigate("recycle_bin")
                     }
                 }
             )
@@ -73,10 +80,18 @@ fun AppNavigation() {
                         }
                     }
                 },
-                // NEW: Route from profile to exact coordinates!
                 onViewMap = { id ->
                     if (navController.currentDestination?.route == "profile/{studentId}") {
                         navController.navigate("student_map/$id")
+                    }
+                },
+                onDeleteStudent = { id ->
+                    // Soft-deletes the student and returns back to the directory cleanly
+                    kotlinx.coroutines.MainScope().launch {
+                        repository.softDeleteStudent(id)
+                        navController.navigate("view_all") {
+                            popUpTo("view_all") { inclusive = true }
+                        }
                     }
                 }
             )
@@ -117,7 +132,16 @@ fun AppNavigation() {
             )
         }
 
-        // NEW: Global Map Screen Route
+        composable("recycle_bin") {
+            RecycleBinScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
+            )
+        }
+
         composable("global_map") {
             StudentMapScreen(
                 studentId = -1,
@@ -125,7 +149,6 @@ fun AppNavigation() {
             )
         }
 
-        // NEW: Single Student Focused Map Screen Route
         composable(
             route = "student_map/{studentId}",
             arguments = listOf(navArgument("studentId") { type = NavType.IntType })

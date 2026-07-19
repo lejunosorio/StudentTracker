@@ -43,8 +43,8 @@ fun ViewAllScreen(
     onAddStudent: (Int) -> Unit,
     onStudentClick: (Int) -> Unit,
     onOpenTemplates: () -> Unit,
-    onOpenMapArchives: () -> Unit,
-    onOpenMap: () -> Unit, // Add callback for global map
+    onOpenMap: () -> Unit,
+    onOpenRecycleBin: () -> Unit, // Add callback for recycle bin
     viewModel: StudentListViewModel = viewModel()
 ) {
     val students by viewModel.students.collectAsState()
@@ -135,7 +135,12 @@ fun ViewAllScreen(
                         icon = { Icon(Icons.Default.Delete, contentDescription = null) },
                         label = { Text("Recycle Bin (Soft Deleted)") },
                         selected = false,
-                        onClick = { scope.launch { drawerState.close() } },
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                onOpenRecycleBin() // Opens Screen 8!
+                            }
+                        },
                         colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
