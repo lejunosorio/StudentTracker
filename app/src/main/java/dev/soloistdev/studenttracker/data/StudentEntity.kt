@@ -8,10 +8,11 @@ data class StudentEntity(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val firstName: String,
     val lastName: String,
-    val middleName: String = "",
-    val birthday: Long, // Stored as Unix Timestamp
+    val gender: String,
+    val birthday: Long,
     val address: String = "",
     val picturePath: String = "", // Local file URI path
-    val customDataJson: String = "{}", // To hold custom proctor fields in Sprint 5
-    val isDeleted: Boolean = false // Soft delete flag for Sprint 9 Recycle Bin
+    val guardiansJson: String = "[]", // Serialized JSON array of multiple Guardians
+    val customDataJson: String = "{}", // Dynamic templates
+    val isDeleted: Boolean = false // Soft delete flag
 )

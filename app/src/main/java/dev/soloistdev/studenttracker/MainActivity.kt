@@ -27,10 +27,10 @@ class MainActivity : FragmentActivity() {
         }
 
         // 2. ANTI-SCREENSHOT / CAROUSEL PII BLOCK
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE
-        )
+//        window.setFlags(
+//            WindowManager.LayoutParams.FLAG_SECURE,
+//            WindowManager.LayoutParams.FLAG_SECURE
+//        )
 
         // 3. ANTI-TAPJACKING OVERLAY PROTECTION
         window.decorView.filterTouchesWhenObscured = true

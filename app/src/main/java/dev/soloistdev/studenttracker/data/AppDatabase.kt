@@ -8,7 +8,12 @@ import dev.soloistdev.studenttracker.MemoryHelper
 import dev.soloistdev.studenttracker.security.SecurityHelper
 import net.sqlcipher.database.SupportFactory
 
-@Database(entities = [StudentEntity::class], version = 1, exportSchema = false)
+// Increment version to 4 and add MapArchiveEntity to the list of entities
+@Database(
+    entities = [StudentEntity::class, FormTemplateEntity::class, MapArchiveEntity::class],
+    version = 4,
+    exportSchema = false
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun studentDao(): StudentDao
 
@@ -18,9 +23,7 @@ abstract class AppDatabase : RoomDatabase() {
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                // PASS CONTEXT INSTEAD OF EMPTY ARGUMENT
                 val passphrase = SecurityHelper.getDatabasePassphrase(context)
-
                 val factory = SupportFactory(passphrase.map { it.code.toByte() }.toByteArray())
 
                 val instance = Room.databaseBuilder(
@@ -32,7 +35,6 @@ abstract class AppDatabase : RoomDatabase() {
                     .fallbackToDestructiveMigration()
                     .build()
 
-                // Safe memory clearing
                 MemoryHelper.zeroMemory(passphrase)
 
                 INSTANCE = instance
