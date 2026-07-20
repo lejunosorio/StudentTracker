@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -377,16 +378,36 @@ fun ViewAllScreen(
                     }
                 }
 
-                // Student List
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 80.dp)
-                ) {
-                    items(students) { student ->
-                        StudentCard(
-                            student = student,
-                            onClick = { onStudentClick(student.id) }
+                // SPRINT 9 HIGH-POLISH EMPTY STATE (Guarantees zero-record visual elegance)
+                if (students.isEmpty() && searchQuery.isEmpty() && activeFilter == null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(bottom = 80.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Choir Directory is empty.\nTap '+' to add a member.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 22.sp,
+                            modifier = Modifier.padding(horizontal = 24.dp)
                         )
+                    }
+                } else {
+                    // Student List
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 80.dp)
+                    ) {
+                        items(students) { student ->
+                            StudentCard(
+                                student = student,
+                                onClick = { onStudentClick(student.id) }
+                            )
+                        }
                     }
                 }
             }
@@ -433,7 +454,6 @@ fun ViewAllScreen(
                 ) {
                     Text("Filter Directory", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
 
-                    // 1. Select Field Dropdown
                     var fieldExpanded by remember { mutableStateOf(false) }
                     ExposedDropdownMenuBox(
                         expanded = fieldExpanded,
@@ -460,7 +480,7 @@ fun ViewAllScreen(
                                         val newType = getFieldType(option, availableTemplates)
                                         tempComparison = when (newType) {
                                             "DATE", "NUMBER" -> "in range"
-                                            "GENDER" -> "equal" // Force "equal" behind the scenes for Gender
+                                            "GENDER" -> "equal"
                                             else -> "contains"
                                         }
                                         tempVal1 = if (newType == "GENDER") "Female" else ""
@@ -471,47 +491,43 @@ fun ViewAllScreen(
                         }
                     }
 
-                    // 2. Select Comparison Operator Dropdown (COMPLETELY HIDDEN in Gender Mode!)
-                    if (!isGenderMode) {
-                        var compExpanded by remember { mutableStateOf(false) }
-                        ExposedDropdownMenuBox(
+                    var compExpanded by remember { mutableStateOf(false) }
+                    ExposedDropdownMenuBox(
+                        expanded = compExpanded,
+                        onExpandedChange = { compExpanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = tempComparison,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Select Comparison") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = compExpanded) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor()
+                        )
+                        ExposedDropdownMenu(
                             expanded = compExpanded,
-                            onExpandedChange = { compExpanded = it }
+                            onDismissRequest = { compExpanded = false }
                         ) {
-                            OutlinedTextField(
-                                value = tempComparison,
-                                onValueChange = {},
-                                readOnly = true,
-                                label = { Text("Select Comparison") },
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = compExpanded) },
-                                modifier = Modifier.fillMaxWidth().menuAnchor()
-                            )
-                            ExposedDropdownMenu(
-                                expanded = compExpanded,
-                                onDismissRequest = { compExpanded = false }
-                            ) {
-                                val filteredOperators = when (currentSelectedType) {
-                                    "NUMBER" -> listOf("equal", "not equal", "less than", "greater than", "in range")
-                                    "DATE" -> listOf("equal", "in range")
-                                    else -> listOf("contains", "does not contain", "equal", "not equal", "empty")
-                                }
+                            val filteredOperators = when (currentSelectedType) {
+                                "NUMBER" -> listOf("equal", "not equal", "less than", "greater than", "in range")
+                                "DATE" -> listOf("equal", "in range")
+                                "GENDER" -> listOf("equal", "not equal")
+                                else -> listOf("contains", "does not contain", "equal", "not equal", "empty")
+                            }
 
-                                filteredOperators.forEach { option ->
-                                    DropdownMenuItem(
-                                        text = { Text(option) },
-                                        onClick = {
-                                            tempComparison = option
-                                            compExpanded = false
-                                        }
-                                    )
-                                }
+                            filteredOperators.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option) },
+                                    onClick = {
+                                        tempComparison = option
+                                        compExpanded = false
+                                    }
+                                )
                             }
                         }
                     }
 
-                    // 3. POLYMORPHIC VALUE FIELDS
                     if (isDateMode) {
-                        // Date picker layout block (Screen 12 & 12C)
                         val sdfPicker = SimpleDateFormat("MMM dd, yyyy", Locale.US)
                         val bday1Formatted = tempVal1.toLongOrNull()?.let { sdfPicker.format(Date(it)) } ?: "Select Start Date *"
                         val bday2Formatted = tempVal2.toLongOrNull()?.let { sdfPicker.format(Date(it)) } ?: "Select End Date *"
@@ -568,7 +584,6 @@ fun ViewAllScreen(
                             }
                         }
                     } else if (isGenderMode) {
-                        // FIXED: Simple, high-contrast M3 choice chips instead of inputs! No comparison selected needed
                         Text("Select Gender *", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -641,7 +656,6 @@ fun ViewAllScreen(
                         }
                     }
 
-                    // 4. Pin Toggle
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -656,7 +670,6 @@ fun ViewAllScreen(
                         )
                     }
 
-                    // Actions Bar (Disable Apply if Validation error is active)
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         horizontalArrangement = Arrangement.End,
@@ -694,7 +707,6 @@ fun ViewAllScreen(
                 }
             }
 
-            // NESTED DATE-PICKER POPUPS (Dialog triggers verified)
             if (showDatePicker1) {
                 val dateState1 = rememberDatePickerState()
                 DatePickerDialog(

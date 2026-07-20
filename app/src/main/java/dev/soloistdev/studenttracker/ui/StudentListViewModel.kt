@@ -9,12 +9,9 @@ import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import org.json.JSONArray
 import org.json.JSONObject
-import java.io.IOException
 import java.util.*
 
-// SPRINT 9 UPDATE: Added unique ID to cleanly track and toggle multiple pinned filters
 data class FilterState(
     val id: String = UUID.randomUUID().toString(),
     val field: String = "",
@@ -34,7 +31,6 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
     private val _sortOrder = MutableStateFlow("lastNameAsc")
     val sortOrder: StateFlow<String> = _sortOrder
 
-    // SPRINT 9 DUAL-STATE STORAGE: Separates the currently active filter from your pinned collection
     private val _activeFilter = MutableStateFlow<FilterState?>(null)
     val activeFilter: StateFlow<FilterState?> = _activeFilter
 
@@ -44,6 +40,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
     private val _availableTemplates = MutableStateFlow<List<FormTemplateEntity>>(emptyList())
     val availableTemplates: StateFlow<List<FormTemplateEntity>> = _availableTemplates
 
+    // DYNAMIC COMBINED FLOW: Manages live search, sorting, and advanced filtering
     val students: StateFlow<List<StudentEntity>> = combine(
         _rawStudents, _searchQuery, _sortOrder, _activeFilter
     ) { rawList, query, sort, filter ->
@@ -58,7 +55,6 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
             }
         }
 
-        // Apply active filter if one is selected (Null means "All" is active)
         if (filter != null && filter.field.isNotEmpty()) {
             processedList = processedList.filter { student ->
                 val fieldValue: String = when (filter.field) {
@@ -156,58 +152,10 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    private fun loadJsonFromAsset(fileName: String): String? {
-        return try {
-            val inputStream = getApplication<Application>().assets.open(fileName)
-            val size = inputStream.available()
-            val buffer = ByteArray(size)
-            inputStream.read(buffer)
-            inputStream.close()
-            String(buffer, Charsets.UTF_8)
-        } catch (ex: IOException) {
-            ex.printStackTrace()
-            null
-        }
-    }
-
+    // PRODUCTION LOAD: Directly queries the live database (Seeder has been stripped out)
     fun loadStudents() {
         viewModelScope.launch {
-            var list = repository.getAllActiveStudents()
-
-            if (list.isEmpty()) {
-                val jsonString = loadJsonFromAsset("defaultdata.json")
-                if (jsonString != null) {
-                    try {
-                        val jsonArray = JSONArray(jsonString)
-                        for (i in 0 until jsonArray.length()) {
-                            val jsonObj = jsonArray.getJSONObject(i)
-
-                            val defaultGuardians = listOf(
-                                Guardian(
-                                    name = jsonObj.optString("guardianName", "Jane Doe"),
-                                    relationship = "Mother",
-                                    phones = listOf(jsonObj.optString("guardianContact", "555-0198"), "555-0199")
-                                )
-                            )
-
-                            val student = StudentEntity(
-                                firstName = jsonObj.getString("firstName"),
-                                lastName = jsonObj.getString("lastName"),
-                                gender = jsonObj.getString("gender"),
-                                birthday = jsonObj.getLong("birthday"),
-                                address = jsonObj.getString("address"),
-                                guardiansJson = Guardian.listToJsonString(defaultGuardians),
-                                customDataJson = jsonObj.getString("customDataJson")
-                            )
-                            repository.insertStudent(student)
-                        }
-                        list = repository.getAllActiveStudents()
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
-            }
-            _rawStudents.value = list
+            _rawStudents.value = repository.getAllActiveStudents()
         }
     }
 
@@ -225,11 +173,9 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
         _sortOrder.value = order
     }
 
-    // SPRINT 9 WORKBENCH OPERATORS:
     fun applyFilter(filter: FilterState) {
         _activeFilter.value = filter
         if (filter.isPinned) {
-            // Add to our pinned directory, avoiding duplicates
             val currentList = _pinnedFilters.value.toMutableList()
             val exists = currentList.any { it.field == filter.field && it.comparison == filter.comparison && it.value1 == filter.value1 && it.value2 == filter.value2 }
             if (!exists) {
@@ -244,7 +190,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun clearActiveFilter() {
-        _activeFilter.value = null // Resets view-all while preserving pinned layout chips
+        _activeFilter.value = null
     }
 
     fun removePinnedFilter(filter: FilterState) {

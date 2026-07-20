@@ -22,15 +22,6 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             var list = repository.getAllFormTemplates()
 
-            if (list.isEmpty()) {
-                val defaultTemplates = listOf(
-                    FormTemplateEntity(fieldName = "Purok", fieldType = "TEXT", isRequired = true),
-                    FormTemplateEntity(fieldName = "Status", fieldType = "TEXT", isRequired = true),
-                    FormTemplateEntity(fieldName = "Bautisado", fieldType = "TEXT", isRequired = false)
-                )
-                defaultTemplates.forEach { repository.insertFormTemplate(it) }
-                list = repository.getAllFormTemplates()
-            }
             _templates.value = list
         }
     }
