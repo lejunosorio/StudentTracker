@@ -33,7 +33,7 @@ object PdfGeneratorHelper {
         val headerPaint = Paint().apply {
             color = Color.BLACK
             textSize = 20f
-            isFakeBoldText = true // Fixed: Native Android Paint Bold attribute
+            isFakeBoldText = true
             isAntiAlias = true
         }
 
@@ -60,6 +60,7 @@ object PdfGeneratorHelper {
         canvas.drawRect(40f, yPosition, 200f, yPosition + 1f, paint)
         yPosition += 25f
 
+        // Render dynamic metadata without referencing static key transformations
         try {
             val json = JSONObject(student.customDataJson)
             val keys = json.keys()
@@ -72,8 +73,7 @@ object PdfGeneratorHelper {
                     val value = json.optString(key, "")
                     if (value.isNotEmpty() && key != "Gender") {
                         val label = key.replace("_", " ")
-                        val displayValue = if (key == "Bautisado" && value == "Y") "Yes" else value
-                        canvas.drawText("$label: $displayValue", 40f, yPosition, textPaint)
+                        canvas.drawText("$label: $value", 40f, yPosition, textPaint)
                         yPosition += 25f
                     }
                 }
@@ -88,7 +88,6 @@ object PdfGeneratorHelper {
         canvas.drawRect(40f, yPosition, 200f, yPosition + 1f, paint)
         yPosition += 25f
 
-        // Render dynamic guardians list on PDF output
         val guardians = Guardian.listFromJsonString(student.guardiansJson)
         if (guardians.isEmpty()) {
             canvas.drawText("No emergency contact recorded.", 40f, yPosition, textPaint)

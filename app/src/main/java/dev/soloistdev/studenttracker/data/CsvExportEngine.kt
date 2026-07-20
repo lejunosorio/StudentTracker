@@ -13,18 +13,24 @@ import java.util.*
 
 object CsvExportEngine {
     suspend fun exportRosterToCsv(context: Context, students: List<StudentEntity>) = withContext(Dispatchers.IO) {
-        val csvHeader = "Last Name,First Name,Gender,Birthday,Address,Guardian Name,Guardian Contact,Purok,Status,Bautisado\n"
+        val db = AppDatabase.getDatabase(context)
+        val templates = db.studentDao().getAllFormTemplates() // Safely fetch custom fields
+
+        // 1. Build Header: Core attributes + custom templates
+        val coreHeader = "Last Name,First Name,Gender,Birthday,Address,Guardian Name,Guardian Contact"
+        val dynamicHeader = if (templates.isNotEmpty()) {
+            "," + templates.joinToString(",") { it.fieldName.replace("_", " ") }
+        } else ""
+
+        val csvHeader = "$coreHeader$dynamicHeader\n"
         val csvContent = StringBuilder(csvHeader)
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
+        // 2. Build rows dynamically
         students.forEach { student ->
             val bdayStr = sdf.format(Date(student.birthday))
-            val json = try { JSONObject(student.customDataJson) } catch (e: Exception) { JSONObject() }
-            val purok = json.optString("Purok", "")
-            val status = json.optString("Status", "")
-            val bated = json.optString("Bautisado", "")
+            val customJson = try { JSONObject(student.customDataJson) } catch (e: Exception) { JSONObject() }
 
-            // Parse guardians list dynamically to extract primary guardian details cleanly
             val guardians = Guardian.listFromJsonString(student.guardiansJson)
             val primaryName = if (guardians.isNotEmpty()) guardians[0].name else "N/A"
             val primaryContact = if (guardians.isNotEmpty()) guardians[0].phones.firstOrNull() ?: "N/A" else "N/A"
@@ -32,8 +38,17 @@ object CsvExportEngine {
             val cleanAddress = student.address.replace(",", " ")
             val cleanGuardian = primaryName.replace(",", " ")
 
-            val row = "${student.lastName},${student.firstName},${student.gender},$bdayStr,$cleanAddress,$cleanGuardian,$primaryContact,$purok,$status,$bated\n"
-            csvContent.append(row)
+            val coreRow = "${student.lastName},${student.firstName},${student.gender},$bdayStr,$cleanAddress,$cleanGuardian,$primaryContact"
+
+            // Extract and format all custom attributes generically
+            val dynamicRow = if (templates.isNotEmpty()) {
+                "," + templates.joinToString(",") { template ->
+                    val rawValue = customJson.optString(template.fieldName, "")
+                    rawValue.replace(",", " ") // Prevent CSV delimiter breakage
+                }
+            } else ""
+
+            csvContent.append("$coreRow$dynamicRow\n")
         }
 
         val cacheDir = File(context.cacheDir, "csv_exports").apply { mkdirs() }

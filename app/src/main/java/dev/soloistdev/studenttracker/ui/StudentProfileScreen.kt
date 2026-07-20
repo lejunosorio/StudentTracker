@@ -43,8 +43,6 @@ fun StudentProfileScreen(
 ) {
     val context = LocalContext.current
     var student by remember { mutableStateOf<StudentEntity?>(null) }
-
-    // SPRINT 9 ADDITION: Delete Student Warning Dialog State
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -65,7 +63,7 @@ fun StudentProfileScreen(
                     IconButton(onClick = { onEdit(studentId) }) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit Profile")
                     }
-                    IconButton(onClick = { showDeleteDialog = true }) { // Trigger confirmation dialog
+                    IconButton(onClick = { showDeleteDialog = true }) {
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "Delete Student",
@@ -85,7 +83,6 @@ fun StudentProfileScreen(
                     .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Large Avatar Circle
                 Surface(
                     modifier = Modifier
                         .size(96.dp)
@@ -126,7 +123,6 @@ fun StudentProfileScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Map Actions Row
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -159,10 +155,9 @@ fun StudentProfileScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Core Field Card (Home Address)
                 ProfileInfoCard(label = "Home Address", value = currentStudent.address)
 
-                // 100% DYNAMIC CUSTOM FIELDS ENGINE (Sprint 5)
+                // 100% Dynamic custom field iteration (zero static key bindings)
                 val json = try { JSONObject(currentStudent.customDataJson) } catch (e: Exception) { JSONObject() }
                 val keys = json.keys()
                 while (keys.hasNext()) {
@@ -170,14 +165,12 @@ fun StudentProfileScreen(
                     val value = json.optString(key, "")
                     if (value.isNotEmpty() && key != "Gender") {
                         val label = key.replace("_", " ")
-                        val displayValue = if (key == "Bautisado" && value == "Y") "Yes" else value
-                        ProfileInfoCard(label = label, value = displayValue)
+                        ProfileInfoCard(label = label, value = value)
                     }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Guardian Emergency Contacts Card
                 val guardianList = remember(currentStudent.guardiansJson) {
                     Guardian.listFromJsonString(currentStudent.guardiansJson)
                 }
@@ -248,7 +241,6 @@ fun StudentProfileScreen(
             CircularProgressIndicator()
         }
 
-        // SPRINT 9 M3 DELETE STUDENT WARNING DIALOG (Screen 8 soft delete trigger)
         if (showDeleteDialog && student != null) {
             AlertDialog(
                 onDismissRequest = { showDeleteDialog = false },
@@ -260,7 +252,7 @@ fun StudentProfileScreen(
                             showDeleteDialog = false
                             onDeleteStudent(studentId)
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error) // Security-red indicator
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
                         Text("Delete")
                     }
