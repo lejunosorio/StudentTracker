@@ -1,5 +1,6 @@
 package dev.soloistdev.studenttracker.ui
 
+import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -31,8 +32,11 @@ fun AppSettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var dynamicColorsEnabled by remember { mutableStateOf(true) }
-    var darkThemeEnabled by remember { mutableStateOf(true) }
+    // Fetch the private unencrypted SharedPreferences file
+    val sharedPrefs = remember { context.getSharedPreferences("app_settings", Context.MODE_PRIVATE) }
+
+    var dynamicColorsEnabled by remember { mutableStateOf(sharedPrefs.getBoolean("dynamic_colors", true)) }
+    var darkThemeEnabled by remember { mutableStateOf(sharedPrefs.getBoolean("force_dark_theme", true)) }
 
     Scaffold(
         topBar = {
@@ -77,7 +81,10 @@ fun AppSettingsScreen(onBack: () -> Unit) {
                         }
                         Switch(
                             checked = dynamicColorsEnabled,
-                            onCheckedChange = { dynamicColorsEnabled = it }
+                            onCheckedChange = { enabled ->
+                                dynamicColorsEnabled = enabled
+                                sharedPrefs.edit().putBoolean("dynamic_colors", enabled).apply()
+                            }
                         )
                     }
 
@@ -94,7 +101,10 @@ fun AppSettingsScreen(onBack: () -> Unit) {
                         }
                         Switch(
                             checked = darkThemeEnabled,
-                            onCheckedChange = { darkThemeEnabled = it }
+                            onCheckedChange = { enabled ->
+                                darkThemeEnabled = enabled
+                                sharedPrefs.edit().putBoolean("force_dark_theme", enabled).apply()
+                            }
                         )
                     }
                 }
@@ -146,7 +156,7 @@ fun AppSettingsScreen(onBack: () -> Unit) {
                                 scope.launch(Dispatchers.IO) {
                                     try {
                                         val db = AppDatabase.getDatabase(context)
-                                        db.openHelper.writableDatabase.execSQL("VACUUM") // Rebuilds database files cleanly
+                                        db.openHelper.writableDatabase.execSQL("VACUUM")
                                         withContext(Dispatchers.Main) {
                                             Toast.makeText(context, "Database compacted successfully!", Toast.LENGTH_SHORT).show()
                                         }
@@ -167,7 +177,6 @@ fun AppSettingsScreen(onBack: () -> Unit) {
                 }
             }
 
-            // Legal Zero-Cost Footer
             Box(
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
                 contentAlignment = Alignment.Center
