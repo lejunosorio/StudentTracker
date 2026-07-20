@@ -1,9 +1,10 @@
 package dev.soloistdev.studenttracker.ui
 
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable // Fixed: Added missing import
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -36,13 +37,32 @@ fun SyncScreen(onBack: () -> Unit) {
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        uri?.let {
+        uri?.let { selectedUri ->
             scope.launch {
-                val success = JsonSyncEngine.importSecureBackup(context, it, repository)
+                // 1. Secure verification using both the filename extension AND MIME type
+                val fileName = getFileName(context, selectedUri)
+                val mimeType = context.contentResolver.getType(selectedUri)
+
+                val isJsonFile = fileName?.endsWith(".json", ignoreCase = true) == true ||
+                        mimeType == "application/json"
+
+                // 2. Route dynamically based on validation result
+                val success = if (isJsonFile) {
+                    JsonSyncEngine.importUnencryptedBackup(context, selectedUri, repository)
+                } else {
+                    JsonSyncEngine.importSecureBackup(context, selectedUri, repository)
+                }
+
+                // 3. Status Toast notifications based on formatting structure
                 if (success) {
                     Toast.makeText(context, "Database restored successfully!", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(context, "Decryption failure. Invalid backup key.", Toast.LENGTH_LONG).show()
+                    val errorMsg = if (isJsonFile) {
+                        "Invalid JSON formatting. Please check schema."
+                    } else {
+                        "Decryption failure. Invalid backup key."
+                    }
+                    Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -161,9 +181,26 @@ fun SyncScreen(onBack: () -> Unit) {
                 ) {
                     Icon(Icons.Default.Download, contentDescription = "Import", tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Import and Decrypt File", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text("Import Backup or JSON File", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
             }
         }
     }
+}
+
+/**
+ * Helper to securely extract the clean display name of a selected document URI.
+ */
+private fun getFileName(context: android.content.Context, uri: Uri): String? {
+    var name: String? = null
+    val cursor = context.contentResolver.query(uri, null, null, null, null)
+    cursor?.use {
+        if (it.moveToFirst()) {
+            val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (nameIndex != -1) {
+                name = it.getString(nameIndex)
+            }
+        }
+    }
+    return name
 }
