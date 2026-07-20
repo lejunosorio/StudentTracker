@@ -44,6 +44,9 @@ fun StudentProfileScreen(
     val context = LocalContext.current
     var student by remember { mutableStateOf<StudentEntity?>(null) }
 
+    // SPRINT 9 ADDITION: Delete Student Warning Dialog State
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         val list = repository.getAllActiveStudents()
         student = list.find { studentEntity -> studentEntity.id == studentId }
@@ -62,14 +65,11 @@ fun StudentProfileScreen(
                     IconButton(onClick = { onEdit(studentId) }) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit Profile")
                     }
-                    IconButton(onClick = {
-                        // Soft deletes the student and triggers the callback
-                        onDeleteStudent(studentId)
-                    }) {
+                    IconButton(onClick = { showDeleteDialog = true }) { // Trigger confirmation dialog
                         Icon(
-                            imageVector = Icons.Default.Delete, // Trash icon
+                            imageVector = Icons.Default.Delete,
                             contentDescription = "Delete Student",
-                            tint = MaterialTheme.colorScheme.error // Warning red
+                            tint = MaterialTheme.colorScheme.error
                         )
                     }
                 }
@@ -145,19 +145,17 @@ fun StudentProfileScreen(
                     }
 
                     OutlinedButton(
-                        onClick = { onSharePdf(currentStudent) }, // Passes student entity
+                        onClick = { onSharePdf(currentStudent) },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(20.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Edit, contentDescription = "Share PDF") // Edit icon represents picture_as_pdf fallback
+                            Icon(Icons.Default.Edit, contentDescription = "Share PDF")
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Share PDF")
                         }
                     }
                 }
-
-
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -171,7 +169,7 @@ fun StudentProfileScreen(
                     val key = keys.next()
                     val value = json.optString(key, "")
                     if (value.isNotEmpty() && key != "Gender") {
-                        val label = key.replace("_", " ") // Format label dynamically
+                        val label = key.replace("_", " ")
                         val displayValue = if (key == "Bautisado" && value == "Y") "Yes" else value
                         ProfileInfoCard(label = label, value = displayValue)
                     }
@@ -215,7 +213,6 @@ fun StudentProfileScreen(
 
                                 Spacer(modifier = Modifier.height(12.dp))
 
-                                // Render a distinct dial button row for each individual phone number
                                 guardian.phones.forEach { phone ->
                                     Row(
                                         modifier = Modifier
@@ -249,6 +246,32 @@ fun StudentProfileScreen(
             }
         } ?: Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
+        }
+
+        // SPRINT 9 M3 DELETE STUDENT WARNING DIALOG (Screen 8 soft delete trigger)
+        if (showDeleteDialog && student != null) {
+            AlertDialog(
+                onDismissRequest = { showDeleteDialog = false },
+                title = { Text("Delete Student?", fontWeight = FontWeight.Bold) },
+                text = { Text("Are you sure you want to move ${student!!.firstName} ${student!!.lastName} to the Recycle Bin? They can be restored within 30 days.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showDeleteDialog = false
+                            onDeleteStudent(studentId)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error) // Security-red indicator
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteDialog = false }) {
+                        Text("Cancel")
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
         }
     }
 }

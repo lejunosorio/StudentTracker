@@ -41,7 +41,9 @@ fun AddEditStudentScreen(
     val saveSuccess by viewModel.saveSuccess.collectAsState()
     var showDatePicker by remember { mutableStateOf(false) }
 
-    // Custom text field style mappings to guarantee perfect contrast in both themes
+    // SPRINT 9 ADDITION: Save Confirmation Dialog State
+    var showSaveDialog by remember { mutableStateOf(false) }
+
     val m3TextFieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = MaterialTheme.colorScheme.primary,
         unfocusedBorderColor = MaterialTheme.colorScheme.outline,
@@ -90,7 +92,7 @@ fun AddEditStudentScreen(
                             viewModel.guardianContact.isBlank()) {
                             Toast.makeText(context, "Please fill in all required fields (*)", Toast.LENGTH_SHORT).show()
                         } else {
-                            viewModel.saveStudent()
+                            showSaveDialog = true // Trigger save confirmation dialog first!
                         }
                     }) {
                         Text("Save", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -107,7 +109,7 @@ fun AddEditStudentScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Photo Picker Card
+            // Photo Picker
             Box(
                 modifier = Modifier
                     .size(100.dp)
@@ -157,7 +159,7 @@ fun AddEditStudentScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // GENDER SELECTOR (Fixed selected unreadable white-on-white text)
+            // GENDER
             Text("Gender *", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
             val chipColors = FilterChipDefaults.filterChipColors(
@@ -185,7 +187,7 @@ fun AddEditStudentScreen(
                 )
             }
 
-            // BIRTHDAY PICKER (Fixed unreadable dark text on dark surface)
+            // BIRTHDAY PICKER
             val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.US)
             val birthdayText = viewModel.birthday?.let { sdf.format(Date(it)) } ?: "Select Birthday *"
 
@@ -199,7 +201,7 @@ fun AddEditStudentScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(birthdayText, color = MaterialTheme.colorScheme.onSurface) // Fixed to onSurface
+                    Text(birthdayText, color = MaterialTheme.colorScheme.onSurface)
                     Icon(Icons.Default.CalendarToday, contentDescription = "Select Date", tint = MaterialTheme.colorScheme.primary)
                 }
             }
@@ -214,10 +216,10 @@ fun AddEditStudentScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // GUARDIAN SECTION (Fixed white-on-white container clashing)
+            // GUARDIAN SECTION
             Text("Guardian Contact *", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant), // Swapped from static White
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
@@ -264,6 +266,32 @@ fun AddEditStudentScreen(
                     )
                 }
             }
+        }
+
+        // SPRINT 9 M3 SAVE CONFIRMATION DIALOG (Screen 3 Save Action)
+        if (showSaveDialog) {
+            AlertDialog(
+                onDismissRequest = { showSaveDialog = false },
+                title = { Text("Save Changes?", fontWeight = FontWeight.Bold) },
+                text = { Text("Are you sure you want to save this student's profile details to the secure local directory?") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showSaveDialog = false
+                            viewModel.saveStudent()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text("Save")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSaveDialog = false }) {
+                        Text("Cancel")
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
         }
     }
 

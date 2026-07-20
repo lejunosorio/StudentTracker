@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.soloistdev.studenttracker.data.FormTemplateEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,6 +34,9 @@ fun TemplateManagerScreen(
 
     var newFieldName by remember { mutableStateOf("") }
     var selectedType by remember { mutableStateOf("TEXT") }
+
+    // SPRINT 9 ADDITION: Tracks which template is currently queued for deletion
+    var templateToDelete by remember { mutableStateOf<FormTemplateEntity?>(null) }
 
     Scaffold(
         topBar = {
@@ -98,7 +102,7 @@ fun TemplateManagerScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
                         }
-                        IconButton(onClick = { viewModel.deleteTemplate(template.id) }) {
+                        IconButton(onClick = { templateToDelete = template }) { // Queue for deletion first!
                             Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                         }
                     }
@@ -134,12 +138,11 @@ fun TemplateManagerScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    // CORRECTED M3 CHIP PARAMETERS (Fixed compile failure)
                     val chipColors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                         selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        containerColor = Color.Transparent, // Changed from unselectedContainerColor
-                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant // Changed from unselectedLabelColor
+                        containerColor = Color.Transparent,
+                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     Row(
@@ -182,6 +185,33 @@ fun TemplateManagerScreen(
                     }
                 }
             }
+        }
+
+        // SPRINT 9 M3 DELETE SCHEMA WARNING DIALOG (Screen 5 Delete Action)
+        templateToDelete?.let { template ->
+            AlertDialog(
+                onDismissRequest = { templateToDelete = null },
+                title = { Text("Delete Custom Field?", fontWeight = FontWeight.Bold) },
+                text = { Text("Are you sure you want to delete the '${template.fieldName.replace("_", " ")}' custom field? This will permanently erase any saved data under this field for all 59 members.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deleteTemplate(template.id)
+                            templateToDelete = null
+                            Toast.makeText(context, "Field deleted successfully.", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error) // Security-red indicator
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { templateToDelete = null }) {
+                        Text("Cancel")
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
         }
     }
 }
