@@ -3,6 +3,7 @@ package dev.soloistdev.studenttracker.ui
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -10,9 +11,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,9 +43,13 @@ fun AddEditStudentScreen(
     val context = LocalContext.current
     val saveSuccess by viewModel.saveSuccess.collectAsState()
     var showDatePicker by remember { mutableStateOf(false) }
-
-    // SPRINT 9 ADDITION: Save Confirmation Dialog State
     var showSaveDialog by remember { mutableStateOf(false) }
+
+    // SPRINT 6 UPDATE: Dialog states for collecting a new guardian dynamically
+    var showAddGuardianDialog by remember { mutableStateOf(false) }
+    var newGuardianName by remember { mutableStateOf("") }
+    var newGuardianRelationship by remember { mutableStateOf("") }
+    var newGuardianContact by remember { mutableStateOf("") }
 
     val m3TextFieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -88,11 +95,10 @@ fun AddEditStudentScreen(
                 actions = {
                     TextButton(onClick = {
                         if (viewModel.firstName.isBlank() || viewModel.lastName.isBlank() ||
-                            viewModel.birthday == null || viewModel.guardianName.isBlank() ||
-                            viewModel.guardianContact.isBlank()) {
-                            Toast.makeText(context, "Please fill in all required fields (*)", Toast.LENGTH_SHORT).show()
+                            viewModel.birthday == null || viewModel.guardiansStateList.isEmpty()) {
+                            Toast.makeText(context, "Please fill in all required fields (*) and add at least 1 Guardian", Toast.LENGTH_LONG).show()
                         } else {
-                            showSaveDialog = true // Trigger save confirmation dialog first!
+                            showSaveDialog = true
                         }
                     }) {
                         Text("Save", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -216,35 +222,42 @@ fun AddEditStudentScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // GUARDIAN SECTION
-            Text("Guardian Contact *", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+            // SPRINT 6 DYNAMIC GUARDIANS SECTION (Matches Screen 3 Mockups exactly!)
+            Text("Guardians *", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+
+            // 1. Loop and draw cards for already added guardians
+            viewModel.guardiansStateList.forEachIndexed { index, guardian ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    OutlinedTextField(
-                        value = viewModel.guardianName,
-                        onValueChange = { viewModel.guardianName = it },
-                        label = { Text("Guardian Name *") },
-                        colors = m3TextFieldColors,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = viewModel.guardianContact,
-                        onValueChange = { viewModel.guardianContact = it },
-                        label = { Text("Guardian Contact Number *") },
-                        colors = m3TextFieldColors,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Phone,
-                            imeAction = ImeAction.Next
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(guardian.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${guardian.relationship} • ${guardian.phones.firstOrNull() ?: ""}", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                        }
+                        IconButton(onClick = { viewModel.removeGuardian(index) }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+
+            // 2. Outlined Add Guardian button (Matches your exact mockup!)
+            OutlinedButton(
+                onClick = { showAddGuardianDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Add Guardian", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -268,7 +281,7 @@ fun AddEditStudentScreen(
             }
         }
 
-        // SPRINT 9 M3 SAVE CONFIRMATION DIALOG (Screen 3 Save Action)
+        // SPRINT 9 M3 SAVE CONFIRMATION DIALOG
         if (showSaveDialog) {
             AlertDialog(
                 onDismissRequest = { showSaveDialog = false },
@@ -287,6 +300,67 @@ fun AddEditStudentScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { showSaveDialog = false }) {
+                        Text("Cancel")
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
+        }
+
+        // SPRINT 6 DYNAMIC ADD GUARDIAN INPUT DIALOG (Collects details on button click!)
+        if (showAddGuardianDialog) {
+            AlertDialog(
+                onDismissRequest = { showAddGuardianDialog = false },
+                title = { Text("Add New Guardian", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = newGuardianName,
+                            onValueChange = { newGuardianName = it },
+                            label = { Text("Name *") },
+                            colors = m3TextFieldColors,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = newGuardianRelationship,
+                            onValueChange = { newGuardianRelationship = it },
+                            label = { Text("Relationship (e.g. Mother) *") },
+                            colors = m3TextFieldColors,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = newGuardianContact,
+                            onValueChange = { newGuardianContact = it },
+                            label = { Text("Contact Number *") },
+                            colors = m3TextFieldColors,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (newGuardianName.isBlank() || newGuardianContact.isBlank()) {
+                                Toast.makeText(context, "Name and Contact are required.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                viewModel.addGuardian(newGuardianName, newGuardianRelationship, newGuardianContact)
+                                newGuardianName = ""
+                                newGuardianRelationship = ""
+                                newGuardianContact = ""
+                                showAddGuardianDialog = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text("Add")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAddGuardianDialog = false }) {
                         Text("Cancel")
                     }
                 },

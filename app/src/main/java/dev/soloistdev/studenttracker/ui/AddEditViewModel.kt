@@ -2,6 +2,7 @@ package dev.soloistdev.studenttracker.ui
 
 import android.app.Application
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -23,9 +24,10 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
     var gender by mutableStateOf("F")
     var birthday by mutableStateOf<Long?>(null)
     var address by mutableStateOf("")
-    var guardianName by mutableStateOf("")
-    var guardianContact by mutableStateOf("")
-    var picturePath by mutableStateOf("") // Added picturePath state
+    var picturePath by mutableStateOf("")
+
+    // SPRINT 6 UPDATE: Observable state list to dynamically track multiple guardians!
+    val guardiansStateList = mutableStateListOf<Guardian>()
 
     val customDataMap = mutableStateMapOf<String, String>()
 
@@ -36,6 +38,7 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
 
     fun loadStudentForEditing(studentId: Int) {
         customDataMap.clear()
+        guardiansStateList.clear()
 
         viewModelScope.launch {
             val templates = repository.getAllFormTemplates()
@@ -56,14 +59,11 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                 gender = student.gender
                 birthday = student.birthday
                 address = student.address
-                picturePath = student.picturePath // Load picturePath
+                picturePath = student.picturePath
 
-                val guardians = Guardian.listFromJsonString(student.guardiansJson)
-                if (guardians.isNotEmpty()) {
-                    val primaryGuardian = guardians[0]
-                    guardianName = primaryGuardian.name
-                    guardianContact = primaryGuardian.phones.firstOrNull() ?: ""
-                }
+                // Dynamically load and populate the mutable list of guardians
+                val list = Guardian.listFromJsonString(student.guardiansJson)
+                guardiansStateList.addAll(list)
 
                 try {
                     val json = JSONObject(student.customDataJson)
@@ -77,8 +77,27 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun addGuardian(name: String, relationship: String, contact: String) {
+        if (name.isNotBlank() && contact.isNotBlank()) {
+            guardiansStateList.add(
+                Guardian(
+                    name = name.trim(),
+                    relationship = relationship.trim().ifEmpty { "Guardian" },
+                    phones = listOf(contact.trim())
+                )
+            )
+        }
+    }
+
+    fun removeGuardian(index: Int) {
+        if (index in 0 until guardiansStateList.size) {
+            guardiansStateList.removeAt(index)
+        }
+    }
+
     fun saveStudent() {
-        if (firstName.isBlank() || lastName.isBlank() || birthday == null || guardianName.isBlank() || guardianContact.isBlank()) return
+        // Enforce required fields validation (Requires at least 1 Guardian!)
+        if (firstName.isBlank() || lastName.isBlank() || birthday == null || guardiansStateList.isEmpty()) return
 
         viewModelScope.launch {
             val jsonObject = JSONObject()
@@ -87,14 +106,6 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
             }
             val customData = jsonObject.toString()
 
-            val guardiansList = listOf(
-                Guardian(
-                    name = guardianName.trim(),
-                    relationship = "Guardian",
-                    phones = listOf(guardianContact.trim())
-                )
-            )
-
             val student = StudentEntity(
                 id = editingStudentId ?: 0,
                 firstName = firstName.trim(),
@@ -102,8 +113,8 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                 gender = gender,
                 birthday = birthday!!,
                 address = address.trim(),
-                picturePath = picturePath, // Save picturePath
-                guardiansJson = Guardian.listToJsonString(guardiansList),
+                picturePath = picturePath,
+                guardiansJson = Guardian.listToJsonString(guardiansStateList.toList()), // Serialize list dynamically!
                 customDataJson = customData
             )
             repository.insertStudent(student)
