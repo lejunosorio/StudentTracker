@@ -6,7 +6,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
@@ -20,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.soloistdev.studenttracker.data.CsvExportEngine
@@ -34,26 +37,25 @@ fun SyncScreen(onBack: () -> Unit) {
     val repository = remember { StudentRepository(context) }
     val scope = rememberCoroutineScope()
 
+    // State to manage the informational overlay
+    var showHelpDialog by remember { mutableStateOf(false) }
+
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let { selectedUri ->
             scope.launch {
-                // 1. Secure verification using both the filename extension AND MIME type
                 val fileName = getFileName(context, selectedUri)
                 val mimeType = context.contentResolver.getType(selectedUri)
-
                 val isJsonFile = fileName?.endsWith(".json", ignoreCase = true) == true ||
                         mimeType == "application/json"
 
-                // 2. Route dynamically based on validation result
                 val success = if (isJsonFile) {
                     JsonSyncEngine.importUnencryptedBackup(context, selectedUri, repository)
                 } else {
                     JsonSyncEngine.importSecureBackup(context, selectedUri, repository)
                 }
 
-                // 3. Status Toast notifications based on formatting structure
                 if (success) {
                     Toast.makeText(context, "Database restored successfully!", Toast.LENGTH_SHORT).show()
                 } else {
@@ -78,7 +80,7 @@ fun SyncScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = {}) {
+                    IconButton(onClick = { showHelpDialog = true }) { // Triggers the help dialog
                         Icon(Icons.Default.HelpOutline, contentDescription = "Help")
                     }
                 }
@@ -89,7 +91,8 @@ fun SyncScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
@@ -185,12 +188,71 @@ fun SyncScreen(onBack: () -> Unit) {
                 }
             }
         }
+
+        // Material Design 3 Sync Help Dialog
+        if (showHelpDialog) {
+            AlertDialog(
+                onDismissRequest = { showHelpDialog = false },
+                title = { Text("Backup & Sync Guide", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Secure Backups (.enc)",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "Backups exported with the lock icon use military-grade AES-GCM encryption. These are tied to your current Master recovery PIN. If you reset or forget this PIN, old backup files cannot be decrypted.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 18.sp
+                        )
+
+                        Text(
+                            text = "Spreadsheets & Plain JSON (.csv / .json)",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "CSV and standard JSON imports are unencrypted. You can open them on external computers using spreadsheet software. Use these when migrating rosters across different devices without cryptographic keys.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 18.sp
+                        )
+
+                        Text(
+                            text = "Offline Security Warning",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "This application operates 100% offline. There are no cloud servers. Keep your master passcodes safe as they are the only keys that can open your data.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 18.sp
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { showHelpDialog = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text("Got it")
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
+        }
     }
 }
 
-/**
- * Helper to securely extract the clean display name of a selected document URI.
- */
 private fun getFileName(context: android.content.Context, uri: Uri): String? {
     var name: String? = null
     val cursor = context.contentResolver.query(uri, null, null, null, null)

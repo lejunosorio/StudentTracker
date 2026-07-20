@@ -118,7 +118,7 @@ object JsonSyncEngine {
     suspend fun importSecureBackup(context: Context, uri: Uri, repository: StudentRepository): Boolean = withContext(Dispatchers.IO) {
         try {
             val cacheDir = File(context.cacheDir, "backups").apply { mkdirs() }
-            val tempEncFile = File(cacheDir, "temp_import.enc")
+            val tempEncFile = File(cacheDir, "student_tracker_backup.enc")
             if (tempEncFile.exists()) tempEncFile.delete()
 
             context.contentResolver.openInputStream(uri)?.use { stream ->
