@@ -27,9 +27,14 @@ import dev.soloistdev.studenttracker.data.StudentRepository
 @Composable
 fun StudentMapScreen(
     studentId: Int, // Pass -1 for global map, or a valid ID for single-student focus
-    onBack: () -> Unit,
-    repository: StudentRepository = StudentRepository(LocalContext.current)
+    onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+
+    // ARCHITECTURAL CORRECTION: Use remember to instantiate the repository exactly ONCE
+    // This prevents database-decryption thread freezes on recomposition
+    val repository = remember { StudentRepository(context) }
+
     var studentsList by remember { mutableStateOf<List<StudentEntity>>(emptyList()) }
 
     LaunchedEffect(Unit) {
@@ -65,27 +70,27 @@ fun StudentMapScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // NATIVE GOOGLE MAP CONTAINER (100% Free for Mobile / GPU-Accelerated)
+            // NATIVE GOOGLE MAP CONTAINER
             GoogleMap(
                 modifier = Modifier.fillMaxSize(),
                 cameraPositionState = cameraPositionState,
-                uiSettings = MapUiSettings(zoomControlsEnabled = false) // Disable default zoom, we use custom M3 buttons
+                uiSettings = MapUiSettings(zoomControlsEnabled = false)
             ) {
                 if (studentId == -1) {
-                    // GLOBAL MODE: Plot a pin for every student
+                    // GLOBAL MODE: Plot pins dynamically
                     studentsList.forEachIndexed { index, student ->
                         val latOffset = (index % 5) * 0.003 - 0.006
                         val lngOffset = (index / 5) * 0.003 - 0.006
                         val studentPoint = LatLng(14.5547 + latOffset, 121.0509 + lngOffset)
 
                         Marker(
-                            state = rememberMarkerState(position = studentPoint),
+                            state = MarkerState(position = studentPoint),
                             title = "${student.lastName}, ${student.firstName}",
                             snippet = student.address
                         )
                     }
                 } else {
-                    // SINGLE MODE: Focus on one specific student
+                    // SINGLE MODE: Focus on specific student
                     val focusedStudent = studentsList.find { it.id == studentId }
                     if (focusedStudent != null) {
                         val focusPoint = remember { LatLng(14.5547 + 0.002, 121.0509 - 0.002) }

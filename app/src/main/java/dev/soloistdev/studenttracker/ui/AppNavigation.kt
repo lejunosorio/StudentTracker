@@ -9,18 +9,18 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dev.soloistdev.studenttracker.data.StudentRepository
+import dev.soloistdev.studenttracker.security.PdfGeneratorHelper
 import kotlinx.coroutines.launch
 
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
     val context = LocalContext.current
-
-    // SPRINT 9 INSTANTIATION: Binds repository safely using Compose Context & Memory Cache
     val repository = remember { StudentRepository(context) }
 
     NavHost(navController = navController, startDestination = "security_gate") {
 
+        // 1. Security Gate / Unlock (Onboarding setup or Verify PIN)
         composable("security_gate") {
             SecurityGateScreen(
                 onUnlockSuccess = {
@@ -31,6 +31,7 @@ fun AppNavigation() {
             )
         }
 
+        // 2. View All Student Directory
         composable("view_all") {
             ViewAllScreen(
                 onAddStudent = { id ->
@@ -48,6 +49,11 @@ fun AppNavigation() {
                         navController.navigate("templates")
                     }
                 },
+                onOpenMapArchives = {
+                    if (navController.currentDestination?.route == "view_all") {
+                        navController.navigate("map_archives")
+                    }
+                },
                 onOpenMap = {
                     if (navController.currentDestination?.route == "view_all") {
                         navController.navigate("global_map")
@@ -57,10 +63,21 @@ fun AppNavigation() {
                     if (navController.currentDestination?.route == "view_all") {
                         navController.navigate("recycle_bin")
                     }
+                },
+                onOpenSync = {
+                    if (navController.currentDestination?.route == "view_all") {
+                        navController.navigate("sync")
+                    }
+                },
+                onOpenSettings = {
+                    if (navController.currentDestination?.route == "view_all") {
+                        navController.navigate("app_settings")
+                    }
                 }
             )
         }
 
+        // 3. Student Profile Screen (Read-Only)
         composable(
             route = "profile/{studentId}",
             arguments = listOf(navArgument("studentId") { type = NavType.IntType })
@@ -85,8 +102,10 @@ fun AppNavigation() {
                         navController.navigate("student_map/$id")
                     }
                 },
+                onSharePdf = { studentEntity ->
+                    PdfGeneratorHelper.generateAndShareStudentPdf(context, studentEntity)
+                },
                 onDeleteStudent = { id ->
-                    // Soft-deletes the student and returns back to the directory cleanly
                     kotlinx.coroutines.MainScope().launch {
                         repository.softDeleteStudent(id)
                         navController.navigate("view_all") {
@@ -97,6 +116,7 @@ fun AppNavigation() {
             )
         }
 
+        // 4. Add / Edit Student Form Screen
         composable(
             route = "add_edit/{studentId}",
             arguments = listOf(navArgument("studentId") { type = NavType.IntType })
@@ -142,13 +162,19 @@ fun AppNavigation() {
             )
         }
 
+        // 5. GLOBAL MAP SCREEN ROUTE (Fully Guarded against double-clicks!)
         composable("global_map") {
             StudentMapScreen(
                 studentId = -1,
-                onBack = { navController.popBackStack() }
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
             )
         }
 
+        // 6. SINGLE STUDENT MAP SCREEN ROUTE (Fully Guarded against double-clicks!)
         composable(
             route = "student_map/{studentId}",
             arguments = listOf(navArgument("studentId") { type = NavType.IntType })
@@ -156,7 +182,31 @@ fun AppNavigation() {
             val studentId = backStackEntry.arguments?.getInt("studentId") ?: -1
             StudentMapScreen(
                 studentId = studentId,
-                onBack = { navController.popBackStack() }
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
+            )
+        }
+
+        composable("sync") {
+            SyncScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
+            )
+        }
+
+        composable("app_settings") {
+            AppSettingsScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
             )
         }
     }

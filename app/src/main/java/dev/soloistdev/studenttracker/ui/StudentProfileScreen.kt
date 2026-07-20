@@ -37,6 +37,7 @@ fun StudentProfileScreen(
     onBack: () -> Unit,
     onEdit: (Int) -> Unit,
     onViewMap: (Int) -> Unit,
+    onSharePdf: (StudentEntity) -> Unit,
     onDeleteStudent: (Int) -> Unit,
     repository: StudentRepository = StudentRepository(LocalContext.current)
 ) {
@@ -142,7 +143,21 @@ fun StudentProfileScreen(
                             Text("View Offline Map")
                         }
                     }
+
+                    OutlinedButton(
+                        onClick = { onSharePdf(currentStudent) }, // Passes student entity
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Edit, contentDescription = "Share PDF") // Edit icon represents picture_as_pdf fallback
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Share PDF")
+                        }
+                    }
                 }
+
+
 
                 Spacer(modifier = Modifier.height(16.dp))
 
