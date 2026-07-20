@@ -22,7 +22,6 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             var list = repository.getAllFormTemplates()
 
-            // Seed our standard dynamic schema fields if the templates database is empty
             if (list.isEmpty()) {
                 val defaultTemplates = listOf(
                     FormTemplateEntity(fieldName = "Purok", fieldType = "TEXT", isRequired = true),
@@ -36,8 +35,8 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // Validates custom field names using strict regex (alphanumeric/underscores only)
-    fun addTemplate(name: String, type: String): Boolean {
+    // UPDATED: Now accepts isRequired parameter to save dynamic mandatory states
+    fun addTemplate(name: String, type: String, isRequired: Boolean): Boolean {
         val sanitized = name.trim().replace(" ", "_")
         val regex = Regex("^[a-zA-Z0-9_]+$")
         if (!regex.matches(sanitized) || sanitized.isBlank()) return false
@@ -45,7 +44,8 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             val newTemplate = FormTemplateEntity(
                 fieldName = sanitized,
-                fieldType = type.uppercase()
+                fieldType = type.uppercase(),
+                isRequired = isRequired // Fixed: Saves true/false dynamically
             )
             repository.insertFormTemplate(newTemplate)
             loadTemplates()

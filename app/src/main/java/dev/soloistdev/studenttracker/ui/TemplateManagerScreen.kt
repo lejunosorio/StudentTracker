@@ -1,6 +1,7 @@
 package dev.soloistdev.studenttracker.ui
 
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -35,7 +36,9 @@ fun TemplateManagerScreen(
     var newFieldName by remember { mutableStateOf("") }
     var selectedType by remember { mutableStateOf("TEXT") }
 
-    // SPRINT 9 ADDITION: Tracks which template is currently queued for deletion
+    // SPRINT 9 ADDITION: Tracks isRequired state inside bottom sheet
+    var tempIsRequired by remember { mutableStateOf(false) }
+
     var templateToDelete by remember { mutableStateOf<FormTemplateEntity?>(null) }
 
     Scaffold(
@@ -102,7 +105,7 @@ fun TemplateManagerScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
                         }
-                        IconButton(onClick = { templateToDelete = template }) { // Queue for deletion first!
+                        IconButton(onClick = { templateToDelete = template }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                         }
                     }
@@ -163,12 +166,28 @@ fun TemplateManagerScreen(
                         )
                     }
 
+                    // SPRINT 9 ADDITION: Dynamic M3 Required Field Toggle Switch (Screen 5 Bottom Sheet)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Required field", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                        Switch(
+                            checked = tempIsRequired,
+                            onCheckedChange = { tempIsRequired = it }
+                        )
+                    }
+
                     Button(
                         onClick = {
-                            val success = viewModel.addTemplate(newFieldName, selectedType)
+                            val success = viewModel.addTemplate(newFieldName, selectedType, tempIsRequired) // Passes state
                             if (success) {
                                 Toast.makeText(context, "Field Created Successfully!", Toast.LENGTH_SHORT).show()
                                 newFieldName = ""
+                                tempIsRequired = false // Reset
                                 showBottomSheet = false
                             } else {
                                 Toast.makeText(context, "Invalid name. Alphanumeric & underscores only.", Toast.LENGTH_LONG).show()
@@ -187,7 +206,7 @@ fun TemplateManagerScreen(
             }
         }
 
-        // SPRINT 9 M3 DELETE SCHEMA WARNING DIALOG (Screen 5 Delete Action)
+        // SPRINT 9 M3 DELETE SCHEMA WARNING DIALOG
         templateToDelete?.let { template ->
             AlertDialog(
                 onDismissRequest = { templateToDelete = null },
@@ -200,7 +219,7 @@ fun TemplateManagerScreen(
                             templateToDelete = null
                             Toast.makeText(context, "Field deleted successfully.", Toast.LENGTH_SHORT).show()
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error) // Security-red indicator
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
                         Text("Delete")
                     }
