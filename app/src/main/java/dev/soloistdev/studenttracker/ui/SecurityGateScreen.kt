@@ -70,8 +70,11 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
         }
     }
 
+    // Observe biometric status dynamically
+    val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
+
     // Auto-launch biometrics on start if configured
-    LaunchedEffect(isAlreadyConfigured) {
+    LaunchedEffect(isAlreadyConfigured, isBiometricEnabled) {
         if (isAlreadyConfigured && isBiometricsAvailable) {
             launchBiometricPrompt()
         }

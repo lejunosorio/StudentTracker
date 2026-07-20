@@ -44,6 +44,7 @@ fun ViewAllScreen(
     onOpenRecycleBin: () -> Unit,
     onOpenSync: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenBiometrics: () -> Unit,
     viewModel: StudentListViewModel = viewModel()
 ) {
     val students by viewModel.students.collectAsState()
@@ -143,6 +144,20 @@ fun ViewAllScreen(
                     )
 
                     NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.Layers, contentDescription = null) },
+                        label = { Text("Map Archives (.mbtiles)") },
+                        selected = false,
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                onOpenMapArchives()
+                            }
+                        },
+                        colors = drawerItemColors,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                    )
+
+                    NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Refresh, contentDescription = null) },
                         label = { Text("Backup & Sync (JSON/CSV)") },
                         selected = false,
@@ -181,7 +196,7 @@ fun ViewAllScreen(
                         onClick = {
                             scope.launch {
                                 drawerState.close()
-                                onOpenMapArchives()
+                                onOpenBiometrics()
                             }
                         },
                         colors = drawerItemColors,

@@ -17,13 +17,15 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 
-    // Checks if a Master PIN has ever been configured
     val isConfigured: Boolean = sharedPreferences.getBoolean("recovery_pin_configured", false)
 
     private val _isUnlocked = MutableStateFlow(false)
     val isUnlocked: StateFlow<Boolean> = _isUnlocked
 
-    // Save action (used on first-launch setup)
+    // New: Observable biometric toggle state (defaulting to enabled)
+    private val _isBiometricEnabled = MutableStateFlow(sharedPreferences.getBoolean("biometric_enabled", true))
+    val isBiometricEnabled: StateFlow<Boolean> = _isBiometricEnabled
+
     fun saveRecoveryPin(pin: String): Boolean {
         if (pin.length < 4 || pin.length > 6) return false
         sharedPreferences.edit()
@@ -34,11 +36,29 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
         return true
     }
 
-    // Verification action (used on subsequent app launches)
     fun verifyPin(pin: String): Boolean {
         val savedHash = sharedPreferences.getString("recovery_pin_hash", "")
         if (pin.hashCode().toString() == savedHash) {
             _isUnlocked.value = true
+            return true
+        }
+        return false
+    }
+
+    // --- SPRINT 9 ENHANCEMENTS: BIOMETRICS & PRIVACY ACTIONS ---
+
+    fun setBiometricEnabled(enabled: Boolean) {
+        sharedPreferences.edit().putBoolean("biometric_enabled", enabled).apply()
+        _isBiometricEnabled.value = enabled
+    }
+
+    fun resetPin(oldPin: String, newPin: String): Boolean {
+        if (newPin.length < 4 || newPin.length > 6) return false
+        val savedHash = sharedPreferences.getString("recovery_pin_hash", "")
+        if (oldPin.hashCode().toString() == savedHash) {
+            sharedPreferences.edit()
+                .putString("recovery_pin_hash", newPin.hashCode().toString())
+                .apply()
             return true
         }
         return false

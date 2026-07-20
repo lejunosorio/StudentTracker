@@ -73,6 +73,11 @@ fun AppNavigation() {
                     if (navController.currentDestination?.route == "view_all") {
                         navController.navigate("app_settings")
                     }
+                },
+                onOpenBiometrics = { // Supply navigation route callback
+                    if (navController.currentDestination?.route == "view_all") {
+                        navController.navigate("biometrics_privacy")
+                    }
                 }
             )
         }
@@ -192,6 +197,16 @@ fun AppNavigation() {
 
         composable("sync") {
             SyncScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
+            )
+        }
+
+        composable("biometrics_privacy") {
+            BiometricsPrivacyScreen(
                 onBack = {
                     if (navController.previousBackStackEntry != null) {
                         navController.popBackStack()
