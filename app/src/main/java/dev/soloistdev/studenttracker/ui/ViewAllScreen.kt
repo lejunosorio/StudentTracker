@@ -33,6 +33,12 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 
+import androidx.compose.foundation.background
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.runtime.rememberUpdatedState
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ViewAllScreen(
@@ -416,11 +422,109 @@ fun ViewAllScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 80.dp)
                     ) {
-                        items(students) { student ->
-                            StudentCard(
-                                student = student,
-                                onClick = { onStudentClick(student.id) }
+                        items(
+                            items = students,
+                            key = { it.id } // Set keys so state transitions render smoothly during deletions
+                        ) { student ->
+                            // Use rememberUpdatedState to prevent callback capture leaks in lazy layouts
+                            val currentOnStudentClick = rememberUpdatedState(onStudentClick)
+                            val currentOnAddStudent = rememberUpdatedState(onAddStudent)
+
+                            var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+
+                            val dismissState = rememberSwipeToDismissBoxState(
+                                confirmValueChange = { dismissValue ->
+                                    when (dismissValue) {
+                                        SwipeToDismissBoxValue.StartToEnd -> {
+                                            // Swipe Right: Route directly to editor
+                                            currentOnAddStudent.value(student.id)
+                                            false // Snaps back smoothly to settled state
+                                        }
+                                        SwipeToDismissBoxValue.EndToStart -> {
+                                            // Swipe Left: Show safety confirmation dialog
+                                            showDeleteConfirmDialog = true
+                                            false // Snaps back smoothly while dialog is open
+                                        }
+                                        SwipeToDismissBoxValue.Settled -> false
+                                    }
+                                }
                             )
+
+                            SwipeToDismissBox(
+                                state = dismissState,
+                                modifier = Modifier.animateItem(), // Smooth item exit animations
+                                backgroundContent = {
+                                    val backgroundColor = when (dismissState.dismissDirection) {
+                                        SwipeToDismissBoxValue.StartToEnd -> MaterialTheme.colorScheme.primaryContainer
+                                        SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.errorContainer
+                                        else -> Color.Transparent
+                                    }
+                                    val alignment = when (dismissState.dismissDirection) {
+                                        SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
+                                        SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
+                                        else -> Alignment.Center
+                                    }
+                                    val iconVector = when (dismissState.dismissDirection) {
+                                        SwipeToDismissBoxValue.StartToEnd -> Icons.Default.Edit
+                                        SwipeToDismissBoxValue.EndToStart -> Icons.Default.Delete
+                                        else -> Icons.Default.Delete
+                                    }
+                                    val iconTint = when (dismissState.dismissDirection) {
+                                        SwipeToDismissBoxValue.StartToEnd -> MaterialTheme.colorScheme.onPrimaryContainer
+                                        SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.onErrorContainer
+                                        else -> Color.Transparent
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(backgroundColor),
+                                        contentAlignment = alignment
+                                    ) {
+                                        Icon(
+                                            imageVector = iconVector,
+                                            contentDescription = null,
+                                            tint = iconTint,
+                                            modifier = Modifier.padding(horizontal = 24.dp)
+                                        )
+                                    }
+                                },
+                                content = {
+                                    StudentCard(
+                                        student = student,
+                                        onClick = { currentOnStudentClick.value(student.id) }
+                                    )
+                                }
+                            )
+
+                            // Defensive confirmation dialog before performing soft deletion
+                            if (showDeleteConfirmDialog) {
+                                AlertDialog(
+                                    onDismissRequest = { showDeleteConfirmDialog = false },
+                                    title = { Text("Delete Member?", fontWeight = FontWeight.Bold) },
+                                    text = { Text("Are you sure you want to move ${student.firstName} ${student.lastName} to the Recycle Bin?") },
+                                    confirmButton = {
+                                        Button(
+                                            onClick = {
+                                                showDeleteConfirmDialog = false
+                                                viewModel.softDeleteStudent(student.id)
+                                                Toast.makeText(context, "${student.firstName} moved to Recycle Bin.", Toast.LENGTH_SHORT).show()
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                                        ) {
+                                            Text("Delete")
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                                            Text("Cancel")
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(28.dp)
+                                )
+                            }
                         }
                     }
                 }

@@ -206,4 +206,11 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
         _activeFilter.value = null
         _pinnedFilters.value = emptyList()
     }
+
+    fun softDeleteStudent(studentId: Int) {
+        viewModelScope.launch {
+            repository.softDeleteStudent(studentId)
+            loadStudents() // Re-queries database to update state automatically
+        }
+    }
 }
