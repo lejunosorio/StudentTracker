@@ -38,6 +38,12 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+
+import androidx.compose.material.icons.filled.Bookmarks
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,12 +66,16 @@ fun ViewAllScreen(
     val pinnedFilters by viewModel.pinnedFilters.collectAsState()
     val availableTemplates by viewModel.availableTemplates.collectAsState()
 
+    val isSelectionMode by viewModel.isSelectionMode.collectAsState()
+    val selectedStudentIds by viewModel.selectedStudentIds.collectAsState()
+
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
     var showFilterSheet by remember { mutableStateOf(false) }
     var showSortSheet by remember { mutableStateOf(false) }
+    var showBulkDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     val coreFields = listOf("First Name", "Last Name", "Gender", "Birthday", "Address", "Age", "Guardian Name", "Guardian Contact")
     val comparisonOptions = listOf("contains", "equal", "not equal", "does not contain", "empty", "greater than", "less than", "in range")
@@ -136,8 +146,7 @@ fun ViewAllScreen(
                     )
 
                     NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.Map, contentDescription = null) },
-                        label = { Text("Google Maps GPS View") },
+                        icon = { Icon(Icons.Default.Bookmarks, contentDescription = null) },label = { Text("Saved Filters") },
                         selected = false,
                         onClick = {
                             scope.launch {
@@ -229,28 +238,56 @@ fun ViewAllScreen(
     ) {
         Scaffold(
             topBar = {
-                CenterAlignedTopAppBar(
-                    title = { Text("Choir Directory", fontWeight = FontWeight.Bold) },
-                    navigationIcon = {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Default.Menu, contentDescription = "Menu")
+                if (isSelectionMode) {
+                    // DYNAMIC SELECTION TOP BAR (M3 Spec)
+                    TopAppBar(
+                        title = { Text("Selected: ${selectedStudentIds.size}", fontWeight = FontWeight.Bold) },
+                        navigationIcon = {
+                            IconButton(onClick = { viewModel.clearSelection() }) {
+                                Icon(Icons.Default.Close, contentDescription = "Cancel Selection")
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = { showBulkDeleteConfirmDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Delete Selected",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                        )
+                    )
+                } else {
+                    // STANDARD BROWSE MODE TOP BAR
+                    CenterAlignedTopAppBar(
+                        title = { Text("Choir Directory", fontWeight = FontWeight.Bold) },
+                        navigationIcon = {
+                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                Icon(Icons.Default.Menu, contentDescription = "Menu")
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = { viewModel.loadStudents() }) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                            }
                         }
-                    },
-                    actions = {
-                        IconButton(onClick = { viewModel.loadStudents() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                        }
-                    }
-                )
+                    )
+                }
             },
             floatingActionButton = {
-                FloatingActionButton(
-                    onClick = { onAddStudent(-1) },
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Member")
+                // Hide floating action button during selection mode to prevent layout distractions
+                if (!isSelectionMode) {
+                    FloatingActionButton(
+                        onClick = { onAddStudent(-1) },
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add Member")
+                    }
                 }
             },
             bottomBar = {
@@ -262,10 +299,10 @@ fun ViewAllScreen(
                         onClick = {}
                     )
                     NavigationBarItem(
-                        icon = { Icon(Icons.Default.Map, contentDescription = "Maps") },
-                        label = { Text("Maps") },
+                        icon = { Icon(Icons.Default.Bookmarks, contentDescription = "Filters") },
+                        label = { Text("Filters") },
                         selected = false,
-                        onClick = onOpenMap
+                        onClick = onOpenMap // Routes dynamically to Saved Filters
                     )
                     NavigationBarItem(
                         icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
@@ -426,9 +463,9 @@ fun ViewAllScreen(
                             items = students,
                             key = { it.id } // Set keys so state transitions render smoothly during deletions
                         ) { student ->
-                            // Use rememberUpdatedState to prevent callback capture leaks in lazy layouts
                             val currentOnStudentClick = rememberUpdatedState(onStudentClick)
                             val currentOnAddStudent = rememberUpdatedState(onAddStudent)
+                            val isStudentSelected = selectedStudentIds.contains(student.id)
 
                             var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
@@ -436,14 +473,12 @@ fun ViewAllScreen(
                                 confirmValueChange = { dismissValue ->
                                     when (dismissValue) {
                                         SwipeToDismissBoxValue.StartToEnd -> {
-                                            // Swipe Right: Route directly to editor
                                             currentOnAddStudent.value(student.id)
-                                            false // Snaps back smoothly to settled state
+                                            false
                                         }
                                         SwipeToDismissBoxValue.EndToStart -> {
-                                            // Swipe Left: Show safety confirmation dialog
                                             showDeleteConfirmDialog = true
-                                            false // Snaps back smoothly while dialog is open
+                                            false
                                         }
                                         SwipeToDismissBoxValue.Settled -> false
                                     }
@@ -452,7 +487,9 @@ fun ViewAllScreen(
 
                             SwipeToDismissBox(
                                 state = dismissState,
-                                modifier = Modifier.animateItem(), // Smooth item exit animations
+                                modifier = Modifier.animateItem(),
+                                enableDismissFromStartToEnd = !isSelectionMode,
+                                enableDismissFromEndToStart = !isSelectionMode,
                                 backgroundContent = {
                                     val backgroundColor = when (dismissState.dismissDirection) {
                                         SwipeToDismissBoxValue.StartToEnd -> MaterialTheme.colorScheme.primaryContainer
@@ -494,7 +531,17 @@ fun ViewAllScreen(
                                 content = {
                                     StudentCard(
                                         student = student,
-                                        onClick = { currentOnStudentClick.value(student.id) }
+                                        isSelected = isStudentSelected,
+                                        onClick = {
+                                            if (isSelectionMode) {
+                                                viewModel.toggleStudentSelection(student.id)
+                                            } else {
+                                                currentOnStudentClick.value(student.id)
+                                            }
+                                        },
+                                        onLongClick = {
+                                            viewModel.toggleStudentSelection(student.id)
+                                        }
                                     )
                                 }
                             )
@@ -529,6 +576,32 @@ fun ViewAllScreen(
                     }
                 }
             }
+        }
+
+        if (showBulkDeleteConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showBulkDeleteConfirmDialog = false },
+                title = { Text("Delete Selected Members?", fontWeight = FontWeight.Bold) },
+                text = { Text("Are you sure you want to move these ${selectedStudentIds.size} selected members to the Recycle Bin?") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showBulkDeleteConfirmDialog = false
+                            viewModel.deleteSelectedStudents()
+                            Toast.makeText(context, "Selected members moved to Recycle Bin.", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showBulkDeleteConfirmDialog = false }) {
+                        Text("Cancel")
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
         }
 
         // ================= SPRINT 9 FILTER SHEET (Screen 12 & 12B) =================
@@ -917,16 +990,26 @@ fun SortOptionItem(label: String, isSelected: Boolean, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun StudentCard(student: StudentEntity, onClick: () -> Unit) {
+fun StudentCard(
+    student: StudentEntity,
+    isSelected: Boolean, // Receives dynamic selection status
+    onClick: () -> Unit,
+    onLongClick: () -> Unit // Handles gesture-press actions
+) {
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
-            .clickable(onClick = onClick),
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface
+            // Container highlights to primaryContainer when selected
+            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+            contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
         )
     ) {
         Row(
@@ -937,22 +1020,38 @@ fun StudentCard(student: StudentEntity, onClick: () -> Unit) {
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape),
-                color = MaterialTheme.colorScheme.primary
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer
             ) {
-                LocalImageLoader(
-                    imagePath = student.picturePath,
-                    contentDescription = "Student Photo",
-                    fallback = {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            val initials = if (student.firstName.isNotEmpty() && student.lastName.isNotEmpty()) {
-                                "${student.lastName.take(1)}${student.firstName.take(1)}".uppercase()
-                            } else {
-                                "ST"
-                            }
-                            Text(initials, color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        }
+                if (isSelected) {
+                    // Check icon swaps in when selected
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Selected",
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
                     }
-                )
+                } else {
+                    LocalImageLoader(
+                        imagePath = student.picturePath,
+                        contentDescription = "Student Photo",
+                        fallback = {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                val initials = if (student.firstName.isNotEmpty() && student.lastName.isNotEmpty()) {
+                                    "${student.lastName.take(1)}${student.firstName.take(1)}".uppercase()
+                                } else {
+                                    "ST"
+                                }
+                                Text(
+                                    text = initials,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp
+                                )
+                            }
+                        }
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(16.dp))
@@ -967,7 +1066,7 @@ fun StudentCard(student: StudentEntity, onClick: () -> Unit) {
                         text = "${student.lastName}, ${student.firstName}",
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f, fill = false)
                     )
                 }
@@ -980,7 +1079,7 @@ fun StudentCard(student: StudentEntity, onClick: () -> Unit) {
                 Text(
                     text = "$genderStr | Age: $age | $formattedDate\n${student.address}",
                     fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 18.sp,
                     modifier = Modifier.padding(top = 4.dp)
                 )

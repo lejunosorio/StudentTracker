@@ -20,7 +20,6 @@ fun AppNavigation() {
 
     NavHost(navController = navController, startDestination = "security_gate") {
 
-        // 1. Security Gate / Unlock (Onboarding setup or Verify PIN)
         composable("security_gate") {
             SecurityGateScreen(
                 onUnlockSuccess = {
@@ -31,7 +30,6 @@ fun AppNavigation() {
             )
         }
 
-        // 2. View All Student Directory
         composable("view_all") {
             ViewAllScreen(
                 onAddStudent = { id ->
@@ -54,9 +52,10 @@ fun AppNavigation() {
                         navController.navigate("map_archives")
                     }
                 },
+                // Replaces Maps with Saved Filters
                 onOpenMap = {
                     if (navController.currentDestination?.route == "view_all") {
-                        navController.navigate("global_map")
+                        navController.navigate("saved_filters")
                     }
                 },
                 onOpenRecycleBin = {
@@ -74,7 +73,7 @@ fun AppNavigation() {
                         navController.navigate("app_settings")
                     }
                 },
-                onOpenBiometrics = { // Supply navigation route callback
+                onOpenBiometrics = {
                     if (navController.currentDestination?.route == "view_all") {
                         navController.navigate("biometrics_privacy")
                     }
@@ -82,7 +81,6 @@ fun AppNavigation() {
             )
         }
 
-        // 3. Student Profile Screen (Read-Only)
         composable(
             route = "profile/{studentId}",
             arguments = listOf(navArgument("studentId") { type = NavType.IntType })
@@ -102,9 +100,10 @@ fun AppNavigation() {
                         }
                     }
                 },
-                onViewMap = { id ->
-                    if (navController.currentDestination?.route == "profile/{studentId}") {
-                        navController.navigate("student_map/$id")
+                // Routing Maps action to empty or alternative back behavior
+                onViewMap = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
                     }
                 },
                 onSharePdf = { studentEntity ->
@@ -121,7 +120,6 @@ fun AppNavigation() {
             )
         }
 
-        // 4. Add / Edit Student Form Screen
         composable(
             route = "add_edit/{studentId}",
             arguments = listOf(navArgument("studentId") { type = NavType.IntType })
@@ -167,26 +165,22 @@ fun AppNavigation() {
             )
         }
 
-        // 5. GLOBAL MAP SCREEN ROUTE (Fully Guarded against double-clicks!)
-        composable("global_map") {
-            StudentMapScreen(
-                studentId = -1,
+        // Dedicated Saved Filters Screen replacing Map Screens
+        composable("saved_filters") {
+            SavedFiltersScreen(
                 onBack = {
                     if (navController.previousBackStackEntry != null) {
                         navController.popBackStack()
                     }
+                },
+                onStudentClick = { id -> // Enables seamless profile navigation
+                    navController.navigate("profile/$id")
                 }
             )
         }
 
-        // 6. SINGLE STUDENT MAP SCREEN ROUTE (Fully Guarded against double-clicks!)
-        composable(
-            route = "student_map/{studentId}",
-            arguments = listOf(navArgument("studentId") { type = NavType.IntType })
-        ) { backStackEntry ->
-            val studentId = backStackEntry.arguments?.getInt("studentId") ?: -1
-            StudentMapScreen(
-                studentId = studentId,
+        composable("biometrics_privacy") {
+            BiometricsPrivacyScreen(
                 onBack = {
                     if (navController.previousBackStackEntry != null) {
                         navController.popBackStack()
@@ -197,16 +191,6 @@ fun AppNavigation() {
 
         composable("sync") {
             SyncScreen(
-                onBack = {
-                    if (navController.previousBackStackEntry != null) {
-                        navController.popBackStack()
-                    }
-                }
-            )
-        }
-
-        composable("biometrics_privacy") {
-            BiometricsPrivacyScreen(
                 onBack = {
                     if (navController.previousBackStackEntry != null) {
                         navController.popBackStack()

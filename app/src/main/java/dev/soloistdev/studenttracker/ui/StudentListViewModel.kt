@@ -40,6 +40,12 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
     private val _availableTemplates = MutableStateFlow<List<FormTemplateEntity>>(emptyList())
     val availableTemplates: StateFlow<List<FormTemplateEntity>> = _availableTemplates
 
+    private val _isSelectionMode = MutableStateFlow(false)
+    val isSelectionMode: StateFlow<Boolean> = _isSelectionMode
+
+    private val _selectedStudentIds = MutableStateFlow<Set<Int>>(emptySet())
+    val selectedStudentIds: StateFlow<Set<Int>> = _selectedStudentIds
+
     // DYNAMIC COMBINED FLOW: Manages live search, sorting, and advanced filtering
     val students: StateFlow<List<StudentEntity>> = combine(
         _rawStudents, _searchQuery, _sortOrder, _activeFilter
@@ -205,6 +211,37 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
     fun clearFilter() {
         _activeFilter.value = null
         _pinnedFilters.value = emptyList()
+    }
+
+    fun toggleStudentSelection(studentId: Int) {
+        val currentSet = _selectedStudentIds.value.toMutableSet()
+        if (currentSet.contains(studentId)) {
+            currentSet.remove(studentId)
+            if (currentSet.isEmpty()) {
+                _isSelectionMode.value = false // Exit selection if nothing is selected
+            }
+        } else {
+            currentSet.add(studentId)
+            _isSelectionMode.value = true // Activate selection mode automatically
+        }
+        _selectedStudentIds.value = currentSet
+    }
+
+    fun clearSelection() {
+        _selectedStudentIds.value = emptySet()
+        _isSelectionMode.value = false
+    }
+
+    fun deleteSelectedStudents() {
+        val idsToDelete = _selectedStudentIds.value
+        if (idsToDelete.isEmpty()) return
+        viewModelScope.launch {
+            idsToDelete.forEach { id ->
+                repository.softDeleteStudent(id)
+            }
+            clearSelection() // Reset state
+            loadStudents() // Refresh active directory roster
+        }
     }
 
     fun softDeleteStudent(studentId: Int) {

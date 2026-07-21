@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 
 @Dao
 interface StudentDao {
@@ -49,4 +50,24 @@ interface StudentDao {
 
     @Query("DELETE FROM students WHERE id = :studentId")
     fun permanentDeleteStudent(studentId: Int)
+
+    // --- SAVED FILTERS DATA ACCESS APIS ---
+    @Query("SELECT * FROM saved_filters ORDER BY displayOrder ASC")
+    fun getAllSavedFilters(): List<SavedFilterEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertSavedFilter(filter: SavedFilterEntity): Long
+
+    @Query("DELETE FROM saved_filters WHERE id = :filterId")
+    fun deleteSavedFilter(filterId: Int)
+
+    @Query("UPDATE saved_filters SET displayOrder = :order WHERE id = :filterId")
+    fun updateSavedFilterOrder(filterId: Int, order: Int)
+
+    @Transaction
+    fun updateAllSavedFilterOrders(ordersList: List<SavedFilterEntity>) {
+        ordersList.forEach { filter ->
+            updateSavedFilterOrder(filter.id, filter.displayOrder)
+        }
+    }
 }

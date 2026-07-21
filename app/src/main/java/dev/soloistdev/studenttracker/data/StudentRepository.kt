@@ -52,7 +52,7 @@ class StudentRepository(private val context: Context) {
         studentDao.deleteMapArchive(archiveId)
     }
 
-    // SPRINT 9 ACCESSORS: Recycle Bin & Data Purging
+    // Recycle Bin & Data Purging
     suspend fun getAllDeletedStudents(): List<StudentEntity> = withContext(Dispatchers.IO) {
         studentDao.getAllDeletedStudents()
     }
@@ -63,5 +63,22 @@ class StudentRepository(private val context: Context) {
 
     suspend fun permanentDeleteStudent(studentId: Int) = withContext(Dispatchers.IO) {
         studentDao.permanentDeleteStudent(studentId)
+    }
+
+    // --- SAVED FILTERS DATA ACCESS ACCESSORS ---
+    suspend fun getAllSavedFilters(): List<SavedFilterEntity> = withContext(Dispatchers.IO) {
+        studentDao.getAllSavedFilters()
+    }
+
+    suspend fun insertSavedFilter(filter: SavedFilterEntity) = withContext(Dispatchers.IO) {
+        studentDao.insertSavedFilter(filter)
+    }
+
+    suspend fun deleteSavedFilter(filterId: Int) = withContext(Dispatchers.IO) {
+        studentDao.deleteSavedFilter(filterId)
+    }
+
+    suspend fun updateAllSavedFilterOrders(ordersList: List<SavedFilterEntity>) = withContext(Dispatchers.IO) {
+        studentDao.updateAllSavedFilterOrders(ordersList)
     }
 }
