@@ -2,8 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Permissions pruned to remove Maps location features -->
+    <!-- RESTORED: Required for Google Maps to download tiles and for both Map views to locate proctors -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:name=".StudentTrackerApplication"
@@ -15,6 +17,11 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.StudentTracker">
+
+        <!-- RESTORED: Required metadata configuration for Google Maps initialization inside AddEditStudentScreen -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}" />
 
         <!-- Secure File Provider for Ephemeral Sharing -->
         <provider

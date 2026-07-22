@@ -26,9 +26,11 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
     var address by mutableStateOf("")
     var picturePath by mutableStateOf("")
 
-    // SPRINT 6 UPDATE: Observable state list to dynamically track multiple guardians!
-    val guardiansStateList = mutableStateListOf<Guardian>()
+    // New: State parameters to capture and hold coordinates
+    var latitude by mutableStateOf<Double?>(null)
+    var longitude by mutableStateOf<Double?>(null)
 
+    val guardiansStateList = mutableStateListOf<Guardian>()
     val customDataMap = mutableStateMapOf<String, String>()
 
     private val _saveSuccess = MutableStateFlow(false)
@@ -39,6 +41,8 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
     fun loadStudentForEditing(studentId: Int) {
         customDataMap.clear()
         guardiansStateList.clear()
+        latitude = null
+        longitude = null
 
         viewModelScope.launch {
             val templates = repository.getAllFormTemplates()
@@ -61,7 +65,6 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                 address = student.address
                 picturePath = student.picturePath
 
-                // Dynamically load and populate the mutable list of guardians
                 val list = Guardian.listFromJsonString(student.guardiansJson)
                 guardiansStateList.addAll(list)
 
@@ -69,6 +72,12 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                     val json = JSONObject(student.customDataJson)
                     templates.forEach { template ->
                         customDataMap[template.fieldName] = json.optString(template.fieldName, "")
+                    }
+
+                    // Retrieve saved coordinates from customDataJson if they exist
+                    if (json.has("latitude") && json.has("longitude")) {
+                        latitude = json.optDouble("latitude")
+                        longitude = json.optDouble("longitude")
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -96,7 +105,6 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun saveStudent() {
-        // Enforce required fields validation (Requires at least 1 Guardian!)
         if (firstName.isBlank() || lastName.isBlank() || birthday == null || guardiansStateList.isEmpty()) return
 
         viewModelScope.launch {
@@ -104,7 +112,10 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
             customDataMap.forEach { (key, value) ->
                 jsonObject.put(key, value.trim())
             }
-            val customData = jsonObject.toString()
+
+            // Serialize coordinates directly into customDataJson
+            latitude?.let { jsonObject.put("latitude", it) }
+            longitude?.let { jsonObject.put("longitude", it) }
 
             val student = StudentEntity(
                 id = editingStudentId ?: 0,
@@ -114,8 +125,8 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                 birthday = birthday!!,
                 address = address.trim(),
                 picturePath = picturePath,
-                guardiansJson = Guardian.listToJsonString(guardiansStateList.toList()), // Serialize list dynamically!
-                customDataJson = customData
+                guardiansJson = Guardian.listToJsonString(guardiansStateList.toList()),
+                customDataJson = jsonObject.toString()
             )
             repository.insertStudent(student)
             _saveSuccess.value = true

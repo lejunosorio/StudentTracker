@@ -165,6 +165,21 @@ fun AppNavigation() {
             )
         }
 
+        composable(
+            route = "student_map/{studentId}",
+            arguments = listOf(navArgument("studentId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val studentId = backStackEntry.arguments?.getInt("studentId") ?: -1
+            StudentMapScreen(
+                studentId = studentId,
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
+            )
+        }
+
         // Dedicated Saved Filters Screen replacing Map Screens
         composable("saved_filters") {
             SavedFiltersScreen(

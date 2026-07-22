@@ -16,12 +16,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.*
+import androidx.compose.ui.viewinterop.AndroidView
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
+import org.json.JSONObject
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.modules.ArchiveFileFactory
+import org.osmdroid.tileprovider.modules.OfflineTileProvider
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,30 +38,31 @@ fun StudentMapScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-
-    // ARCHITECTURAL CORRECTION: Use remember to instantiate the repository exactly ONCE
-    // This prevents database-decryption thread freezes on recomposition
     val repository = remember { StudentRepository(context) }
 
     var studentsList by remember { mutableStateOf<List<StudentEntity>>(emptyList()) }
+    var activeArchiveFile by remember { mutableStateOf<File?>(null) }
 
     LaunchedEffect(Unit) {
         studentsList = repository.getAllActiveStudents()
+        val activeArchive = repository.getAllMapArchives().find { it.isActive }
+        activeArchive?.let {
+            val file = File(it.filePath)
+            if (file.exists()) {
+                activeArchiveFile = file
+            }
+        }
     }
 
-    // Default center at Manila/Taguig coords (14.5547, 121.0509)
-    val defaultLatLng = remember { LatLng(14.5547, 121.0509) }
-
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(defaultLatLng, 13f)
-    }
+    // Configure OSMDroid User-Agent parameter required for caching integrity
+    Configuration.getInstance().userAgentValue = context.packageName
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        text = if (studentId == -1) "Choir GPS Map" else "Member Location",
+                        text = if (studentId == -1) "Choir GPS Map (Offline)" else "Member Location",
                         fontWeight = FontWeight.Bold
                     )
                 },
@@ -70,49 +79,118 @@ fun StudentMapScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // NATIVE GOOGLE MAP CONTAINER
-            GoogleMap(
-                modifier = Modifier.fillMaxSize(),
-                cameraPositionState = cameraPositionState,
-                uiSettings = MapUiSettings(zoomControlsEnabled = false)
-            ) {
-                if (studentId == -1) {
-                    // GLOBAL MODE: Plot pins dynamically
-                    studentsList.forEachIndexed { index, student ->
-                        val latOffset = (index % 5) * 0.003 - 0.006
-                        val lngOffset = (index / 5) * 0.003 - 0.006
-                        val studentPoint = LatLng(14.5547 + latOffset, 121.0509 + lngOffset)
+            var mapViewInstance by remember { mutableStateOf<MapView?>(null) }
 
-                        Marker(
-                            state = MarkerState(position = studentPoint),
-                            title = "${student.lastName}, ${student.firstName}",
-                            snippet = student.address
-                        )
-                    }
-                } else {
-                    // SINGLE MODE: Focus on specific student
-                    val focusedStudent = studentsList.find { it.id == studentId }
-                    if (focusedStudent != null) {
-                        val focusPoint = remember { LatLng(14.5547 + 0.002, 121.0509 - 0.002) }
+            AndroidView(
+                factory = { ctx ->
+                    MapView(ctx).apply {
+                        setMultiTouchControls(true)
 
-                        LaunchedEffect(focusPoint) {
-                            cameraPositionState.animate(
-                                CameraUpdateFactory.newCameraPosition(
-                                    CameraPosition.fromLatLngZoom(focusPoint, 16f)
+                        val archive = activeArchiveFile
+                        if (archive != null) {
+                            try {
+                                // Load imported map package completely offline
+                                val offlineProvider = OfflineTileProvider(
+                                    org.osmdroid.tileprovider.util.SimpleRegisterReceiver(ctx),
+                                    arrayOf(archive)
                                 )
-                            )
+                                this.tileProvider = offlineProvider
+
+                                val archive = activeArchiveFile
+                                if (archive != null) {
+                                    try {
+                                        // Load imported map package completely offline
+                                        val offlineProvider = OfflineTileProvider(
+                                            org.osmdroid.tileprovider.util.SimpleRegisterReceiver(ctx),
+                                            arrayOf(archive)
+                                        )
+                                        this.tileProvider = offlineProvider
+
+                                        // CORRECTED: Changed to getArchiveFile (singular)
+                                        val archiveFile = ArchiveFileFactory.getArchiveFile(archive)
+                                        val tileSources = archiveFile?.tileSources // Maps to getTileSources()
+
+                                        if (!tileSources.isNullOrEmpty()) {
+                                            val tileSource = TileSourceFactory.getTileSource(tileSources.first())
+                                            this.setTileSource(tileSource)
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                        this.setTileSource(TileSourceFactory.MAPNIK) // Online fallback
+                                    }
+                                } else {
+                                    this.setTileSource(TileSourceFactory.MAPNIK) // Online default
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                this.setTileSource(TileSourceFactory.MAPNIK) // Online fallback
+                            }
+                        } else {
+                            this.setTileSource(TileSourceFactory.MAPNIK) // Online default
                         }
 
-                        Marker(
-                            state = rememberMarkerState(position = focusPoint),
-                            title = "${focusedStudent.lastName}, ${focusedStudent.firstName}",
-                            snippet = focusedStudent.address
-                        )
+                        mapViewInstance = this
                     }
-                }
-            }
+                },
+                update = { mapView ->
+                    mapView.overlays.clear()
 
-            // FLOATING ZOOM AND MY_LOCATION CONTROLS
+                    // Enable user location blue dot via phone hardware sensor (requires no cellular data)
+                    val locationProvider = GpsMyLocationProvider(context)
+                    val myLocationOverlay = MyLocationNewOverlay(locationProvider, mapView)
+                    myLocationOverlay.enableMyLocation()
+                    mapView.overlays.add(myLocationOverlay)
+
+                    // Default center coordinates (Manila/Taguig area)
+                    val defaultCenter = GeoPoint(14.5547, 121.0509)
+                    mapView.controller.setZoom(13.0)
+                    mapView.controller.setCenter(defaultCenter)
+
+                    if (studentId == -1) {
+                        // Plot coordinates dynamically for all students
+                        studentsList.forEach { student ->
+                            val customJson = try { JSONObject(student.customDataJson) } catch (e: Exception) { JSONObject() }
+                            val lat = customJson.optDouble("latitude", 0.0)
+                            val lng = customJson.optDouble("longitude", 0.0)
+
+                            if (lat != 0.0 && lng != 0.0) {
+                                val marker = Marker(mapView).apply {
+                                    position = GeoPoint(lat, lng)
+                                    title = "${student.lastName}, ${student.firstName}"
+                                    subDescription = student.address
+                                }
+                                mapView.overlays.add(marker)
+                            }
+                        }
+                    } else {
+                        // Plot coordinates for the selected student profile
+                        val focusedStudent = studentsList.find { it.id == studentId }
+                        focusedStudent?.let { student ->
+                            val customJson = try { JSONObject(student.customDataJson) } catch (e: Exception) { JSONObject() }
+                            val lat = customJson.optDouble("latitude", 0.0)
+                            val lng = customJson.optDouble("longitude", 0.0)
+
+                            if (lat != 0.0 && lng != 0.0) {
+                                val studentPoint = GeoPoint(lat, lng)
+                                val marker = Marker(mapView).apply {
+                                    position = studentPoint
+                                    title = "${student.lastName}, ${student.firstName}"
+                                    subDescription = student.address
+                                }
+                                mapView.overlays.add(marker)
+                                mapView.controller.setZoom(17.0)
+                                mapView.controller.setCenter(studentPoint)
+                            } else {
+                                Toast.makeText(context, "No coordinates recorded for this student.", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                    mapView.invalidate()
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Zoom and GPS Locate controls
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -120,7 +198,7 @@ fun StudentMapScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 FloatingActionButton(
-                    onClick = { cameraPositionState.move(CameraUpdateFactory.zoomIn()) },
+                    onClick = { mapViewInstance?.controller?.zoomIn() },
                     containerColor = Color.White,
                     contentColor = Color(0xFF49454F),
                     shape = CircleShape,
@@ -130,7 +208,7 @@ fun StudentMapScreen(
                 }
 
                 FloatingActionButton(
-                    onClick = { cameraPositionState.move(CameraUpdateFactory.zoomOut()) },
+                    onClick = { mapViewInstance?.controller?.zoomOut() },
                     containerColor = Color.White,
                     contentColor = Color(0xFF49454F),
                     shape = CircleShape,
@@ -141,11 +219,8 @@ fun StudentMapScreen(
 
                 FloatingActionButton(
                     onClick = {
-                        cameraPositionState.move(
-                            CameraUpdateFactory.newCameraPosition(
-                                CameraPosition.fromLatLngZoom(defaultLatLng, 14f)
-                            )
-                        )
+                        val defaultCenter = GeoPoint(14.5547, 121.0509)
+                        mapViewInstance?.controller?.animateTo(defaultCenter, 14.0, 1000L)
                     },
                     containerColor = Color(0xFF6750A4),
                     contentColor = Color.White,

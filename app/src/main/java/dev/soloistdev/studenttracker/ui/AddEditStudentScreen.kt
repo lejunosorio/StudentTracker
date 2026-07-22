@@ -29,9 +29,18 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
+import com.google.maps.android.compose.rememberCameraPositionState
+import com.google.maps.android.compose.rememberMarkerState
 import dev.soloistdev.studenttracker.security.ImageCompressor
 import java.text.SimpleDateFormat
 import java.util.*
+
+import androidx.compose.material.icons.filled.Map
+import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.Marker
+
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,6 +82,18 @@ fun AddEditStudentScreen(
             }
         }
     }
+
+    var showMapPicker by remember { mutableStateOf(false) }
+    val defaultLatLng = remember { LatLng(14.5547, 121.0509) }
+    val cameraPositionState = rememberCameraPositionState {
+        position = CameraPosition.fromLatLngZoom(
+            LatLng(viewModel.latitude ?: 14.5547, viewModel.longitude ?: 121.0509),
+            13f
+        )
+    }
+    val markerState = rememberMarkerState(
+        position = LatLng(viewModel.latitude ?: 14.5547, viewModel.longitude ?: 121.0509)
+    )
 
     LaunchedEffect(Unit) {
         viewModel.loadStudentForEditing(studentId)
@@ -219,6 +240,14 @@ fun AddEditStudentScreen(
                 onValueChange = { viewModel.address = it },
                 label = { Text("Address / Location") },
                 colors = m3TextFieldColors,
+                trailingIcon = {
+                    IconButton(onClick = { showMapPicker = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Map, // Ensure import androidx.compose.material.icons.filled.Map
+                            contentDescription = "Select location on Map"
+                        )
+                    }
+                },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth()
             )
@@ -369,6 +398,58 @@ fun AddEditStudentScreen(
             )
         }
     }
+
+    if (showMapPicker) {
+        AlertDialog(
+            onDismissRequest = { showMapPicker = false },
+            title = { Text("Select Address on Map", fontWeight = FontWeight.Bold) },
+            text = {
+                Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
+                    GoogleMap(
+                        cameraPositionState = cameraPositionState,
+                        onMapClick = { latLng ->
+                            markerState.position = latLng // Tap updates marker placement
+                        }
+                    ) {
+                        Marker(state = markerState)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val selectedPos = markerState.position
+                        viewModel.latitude = selectedPos.latitude
+                        viewModel.longitude = selectedPos.longitude
+
+                        // Perform reverse geocoding via standard Geocoder API
+                        try {
+                            val geocoder = android.location.Geocoder(context, Locale.getDefault())
+                            val addresses = geocoder.getFromLocation(selectedPos.latitude, selectedPos.longitude, 1)
+                            if (!addresses.isNullOrEmpty()) {
+                                viewModel.address = addresses[0].getAddressLine(0) ?: ""
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            // Fallback to raw coordinate decimals if geocoding fails offline
+                            viewModel.address = "${selectedPos.latitude}, ${selectedPos.longitude}"
+                        }
+                        showMapPicker = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Text("Confirm Location")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMapPicker = false }) {
+                    Text("Cancel")
+                }
+            },
+            shape = RoundedCornerShape(28.dp)
+        )
+    }
+
 
     if (showDatePicker) {
         val datePickerState = rememberDatePickerState()
