@@ -1017,39 +1017,26 @@ fun ViewAllScreen(
             }
 
             if (showDatePicker1) {
-                val dateState1 = rememberDatePickerState(
-                    selectableDates = object : SelectableDates {
-                        override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                            return utcTimeMillis <= System.currentTimeMillis()
-                        }
-                        override fun isSelectableYear(year: Int): Boolean {
-                            return year <= Calendar.getInstance().get(Calendar.YEAR)
-                        }
+                WheelDatePickerDialog(
+                    initialDateMillis = tempVal1.toLongOrNull() ?: System.currentTimeMillis(),
+                    onDismiss = { showDatePicker1 = false },
+                    onConfirm = { selectedMillis ->
+                        tempVal1 = selectedMillis.toString()
+                        showDatePicker1 = false
                     }
                 )
-                DatePickerDialog(
-                    onDismissRequest = { showDatePicker1 = false },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            dateState1.selectedDateMillis?.let { tempVal1 = it.toString() }
-                            showDatePicker1 = false
-                        }) { Text("OK") }
-                    }
-                ) { DatePicker(state = dateState1) }
             }
 
 
             if (showDatePicker2) {
-                val dateState2 = rememberDatePickerState()
-                DatePickerDialog(
-                    onDismissRequest = { showDatePicker2 = false },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            dateState2.selectedDateMillis?.let { tempVal2 = it.toString() }
-                            showDatePicker2 = false
-                        }) { Text("OK") }
+                WheelDatePickerDialog(
+                    initialDateMillis = tempVal2.toLongOrNull() ?: System.currentTimeMillis(),
+                    onDismiss = { showDatePicker2 = false },
+                    onConfirm = { selectedMillis ->
+                        tempVal2 = selectedMillis.toString()
+                        showDatePicker2 = false
                     }
-                ) { DatePicker(state = dateState2) }
+                )
             }
         }
 

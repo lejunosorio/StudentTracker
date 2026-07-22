@@ -839,25 +839,14 @@ fun FilterDialogForm(
     )
 
     if (showDatePicker1) {
-        val dateState1 = rememberDatePickerState(
-            selectableDates = object : SelectableDates {
-                override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                    return utcTimeMillis <= System.currentTimeMillis()
-                }
-                override fun isSelectableYear(year: Int): Boolean {
-                    return year <= Calendar.getInstance().get(Calendar.YEAR)
-                }
+        WheelDatePickerDialog(
+            initialDateMillis = val1.toLongOrNull() ?: System.currentTimeMillis(),
+            onDismiss = { showDatePicker1 = false },
+            onConfirm = { selectedMillis ->
+                val1 = selectedMillis.toString()
+                showDatePicker1 = false
             }
         )
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker1 = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    dateState1.selectedDateMillis?.let { val1 = it.toString() }
-                    showDatePicker1 = false
-                }) { Text("OK") }
-            }
-        ) { DatePicker(state = dateState1) }
     }
 }
 

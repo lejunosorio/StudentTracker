@@ -450,38 +450,14 @@ fun AddEditStudentScreen(
         )
     }
 
-
     if (showDatePicker) {
-        val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = viewModel.birthday,
-            selectableDates = object : SelectableDates {
-                // Blocks selection of future timestamps
-                override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                    return utcTimeMillis <= System.currentTimeMillis()
-                }
-                // Blocks selection of future years
-                override fun isSelectableYear(year: Int): Boolean {
-                    return year <= Calendar.getInstance().get(Calendar.YEAR)
-                }
+        WheelDatePickerDialog(
+            initialDateMillis = viewModel.birthday,
+            onDismiss = { showDatePicker = false },
+            onConfirm = { selectedMillis ->
+                viewModel.birthday = selectedMillis
+                showDatePicker = false
             }
         )
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.birthday = datePickerState.selectedDateMillis
-                    showDatePicker = false
-                }) {
-                    Text("OK")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
-                    Text("Cancel")
-                }
-            }
-        ) {
-            DatePicker(state = datePickerState)
-        }
     }
 }
