@@ -4,8 +4,8 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
@@ -16,7 +16,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
@@ -69,7 +68,7 @@ fun StudentMapScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -152,7 +151,7 @@ fun StudentMapScreen(
 
                     if (studentId == -1) {
                         studentsList.forEach { student ->
-                            val customJson = try { JSONObject(student.customDataJson) } catch (e: Exception) { JSONObject() }
+                            val customJson = try { JSONObject(student.customDataJson) } catch (_: Exception) { JSONObject() }
                             val lat = customJson.optDouble("latitude", 0.0)
                             val lng = customJson.optDouble("longitude", 0.0)
 
@@ -168,7 +167,7 @@ fun StudentMapScreen(
                     } else {
                         val focusedStudent = studentsList.find { it.id == studentId }
                         focusedStudent?.let { student ->
-                            val customJson = try { JSONObject(student.customDataJson) } catch (e: Exception) { JSONObject() }
+                            val customJson = try { JSONObject(student.customDataJson) } catch (_: Exception) { JSONObject() }
                             val lat = customJson.optDouble("latitude", 0.0)
                             val lng = customJson.optDouble("longitude", 0.0)
 

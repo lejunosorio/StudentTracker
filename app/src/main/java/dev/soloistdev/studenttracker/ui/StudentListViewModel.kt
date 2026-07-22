@@ -85,7 +85,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                         try {
                             val json = JSONObject(student.customDataJson)
                             json.optString(filter.field, "")
-                        } catch (e: Exception) {
+                        } catch (_: Exception) {
                             ""
                         }
                     }
@@ -115,8 +115,8 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
 
         // specialized Birthday comparator logic
         if (filter.field == "Birthday") {
-            val studentBday = fieldValue.toLongOrNull() ?: return false
-            val studentCal = Calendar.getInstance().apply { timeInMillis = studentBday }
+            val studentBirthday = fieldValue.toLongOrNull() ?: return false
+            val studentCal = Calendar.getInstance().apply { timeInMillis = studentBirthday }
             return when (filter.comparison) {
                 "birth_year" -> {
                     val yearVal = value1.toIntOrNull() ?: return false
@@ -132,8 +132,8 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                     (studentCal.get(Calendar.MONTH) + 1) == monthVal && studentCal.get(Calendar.YEAR) == yearVal
                 }
                 "exact_birthday" -> {
-                    val targetBday = value1.toLongOrNull() ?: return false
-                    val calFilter = Calendar.getInstance().apply { timeInMillis = targetBday }
+                    val targetBirthday = value1.toLongOrNull() ?: return false
+                    val calFilter = Calendar.getInstance().apply { timeInMillis = targetBirthday }
                     studentCal.get(Calendar.YEAR) == calFilter.get(Calendar.YEAR) &&
                             studentCal.get(Calendar.DAY_OF_YEAR) == calFilter.get(Calendar.DAY_OF_YEAR)
                 }

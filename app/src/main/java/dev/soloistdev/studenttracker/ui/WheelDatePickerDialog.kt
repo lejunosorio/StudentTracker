@@ -1,8 +1,5 @@
 package dev.soloistdev.studenttracker.ui
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -10,14 +7,12 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.mutableIntStateOf // Added primitive Int State import [1]
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
@@ -37,9 +32,10 @@ fun WheelDatePickerDialog(
         }
     }
 
-    var selectedYear by remember { mutableStateOf(calendar.get(Calendar.YEAR)) }
-    var selectedMonth by remember { mutableStateOf(calendar.get(Calendar.MONTH) + 1) }
-    var selectedDay by remember { mutableStateOf(calendar.get(Calendar.DAY_OF_MONTH)) }
+    // CORRECTED: Utilizes primitive mutableIntStateOf to prevent object autoboxing [1]
+    var selectedYear by remember { mutableIntStateOf(calendar.get(Calendar.YEAR)) }
+    var selectedMonth by remember { mutableIntStateOf(calendar.get(Calendar.MONTH) + 1) }
+    var selectedDay by remember { mutableIntStateOf(calendar.get(Calendar.DAY_OF_MONTH)) }
 
     val yearsList = remember { (1920..currentYear).toList().reversed() } // Limit up to current year
 
@@ -60,7 +56,8 @@ fun WheelDatePickerDialog(
         val cal = Calendar.getInstance()
         cal.set(Calendar.YEAR, selectedYear)
         cal.set(Calendar.MONTH, selectedMonth - 1)
-        cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+        val maximumDays = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+        maximumDays
     }
 
     val daysList = remember(selectedMonth, selectedYear, maxDays) {
@@ -72,7 +69,7 @@ fun WheelDatePickerDialog(
         (1..limit).toList()
     }
 
-    // Boundary Correction: If day is 31 and we switch to Feb, default back to 1
+    // Boundary Correction: If day is 31, and we switch to Feb, default back to 1
     LaunchedEffect(daysList) {
         if (selectedDay > daysList.size) {
             selectedDay = 1
@@ -90,7 +87,6 @@ fun WheelDatePickerDialog(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    // CORRECTED: Aligned to exactly 120.dp to match the 3-row layout height
                     .height(120.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -130,7 +126,6 @@ fun WheelDatePickerDialog(
                     )
                 }
 
-                // CORRECTED: Positioned at exactly 40.dp and 80.dp offsets to bound the central item [1]
                 HorizontalDivider(
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = 40.dp),
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
@@ -199,16 +194,16 @@ fun WheelColumnPicker(
     LazyColumn(
         state = lazyListState,
         modifier = modifier
-            // CORRECTED: Aligned to exactly 120.dp to match 3 * 40.dp item heights
             .height(120.dp)
             .fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         itemsIndexed(paddedItems) { idx, item ->
-            val isCenter = idx == lazyListState.firstVisibleItemIndex + 1
+            // CORRECTED: Compares directly to the stable selectedIndex parameter instead
+            // of the frequently changing firstVisibleItemIndex to avoid recomposition loops [1].
+            val isCenter = idx == selectedIndex + 1
             Box(
                 modifier = Modifier
-                    // CORRECTED: Aligned to exactly 40.dp to ensure grid bounds match the column height
                     .height(40.dp)
                     .fillMaxWidth(),
                 contentAlignment = Alignment.Center

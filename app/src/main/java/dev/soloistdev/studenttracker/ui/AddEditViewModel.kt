@@ -99,7 +99,7 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun removeGuardian(index: Int) {
-        if (index in 0 until guardiansStateList.size) {
+        if (index in guardiansStateList.indices) {
             guardiansStateList.removeAt(index)
         }
     }

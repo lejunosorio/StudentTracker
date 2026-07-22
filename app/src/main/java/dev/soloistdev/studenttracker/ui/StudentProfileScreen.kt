@@ -1,14 +1,13 @@
 package dev.soloistdev.studenttracker.ui
 
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -18,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -29,6 +27,7 @@ import dev.soloistdev.studenttracker.data.StudentRepository
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.core.net.toUri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,7 +55,7 @@ fun StudentProfileScreen(
                 title = { Text("Profile", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
@@ -111,12 +110,12 @@ fun StudentProfileScreen(
                 )
 
                 val sdf = SimpleDateFormat("MMMM dd, yyyy", Locale.US)
-                val bdayFormatted = sdf.format(Date(currentStudent.birthday))
+                val birthdayFormatted = sdf.format(Date(currentStudent.birthday))
                 val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = currentStudent.birthday }.get(Calendar.YEAR)
                 val genderFull = if (currentStudent.gender == "F") "Female" else "Male"
 
                 Text(
-                    text = "Gender: $genderFull | Age: $age | $bdayFormatted",
+                    text = "Gender: $genderFull | Age: $age | $birthdayFormatted",
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
                 )
@@ -158,7 +157,7 @@ fun StudentProfileScreen(
                 ProfileInfoCard(label = "Home Address", value = currentStudent.address)
 
                 // 100% Dynamic custom field iteration (zero static key bindings)
-                val json = try { JSONObject(currentStudent.customDataJson) } catch (e: Exception) { JSONObject() }
+                val json = try { JSONObject(currentStudent.customDataJson) } catch (_: Exception) { JSONObject() }
                 val keys = json.keys()
                 while (keys.hasNext()) {
                     val key = keys.next()
@@ -217,7 +216,8 @@ fun StudentProfileScreen(
                                         Text(phone, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         IconButton(
                                             onClick = {
-                                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
+                                                val intent = Intent(Intent.ACTION_DIAL,
+                                                    "tel:$phone".toUri())
                                                 context.startActivity(intent)
                                             },
                                             colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),

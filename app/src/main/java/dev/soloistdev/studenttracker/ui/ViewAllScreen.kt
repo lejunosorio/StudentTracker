@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort // AutoMirrored Sort Import
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,7 +30,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.StudentEntity
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -78,7 +78,6 @@ fun ViewAllScreen(
     var showBulkDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     val coreFields = listOf("First Name", "Last Name", "Gender", "Birthday", "Address", "Age", "Guardian Name", "Guardian Contact")
-    val comparisonOptions = listOf("contains", "equal", "not equal", "does not contain", "empty", "greater than", "less than", "in range")
 
     fun getFieldType(field: String, templates: List<FormTemplateEntity>): String {
         return when (field) {
@@ -370,7 +369,8 @@ fun ViewAllScreen(
                         ),
                         modifier = Modifier.size(48.dp)
                     ) {
-                        Icon(Icons.Default.Sort, contentDescription = "Sort")
+                        // CORRECTED: Restored with new stable AutoMirrored.Filled.Sort icon [2.1]
+                        Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
                     }
                 }
 
@@ -469,6 +469,8 @@ fun ViewAllScreen(
 
                             var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
+                            // CORRECTED: Suppressed deprecation warning on confirmValueChange [2.1]
+                            @Suppress("DEPRECATION")
                             val dismissState = rememberSwipeToDismissBoxState(
                                 confirmValueChange = { dismissValue ->
                                     when (dismissValue) {
@@ -624,7 +626,6 @@ fun ViewAllScreen(
             val currentSelectedType = getFieldType(tempField, availableTemplates)
 
             val isRangeMode = tempComparison == "In between"
-            val isDateMode = currentSelectedType == "DATE"
             val isGenderMode = currentSelectedType == "GENDER"
             val isBirthdayMode = tempField == "Birthday"
 
@@ -674,7 +675,8 @@ fun ViewAllScreen(
                             readOnly = true,
                             label = { Text("Select Field") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = fieldExpanded) },
-                            modifier = Modifier.fillMaxWidth().menuAnchor()
+                            // CORRECTED: Modern menuAnchor overload taking ExposedDropdownMenuAnchorType [1]
+                            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                         )
                         ExposedDropdownMenu(
                             expanded = fieldExpanded,
@@ -714,7 +716,8 @@ fun ViewAllScreen(
                                 readOnly = true,
                                 label = { Text("Select Comparison") },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = compExpanded) },
-                                modifier = Modifier.fillMaxWidth().menuAnchor()
+                                // CORRECTED: Modern menuAnchor overload taking ExposedDropdownMenuAnchorType [1]
+                                modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                             )
                             ExposedDropdownMenu(
                                 expanded = compExpanded,
@@ -742,13 +745,13 @@ fun ViewAllScreen(
                     // specialized Birthday layout selector
                     if (isBirthdayMode) {
                         var typeExpanded by remember { mutableStateOf(false) }
-                        val bdayTypes = listOf(
+                        val birthdayTypes = listOf(
                             "Birth year (YYYY)" to "birth_year",
                             "Birth month (MM)" to "birth_month",
                             "Birth month and Year (MM - YY)" to "birth_month_year",
                             "Exact Birthday (MM/DD/YYYY)" to "exact_birthday"
                         )
-                        val selectedTypeName = bdayTypes.find { it.second == tempComparison }?.first ?: "Exact Birthday (MM/DD/YYYY)"
+                        val selectedTypeName = birthdayTypes.find { it.second == tempComparison }?.first ?: "Exact Birthday (MM/DD/YYYY)"
 
                         ExposedDropdownMenuBox(
                             expanded = typeExpanded,
@@ -760,13 +763,14 @@ fun ViewAllScreen(
                                 readOnly = true,
                                 label = { Text("Select Birthday Filter Type") },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeExpanded) },
-                                modifier = Modifier.fillMaxWidth().menuAnchor()
+                                // CORRECTED: Modern menuAnchor overload taking ExposedDropdownMenuAnchorType [1]
+                                modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                             )
                             ExposedDropdownMenu(
                                 expanded = typeExpanded,
                                 onDismissRequest = { typeExpanded = false }
                             ) {
-                                bdayTypes.forEach { (label, value) ->
+                                birthdayTypes.forEach { (label, value) ->
                                     DropdownMenuItem(
                                         text = { Text(label) },
                                         onClick = {
@@ -811,7 +815,8 @@ fun ViewAllScreen(
                                         readOnly = true,
                                         label = { Text("Select Birth Month *") },
                                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = monthExpanded) },
-                                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                                        // CORRECTED: Modern menuAnchor overload taking ExposedDropdownMenuAnchorType [1]
+                                        modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                                     )
                                     ExposedDropdownMenu(
                                         expanded = monthExpanded,
@@ -849,7 +854,8 @@ fun ViewAllScreen(
                                                 readOnly = true,
                                                 label = { Text("Month *") },
                                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = monthExpanded) },
-                                                modifier = Modifier.fillMaxWidth().menuAnchor()
+                                                // CORRECTED: Modern menuAnchor overload taking ExposedDropdownMenuAnchorType [1]
+                                                modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                                             )
                                             ExposedDropdownMenu(
                                                 expanded = monthExpanded,
@@ -883,7 +889,7 @@ fun ViewAllScreen(
                             }
                             "exact_birthday" -> {
                                 val sdfPicker = SimpleDateFormat("MMM dd, yyyy", Locale.US)
-                                val bday1Formatted = tempVal1.toLongOrNull()?.let { sdfPicker.format(Date(it)) } ?: "Select Birthday Date *"
+                                val birthday1Formatted = tempVal1.toLongOrNull()?.let { sdfPicker.format(Date(it)) } ?: "Select Birthday Date *"
 
                                 OutlinedButton(
                                     onClick = { showDatePicker1 = true },
@@ -895,7 +901,7 @@ fun ViewAllScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(bday1Formatted, color = MaterialTheme.colorScheme.onSurface)
+                                        Text(birthday1Formatted, color = MaterialTheme.colorScheme.onSurface)
                                         Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                     }
                                 }

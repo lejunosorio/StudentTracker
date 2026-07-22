@@ -20,7 +20,7 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
 
     fun loadTemplates() {
         viewModelScope.launch {
-            var list = repository.getAllFormTemplates()
+            val list = repository.getAllFormTemplates()
 
             _templates.value = list
         }

@@ -31,7 +31,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
-import dev.soloistdev.studenttracker.data.Guardian
 import dev.soloistdev.studenttracker.data.SavedFilterEntity
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
@@ -43,6 +42,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.zIndex
@@ -143,7 +143,7 @@ fun SavedFiltersScreen(
                             }
                         }
                     ) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -551,10 +551,10 @@ fun FilterDialogForm(
                                 onClick = {
                                     field = option
                                     fieldExpanded = false
-                                    comparison = when {
-                                        option == "Birthday" -> "exact_birthday"
-                                        option == "Gender" -> "equal"
-                                        option == "Age" -> "In between"
+                                    comparison = when (option) {
+                                        "Birthday" -> "exact_birthday"
+                                        "Gender" -> "equal"
+                                        "Age" -> "In between"
                                         else -> "contains"
                                     }
                                     val1 = if (option == "Gender") "Female" else ""
@@ -599,13 +599,13 @@ fun FilterDialogForm(
                 // Render Birthday specific option selectors
                 if (isBirthdayMode) {
                     var typeExpanded by remember { mutableStateOf(false) }
-                    val bdayTypes = listOf(
+                    val birthdayTypes = listOf(
                         "Birth year (YYYY)" to "birth_year",
                         "Birth month (MM)" to "birth_month",
                         "Birth month and Year (MM - YY)" to "birth_month_year",
                         "Exact Birthday (MM/DD/YYYY)" to "exact_birthday"
                     )
-                    val selectedTypeName = bdayTypes.find { it.second == comparison }?.first ?: "Exact Birthday (MM/DD/YYYY)"
+                    val selectedTypeName = birthdayTypes.find { it.second == comparison }?.first ?: "Exact Birthday (MM/DD/YYYY)"
 
                     Box {
                         OutlinedTextField(
@@ -617,7 +617,7 @@ fun FilterDialogForm(
                             modifier = Modifier.fillMaxWidth()
                         )
                         DropdownMenu(expanded = typeExpanded, onDismissRequest = { typeExpanded = false }) {
-                            bdayTypes.forEach { (label, value) ->
+                            birthdayTypes.forEach { (label, value) ->
                                 DropdownMenuItem(
                                     text = { Text(label) },
                                     onClick = {
@@ -720,7 +720,7 @@ fun FilterDialogForm(
                         }
                         "exact_birthday" -> {
                             val sdfPicker = SimpleDateFormat("MMM dd, yyyy", Locale.US)
-                            val bday1Formatted = val1.toLongOrNull()?.let { sdfPicker.format(Date(it)) } ?: "Select Birthday Date *"
+                            val birthday1Formatted = val1.toLongOrNull()?.let { sdfPicker.format(Date(it)) } ?: "Select Birthday Date *"
 
                             OutlinedButton(
                                 onClick = { showDatePicker1 = true },
@@ -732,7 +732,7 @@ fun FilterDialogForm(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(bday1Formatted, color = MaterialTheme.colorScheme.onSurface)
+                                    Text(birthday1Formatted, color = MaterialTheme.colorScheme.onSurface)
                                     Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                 }
                             }
@@ -865,7 +865,7 @@ private fun getFieldValue(student: StudentEntity, field: String): String {
         else -> {
             try {
                 JSONObject(student.customDataJson).optString(field, "")
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 ""
             }
         }
@@ -879,8 +879,8 @@ private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2
 
     // specialized Birthday comparator evaluations
     if (operator in listOf("birth_year", "birth_month", "birth_month_year", "exact_birthday")) {
-        val studentBday = cleanVal.toLongOrNull() ?: return false
-        val studentCal = Calendar.getInstance().apply { timeInMillis = studentBday }
+        val studentBirthday = cleanVal.toLongOrNull() ?: return false
+        val studentCal = Calendar.getInstance().apply { timeInMillis = studentBirthday }
         return when (operator) {
             "birth_year" -> {
                 val yearVal = v1.toIntOrNull() ?: return false
@@ -896,8 +896,8 @@ private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2
                 (studentCal.get(Calendar.MONTH) + 1) == monthVal && studentCal.get(Calendar.YEAR) == yearVal
             }
             "exact_birthday" -> {
-                val targetBday = v1.toLongOrNull() ?: return false
-                val calFilter = Calendar.getInstance().apply { timeInMillis = targetBday }
+                val targetBirthday = v1.toLongOrNull() ?: return false
+                val calFilter = Calendar.getInstance().apply { timeInMillis = targetBirthday }
                 studentCal.get(Calendar.YEAR) == calFilter.get(Calendar.YEAR) &&
                         studentCal.get(Calendar.DAY_OF_YEAR) == calFilter.get(Calendar.DAY_OF_YEAR)
             }

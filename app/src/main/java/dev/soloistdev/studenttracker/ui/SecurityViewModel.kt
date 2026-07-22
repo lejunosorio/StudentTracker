@@ -1,18 +1,23 @@
 package dev.soloistdev.studenttracker.ui
 
 import android.app.Application
+import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKeys
+import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 class SecurityViewModel(application: Application) : AndroidViewModel(application) {
-    private val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+
+    private val masterKey = MasterKey.Builder(application)
+        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+        .build()
+
     private val sharedPreferences = EncryptedSharedPreferences.create(
-        "secure_prefs",
-        masterKeyAlias,
         application,
+        "secure_prefs",
+        masterKey,
         EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
@@ -22,16 +27,16 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
     private val _isUnlocked = MutableStateFlow(false)
     val isUnlocked: StateFlow<Boolean> = _isUnlocked
 
-    // New: Observable biometric toggle state (defaulting to enabled)
     private val _isBiometricEnabled = MutableStateFlow(sharedPreferences.getBoolean("biometric_enabled", true))
     val isBiometricEnabled: StateFlow<Boolean> = _isBiometricEnabled
 
     fun saveRecoveryPin(pin: String): Boolean {
-        if (pin.length < 4 || pin.length > 6) return false
-        sharedPreferences.edit()
-            .putString("recovery_pin_hash", pin.hashCode().toString())
-            .putBoolean("recovery_pin_configured", true)
-            .apply()
+        if (pin.length !in 4..6) return false
+
+        sharedPreferences.edit {
+            putString("recovery_pin_hash", pin.hashCode().toString())
+            putBoolean("recovery_pin_configured", true)
+        }
         _isUnlocked.value = true
         return true
     }
@@ -45,20 +50,21 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
         return false
     }
 
-    // --- SPRINT 9 ENHANCEMENTS: BIOMETRICS & PRIVACY ACTIONS ---
-
     fun setBiometricEnabled(enabled: Boolean) {
-        sharedPreferences.edit().putBoolean("biometric_enabled", enabled).apply()
+        sharedPreferences.edit {
+            putBoolean("biometric_enabled", enabled)
+        }
         _isBiometricEnabled.value = enabled
     }
 
     fun resetPin(oldPin: String, newPin: String): Boolean {
-        if (newPin.length < 4 || newPin.length > 6) return false
+        if (newPin.length !in 4..6) return false
+
         val savedHash = sharedPreferences.getString("recovery_pin_hash", "")
         if (oldPin.hashCode().toString() == savedHash) {
-            sharedPreferences.edit()
-                .putString("recovery_pin_hash", newPin.hashCode().toString())
-                .apply()
+            sharedPreferences.edit {
+                putString("recovery_pin_hash", newPin.hashCode().toString())
+            }
             return true
         }
         return false
