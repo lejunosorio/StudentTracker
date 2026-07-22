@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
@@ -62,7 +63,7 @@ fun StudentMapScreen(
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        text = if (studentId == -1) "Choir GPS Map (Offline)" else "Member Location",
+                        text = if (studentId == -1) "Choir GPS Map" else "Member Location",
                         fontWeight = FontWeight.Bold
                     )
                 },
@@ -81,52 +82,57 @@ fun StudentMapScreen(
         ) {
             var mapViewInstance by remember { mutableStateOf<MapView?>(null) }
 
+            // PREVENTATIVE MEMORY RECOVERY PIPELINE:
+            // Unregisters hardware GPS sensor loops and detaches native background
+            // drawing threads immediately when the user navigates away from the map.
+            val lazyMapInstance = mapViewInstance
+            DisposableEffect(lazyMapInstance) {
+                onDispose {
+                    lazyMapInstance?.let { mapView ->
+                        mapView.overlays.forEach { overlay ->
+                            if (overlay is MyLocationNewOverlay) {
+                                overlay.disableMyLocation() // Powers down GPS hardware chip
+                            }
+                        }
+                        mapView.onDetach() // Shuts down OS threads and file readers
+                    }
+                }
+            }
+
             AndroidView(
                 factory = { ctx ->
                     MapView(ctx).apply {
                         setMultiTouchControls(true)
 
+                        // Storage workaround for Android 10+ / API 35
+                        val osmConfig = Configuration.getInstance()
+                        osmConfig.userAgentValue = ctx.packageName
+                        osmConfig.osmdroidTileCache = File(ctx.cacheDir, "osmdroid_tiles")
+
                         val archive = activeArchiveFile
                         if (archive != null) {
                             try {
-                                // Load imported map package completely offline
                                 val offlineProvider = OfflineTileProvider(
                                     org.osmdroid.tileprovider.util.SimpleRegisterReceiver(ctx),
                                     arrayOf(archive)
                                 )
                                 this.tileProvider = offlineProvider
 
-                                val archive = activeArchiveFile
-                                if (archive != null) {
-                                    try {
-                                        // Load imported map package completely offline
-                                        val offlineProvider = OfflineTileProvider(
-                                            org.osmdroid.tileprovider.util.SimpleRegisterReceiver(ctx),
-                                            arrayOf(archive)
-                                        )
-                                        this.tileProvider = offlineProvider
+                                val archiveFile = ArchiveFileFactory.getArchiveFile(archive)
+                                val tileSources = archiveFile?.tileSources
 
-                                        // CORRECTED: Changed to getArchiveFile (singular)
-                                        val archiveFile = ArchiveFileFactory.getArchiveFile(archive)
-                                        val tileSources = archiveFile?.tileSources // Maps to getTileSources()
-
-                                        if (!tileSources.isNullOrEmpty()) {
-                                            val tileSource = TileSourceFactory.getTileSource(tileSources.first())
-                                            this.setTileSource(tileSource)
-                                        }
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                        this.setTileSource(TileSourceFactory.MAPNIK) // Online fallback
-                                    }
+                                if (!tileSources.isNullOrEmpty()) {
+                                    val tileSource = TileSourceFactory.getTileSource(tileSources.first())
+                                    this.setTileSource(tileSource)
                                 } else {
-                                    this.setTileSource(TileSourceFactory.MAPNIK) // Online default
+                                    this.setTileSource(TileSourceFactory.MAPNIK)
                                 }
                             } catch (e: Exception) {
                                 e.printStackTrace()
-                                this.setTileSource(TileSourceFactory.MAPNIK) // Online fallback
+                                this.setTileSource(TileSourceFactory.MAPNIK)
                             }
                         } else {
-                            this.setTileSource(TileSourceFactory.MAPNIK) // Online default
+                            this.setTileSource(TileSourceFactory.MAPNIK)
                         }
 
                         mapViewInstance = this
@@ -135,19 +141,16 @@ fun StudentMapScreen(
                 update = { mapView ->
                     mapView.overlays.clear()
 
-                    // Enable user location blue dot via phone hardware sensor (requires no cellular data)
                     val locationProvider = GpsMyLocationProvider(context)
                     val myLocationOverlay = MyLocationNewOverlay(locationProvider, mapView)
                     myLocationOverlay.enableMyLocation()
                     mapView.overlays.add(myLocationOverlay)
 
-                    // Default center coordinates (Manila/Taguig area)
                     val defaultCenter = GeoPoint(14.5547, 121.0509)
                     mapView.controller.setZoom(13.0)
                     mapView.controller.setCenter(defaultCenter)
 
                     if (studentId == -1) {
-                        // Plot coordinates dynamically for all students
                         studentsList.forEach { student ->
                             val customJson = try { JSONObject(student.customDataJson) } catch (e: Exception) { JSONObject() }
                             val lat = customJson.optDouble("latitude", 0.0)
@@ -163,7 +166,6 @@ fun StudentMapScreen(
                             }
                         }
                     } else {
-                        // Plot coordinates for the selected student profile
                         val focusedStudent = studentsList.find { it.id == studentId }
                         focusedStudent?.let { student ->
                             val customJson = try { JSONObject(student.customDataJson) } catch (e: Exception) { JSONObject() }

@@ -37,16 +37,17 @@ object ImageCompressor {
             val imagesDir = File(context.filesDir, "student_images").apply { mkdirs() }
             val destFile = File(imagesDir, "img_${UUID.randomUUID()}.webp")
 
-            val outputStream = FileOutputStream(destFile)
-            // Compress to WebP Lossy at 70% quality (reduces file size to ~150KB)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                resizedBitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 70, outputStream)
-            } else {
-                @Suppress("DEPRECATION")
-                resizedBitmap.compress(Bitmap.CompressFormat.WEBP, 70, outputStream)
+            // SAFE STREAM WRITE PIPELINE: `.use` block ensures the output stream is
+            // closed securely even if a compression exception or write failure occurs [1].
+            FileOutputStream(destFile).use { outputStream ->
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    resizedBitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 70, outputStream)
+                } else {
+                    @Suppress("DEPRECATION")
+                    resizedBitmap.compress(Bitmap.CompressFormat.WEBP, 70, outputStream)
+                }
+                outputStream.flush()
             }
-            outputStream.flush()
-            outputStream.close()
 
             destFile.absolutePath // Return private filesystem absolute path
         } catch (e: Exception) {

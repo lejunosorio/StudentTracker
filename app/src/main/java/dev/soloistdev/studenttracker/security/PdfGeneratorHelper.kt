@@ -60,7 +60,6 @@ object PdfGeneratorHelper {
         canvas.drawRect(40f, yPosition, 200f, yPosition + 1f, paint)
         yPosition += 25f
 
-        // Render dynamic metadata without referencing static key transformations
         try {
             val json = JSONObject(student.customDataJson)
             val keys = json.keys()
@@ -109,10 +108,12 @@ object PdfGeneratorHelper {
         val pdfFile = File(cacheDir, "report_${student.lastName}_${student.id}.pdf")
 
         try {
-            val fos = FileOutputStream(pdfFile)
-            pdfDocument.writeTo(fos)
-            fos.close()
-            pdfDocument.close()
+            // SAFE STREAM WRITE PIPELINE: `.use` block ensures the native file descriptor
+            // is closed securely even if writing to the filesystem stutters or fails [1].
+            FileOutputStream(pdfFile).use { fos ->
+                pdfDocument.writeTo(fos)
+                fos.flush()
+            }
 
             val fileUri = FileProvider.getUriForFile(
                 context,
@@ -131,6 +132,10 @@ object PdfGeneratorHelper {
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(context, "Error generating PDF report.", Toast.LENGTH_SHORT).show()
+        } finally {
+            // CRITICAL NATIVE MEMORY RELEASE:
+            // Native C++ PDF structures are closed inside a finally block to release memory [1].
+            pdfDocument.close()
         }
     }
 }
