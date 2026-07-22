@@ -1,22 +1,27 @@
 package dev.soloistdev.studenttracker.ui
 
 import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -27,7 +32,6 @@ import dev.soloistdev.studenttracker.data.StudentRepository
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
-import androidx.core.net.toUri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,7 +59,7 @@ fun StudentProfileScreen(
                 title = { Text("Profile", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
@@ -110,12 +114,12 @@ fun StudentProfileScreen(
                 )
 
                 val sdf = SimpleDateFormat("MMMM dd, yyyy", Locale.US)
-                val birthdayFormatted = sdf.format(Date(currentStudent.birthday))
+                val bdayFormatted = sdf.format(Date(currentStudent.birthday))
                 val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = currentStudent.birthday }.get(Calendar.YEAR)
                 val genderFull = if (currentStudent.gender == "F") "Female" else "Male"
 
                 Text(
-                    text = "Gender: $genderFull | Age: $age | $birthdayFormatted",
+                    text = "Gender: $genderFull | Age: $age | $bdayFormatted",
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
                 )
@@ -154,15 +158,40 @@ fun StudentProfileScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                ProfileInfoCard(label = "Home Address", value = currentStudent.address)
+                // Parse coordinates internally (kept ONLY for your offline OSMDroid map) [1]
+                val customJson = remember(currentStudent.customDataJson) {
+                    try { JSONObject(currentStudent.customDataJson) } catch (e: Exception) { JSONObject() }
+                }
 
-                // 100% Dynamic custom field iteration (zero static key bindings)
-                val json = try { JSONObject(currentStudent.customDataJson) } catch (_: Exception) { JSONObject() }
-                val keys = json.keys()
+                // CORE FIELD CARD: Clicking launches an implicit geological intent strictly using the text address [2]
+                ProfileInfoCard(
+                    label = "Home Address",
+                    value = currentStudent.address,
+                    onClick = {
+                        // FEED ADDRESS DIRECTLY: Bypasses latitude and longitude coordinates entirely [2]
+                        val intentUri = Uri.parse("geo:0,0?q=${Uri.encode(currentStudent.address)}")
+                        val mapIntent = Intent(Intent.ACTION_VIEW, intentUri)
+                        try {
+                            context.startActivity(mapIntent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "No maps application installed.", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    trailingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Navigation,
+                            contentDescription = "Open in External Maps",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                )
+
+                // 100% Dynamic custom field iteration
+                val keys = customJson.keys()
                 while (keys.hasNext()) {
                     val key = keys.next()
-                    val value = json.optString(key, "")
-                    if (value.isNotEmpty() && key != "Gender") {
+                    val value = customJson.optString(key, "")
+                    if (value.isNotEmpty() && key != "Gender" && key != "latitude" && key != "longitude") {
                         val label = key.replace("_", " ")
                         ProfileInfoCard(label = label, value = value)
                     }
@@ -216,8 +245,7 @@ fun StudentProfileScreen(
                                         Text(phone, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         IconButton(
                                             onClick = {
-                                                val intent = Intent(Intent.ACTION_DIAL,
-                                                    "tel:$phone".toUri())
+                                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
                                                 context.startActivity(intent)
                                             },
                                             colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
@@ -269,20 +297,35 @@ fun StudentProfileScreen(
 }
 
 @Composable
-fun ProfileInfoCard(label: String, value: String) {
+fun ProfileInfoCard(
+    label: String,
+    value: String,
+    onClick: (() -> Unit)? = null,
+    trailingIcon: (@Composable () -> Unit)? = null
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 4.dp)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant
         )
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = label, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(text = value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = label, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (trailingIcon != null) {
+                trailingIcon()
+            }
         }
     }
 }
