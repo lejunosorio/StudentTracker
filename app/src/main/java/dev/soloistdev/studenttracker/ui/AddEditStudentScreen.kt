@@ -452,7 +452,19 @@ fun AddEditStudentScreen(
 
 
     if (showDatePicker) {
-        val datePickerState = rememberDatePickerState()
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = viewModel.birthday,
+            selectableDates = object : SelectableDates {
+                // Blocks selection of future timestamps
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                    return utcTimeMillis <= System.currentTimeMillis()
+                }
+                // Blocks selection of future years
+                override fun isSelectableYear(year: Int): Boolean {
+                    return year <= Calendar.getInstance().get(Calendar.YEAR)
+                }
+            }
+        )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {

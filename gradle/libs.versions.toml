@@ -22,6 +22,7 @@ rootbeerLib = "0.1.2"
 rootbeerLibVersion = "0.1.0"
 securityCrypto = "1.1.0"
 sqliteKtx = "2.7.0"
+uiText = "1.11.4"
 
 [libraries]
 android-database-sqlcipher = { module = "net.zetetic:android-database-sqlcipher", version.ref = "androidDatabaseSqlcipher" }
@@ -56,6 +57,7 @@ maps-compose = { module = "com.google.maps.android:maps-compose", version.ref = 
 osmdroid-android = { module = "org.osmdroid:osmdroid-android", version.ref = "osmdroidAndroid" }
 play-services-maps = { module = "com.google.android.gms:play-services-maps", version.ref = "playServicesMaps" }
 rootbeer-lib = { module = "com.scottyab:rootbeer-lib", version.ref = "rootbeerLib" }
+androidx-compose-ui-text = { group = "androidx.compose.ui", name = "ui-text", version.ref = "uiText" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

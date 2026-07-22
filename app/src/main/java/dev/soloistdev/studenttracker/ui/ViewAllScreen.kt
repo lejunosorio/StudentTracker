@@ -604,10 +604,9 @@ fun ViewAllScreen(
             )
         }
 
-        // ================= SPRINT 9 FILTER SHEET (Screen 12 & 12B) =================
         if (showFilterSheet) {
             var tempField by remember { mutableStateOf(activeFilter?.field ?: "Age") }
-            var tempComparison by remember { mutableStateOf(activeFilter?.comparison ?: "in range") }
+            var tempComparison by remember { mutableStateOf(activeFilter?.comparison ?: "In between") }
 
             var tempVal1 by remember { mutableStateOf(activeFilter?.value1 ?: "Female") }
             var tempVal2 by remember { mutableStateOf(activeFilter?.value2 ?: "") }
@@ -624,13 +623,32 @@ fun ViewAllScreen(
 
             val currentSelectedType = getFieldType(tempField, availableTemplates)
 
-            val isRangeMode = tempComparison == "in range"
+            val isRangeMode = tempComparison == "In between"
             val isDateMode = currentSelectedType == "DATE"
             val isGenderMode = currentSelectedType == "GENDER"
+            val isBirthdayMode = tempField == "Birthday"
 
             val val1Num = tempVal1.toDoubleOrNull()
             val val2Num = tempVal2.toDoubleOrNull()
-            val isValidationError = isRangeMode && !isDateMode && val1Num != null && val2Num != null && val1Num > val2Num
+
+            // Check for future years inside text inputs
+            val currentSystemYear = Calendar.getInstance().get(Calendar.YEAR)
+            val isFutureYear1 = tempComparison == "birth_year" && (tempVal1.toIntOrNull() ?: 0) > currentSystemYear
+            val isFutureYear2 = tempComparison == "birth_month_year" && (tempVal2.toIntOrNull() ?: 0) > currentSystemYear
+
+            val isRangeError = isRangeMode && val1Num != null && val2Num != null && val1Num >= val2Num
+            val isValidationError = isRangeError || isFutureYear1 || isFutureYear2
+
+            val monthNames = remember {
+                listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+            }
+
+            val chipColors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                containerColor = Color.Transparent,
+                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             ModalBottomSheet(
                 onDismissRequest = { showFilterSheet = false },
@@ -669,9 +687,10 @@ fun ViewAllScreen(
                                         tempField = option
                                         fieldExpanded = false
                                         val newType = getFieldType(option, availableTemplates)
-                                        tempComparison = when (newType) {
-                                            "DATE", "NUMBER" -> "in range"
-                                            "GENDER" -> "equal"
+                                        tempComparison = when {
+                                            option == "Birthday" -> "exact_birthday"
+                                            newType == "NUMBER" -> "In between"
+                                            newType == "GENDER" -> "equal"
                                             else -> "contains"
                                         }
                                         tempVal1 = if (newType == "GENDER") "Female" else ""
@@ -682,95 +701,203 @@ fun ViewAllScreen(
                         }
                     }
 
-                    var compExpanded by remember { mutableStateOf(false) }
-                    ExposedDropdownMenuBox(
-                        expanded = compExpanded,
-                        onExpandedChange = { compExpanded = it }
-                    ) {
-                        OutlinedTextField(
-                            value = tempComparison,
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Select Comparison") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = compExpanded) },
-                            modifier = Modifier.fillMaxWidth().menuAnchor()
-                        )
-                        ExposedDropdownMenu(
+                    // Render operators selection only for non-Gender and non-Birthday fields
+                    if (!isGenderMode && !isBirthdayMode) {
+                        var compExpanded by remember { mutableStateOf(false) }
+                        ExposedDropdownMenuBox(
                             expanded = compExpanded,
-                            onDismissRequest = { compExpanded = false }
+                            onExpandedChange = { compExpanded = it }
                         ) {
-                            val filteredOperators = when (currentSelectedType) {
-                                "NUMBER" -> listOf("equal", "not equal", "less than", "greater than", "in range")
-                                "DATE" -> listOf("equal", "in range")
-                                "GENDER" -> listOf("equal", "not equal")
-                                else -> listOf("contains", "does not contain", "equal", "not equal", "empty")
-                            }
+                            OutlinedTextField(
+                                value = tempComparison,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Select Comparison") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = compExpanded) },
+                                modifier = Modifier.fillMaxWidth().menuAnchor()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = compExpanded,
+                                onDismissRequest = { compExpanded = false }
+                            ) {
+                                val operatorsList = if (currentSelectedType == "NUMBER") {
+                                    listOf("equal", "greater than", "less than", "In between")
+                                } else {
+                                    listOf("contains", "does not contain", "equal", "not equal")
+                                }
 
-                            filteredOperators.forEach { option ->
-                                DropdownMenuItem(
-                                    text = { Text(option) },
-                                    onClick = {
-                                        tempComparison = option
-                                        compExpanded = false
-                                    }
-                                )
+                                operatorsList.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text(option) },
+                                        onClick = {
+                                            tempComparison = option
+                                            compExpanded = false
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
 
-                    if (isDateMode) {
-                        val sdfPicker = SimpleDateFormat("MMM dd, yyyy", Locale.US)
-                        val bday1Formatted = tempVal1.toLongOrNull()?.let { sdfPicker.format(Date(it)) } ?: "Select Start Date *"
-                        val bday2Formatted = tempVal2.toLongOrNull()?.let { sdfPicker.format(Date(it)) } ?: "Select End Date *"
+                    // specialized Birthday layout selector
+                    if (isBirthdayMode) {
+                        var typeExpanded by remember { mutableStateOf(false) }
+                        val bdayTypes = listOf(
+                            "Birth year (YYYY)" to "birth_year",
+                            "Birth month (MM)" to "birth_month",
+                            "Birth month and Year (MM - YY)" to "birth_month_year",
+                            "Exact Birthday (MM/DD/YYYY)" to "exact_birthday"
+                        )
+                        val selectedTypeName = bdayTypes.find { it.second == tempComparison }?.first ?: "Exact Birthday (MM/DD/YYYY)"
 
-                        if (isRangeMode) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ExposedDropdownMenuBox(
+                            expanded = typeExpanded,
+                            onExpandedChange = { typeExpanded = it }
+                        ) {
+                            OutlinedTextField(
+                                value = selectedTypeName,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Select Birthday Filter Type") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeExpanded) },
+                                modifier = Modifier.fillMaxWidth().menuAnchor()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = typeExpanded,
+                                onDismissRequest = { typeExpanded = false }
                             ) {
-                                OutlinedButton(
-                                    onClick = { showDatePicker1 = true },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(bday1Formatted, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
-                                        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                                    }
+                                bdayTypes.forEach { (label, value) ->
+                                    DropdownMenuItem(
+                                        text = { Text(label) },
+                                        onClick = {
+                                            tempComparison = value
+                                            typeExpanded = false
+                                            tempVal1 = if (value == "birth_month" || value == "birth_month_year") "1" else ""
+                                            tempVal2 = ""
+                                        }
+                                    )
                                 }
+                            }
+                        }
 
-                                OutlinedButton(
-                                    onClick = { showDatePicker2 = true },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(8.dp)
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        when (tempComparison) {
+                            "birth_year" -> {
+                                OutlinedTextField(
+                                    value = tempVal1,
+                                    onValueChange = { if (it.length <= 4) tempVal1 = it.filter { c -> c.isDigit() } },
+                                    label = { Text("Birth Year (YYYY) *") },
+                                    isError = isFutureYear1,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                if (isFutureYear1) {
+                                    Text("Year cannot be in the future.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                                }
+                            }
+                            "birth_month" -> {
+                                var monthExpanded by remember { mutableStateOf(false) }
+                                val monthIdx = (tempVal1.toIntOrNull() ?: 1) - 1
+                                val selectedMonthName = monthNames.getOrElse(monthIdx) { "January" }
+
+                                ExposedDropdownMenuBox(
+                                    expanded = monthExpanded,
+                                    onExpandedChange = { monthExpanded = it }
                                 ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    OutlinedTextField(
+                                        value = selectedMonthName,
+                                        onValueChange = {},
+                                        readOnly = true,
+                                        label = { Text("Select Birth Month *") },
+                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = monthExpanded) },
+                                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                                    )
+                                    ExposedDropdownMenu(
+                                        expanded = monthExpanded,
+                                        onDismissRequest = { monthExpanded = false }
                                     ) {
-                                        Text(bday2Formatted, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
-                                        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                        monthNames.forEachIndexed { idx, name ->
+                                            DropdownMenuItem(
+                                                text = { Text(name) },
+                                                onClick = {
+                                                    tempVal1 = (idx + 1).toString()
+                                                    monthExpanded = false
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }
-                        } else {
-                            OutlinedButton(
-                                onClick = { showDatePicker1 = true },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
+                            "birth_month_year" -> {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text(bday1Formatted, color = MaterialTheme.colorScheme.onSurface)
-                                    Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    var monthExpanded by remember { mutableStateOf(false) }
+                                    val monthIdx = (tempVal1.toIntOrNull() ?: 1) - 1
+                                    val selectedMonthName = monthNames.getOrElse(monthIdx) { "January" }
+
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        ExposedDropdownMenuBox(
+                                            expanded = monthExpanded,
+                                            onExpandedChange = { monthExpanded = it }
+                                        ) {
+                                            OutlinedTextField(
+                                                value = selectedMonthName,
+                                                onValueChange = {},
+                                                readOnly = true,
+                                                label = { Text("Month *") },
+                                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = monthExpanded) },
+                                                modifier = Modifier.fillMaxWidth().menuAnchor()
+                                            )
+                                            ExposedDropdownMenu(
+                                                expanded = monthExpanded,
+                                                onDismissRequest = { monthExpanded = false }
+                                            ) {
+                                                monthNames.forEachIndexed { idx, name ->
+                                                    DropdownMenuItem(
+                                                        text = { Text(name) },
+                                                        onClick = {
+                                                            tempVal1 = (idx + 1).toString()
+                                                            monthExpanded = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    OutlinedTextField(
+                                        value = tempVal2,
+                                        onValueChange = { if (it.length <= 4) tempVal2 = it.filter { c -> c.isDigit() } },
+                                        label = { Text("Year (YYYY) *") },
+                                        isError = isFutureYear2,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                if (isFutureYear2) {
+                                    Text("Year cannot be in the future.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                                }
+                            }
+                            "exact_birthday" -> {
+                                val sdfPicker = SimpleDateFormat("MMM dd, yyyy", Locale.US)
+                                val bday1Formatted = tempVal1.toLongOrNull()?.let { sdfPicker.format(Date(it)) } ?: "Select Birthday Date *"
+
+                                OutlinedButton(
+                                    onClick = { showDatePicker1 = true },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(bday1Formatted, color = MaterialTheme.colorScheme.onSurface)
+                                        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    }
                                 }
                             }
                         }
@@ -784,26 +911,17 @@ fun ViewAllScreen(
                                 selected = tempVal1 == "Female",
                                 onClick = { tempVal1 = "Female" },
                                 label = { Text("Female") },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    containerColor = Color.Transparent,
-                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                colors = chipColors
                             )
                             FilterChip(
                                 selected = tempVal1 == "Male",
                                 onClick = { tempVal1 = "Male" },
                                 label = { Text("Male") },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    containerColor = Color.Transparent,
-                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                colors = chipColors
                             )
                         }
                     } else {
+                        // Standard input fields logic
                         if (isRangeMode) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -829,13 +947,13 @@ fun ViewAllScreen(
 
                             if (isValidationError) {
                                 Text(
-                                    text = "Value 1 must be less than or equal to Value 2",
+                                    text = "Value 2 (Max) must be strictly greater than Value 1",
                                     color = MaterialTheme.colorScheme.error,
                                     fontSize = 12.sp,
                                     modifier = Modifier.padding(start = 4.dp)
                                 )
                             }
-                        } else if (tempComparison != "empty") {
+                        } else {
                             val isNumeric = currentSelectedType == "NUMBER"
                             OutlinedTextField(
                                 value = tempVal1,
@@ -899,7 +1017,16 @@ fun ViewAllScreen(
             }
 
             if (showDatePicker1) {
-                val dateState1 = rememberDatePickerState()
+                val dateState1 = rememberDatePickerState(
+                    selectableDates = object : SelectableDates {
+                        override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                            return utcTimeMillis <= System.currentTimeMillis()
+                        }
+                        override fun isSelectableYear(year: Int): Boolean {
+                            return year <= Calendar.getInstance().get(Calendar.YEAR)
+                        }
+                    }
+                )
                 DatePickerDialog(
                     onDismissRequest = { showDatePicker1 = false },
                     confirmButton = {
@@ -910,6 +1037,7 @@ fun ViewAllScreen(
                     }
                 ) { DatePicker(state = dateState1) }
             }
+
 
             if (showDatePicker2) {
                 val dateState2 = rememberDatePickerState()

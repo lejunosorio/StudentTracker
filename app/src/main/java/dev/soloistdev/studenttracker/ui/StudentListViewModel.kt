@@ -113,29 +113,40 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
         val value1 = filter.value1.trim()
         val value2 = filter.value2.trim()
 
+        // specialized Birthday comparator logic
         if (filter.field == "Birthday") {
-            val studentBday = fieldValue.toLongOrNull() ?: 0L
-            val filterMinBday = value1.toLongOrNull() ?: 0L
-            val filterMaxBday = value2.toLongOrNull() ?: 0L
-
+            val studentBday = fieldValue.toLongOrNull() ?: return false
+            val studentCal = Calendar.getInstance().apply { timeInMillis = studentBday }
             return when (filter.comparison) {
-                "equal" -> {
-                    val calStudent = Calendar.getInstance().apply { timeInMillis = studentBday }
-                    val calFilter = Calendar.getInstance().apply { timeInMillis = filterMinBday }
-                    calStudent.get(Calendar.YEAR) == calFilter.get(Calendar.YEAR) &&
-                            calStudent.get(Calendar.DAY_OF_YEAR) == calFilter.get(Calendar.DAY_OF_YEAR)
+                "birth_year" -> {
+                    val yearVal = value1.toIntOrNull() ?: return false
+                    studentCal.get(Calendar.YEAR) == yearVal
                 }
-                "in range" -> studentBday in filterMinBday..filterMaxBday
-                else -> true
+                "birth_month" -> {
+                    val monthVal = value1.toIntOrNull() ?: return false
+                    (studentCal.get(Calendar.MONTH) + 1) == monthVal
+                }
+                "birth_month_year" -> {
+                    val monthVal = value1.toIntOrNull() ?: return false
+                    val yearVal = value2.toIntOrNull() ?: return false
+                    (studentCal.get(Calendar.MONTH) + 1) == monthVal && studentCal.get(Calendar.YEAR) == yearVal
+                }
+                "exact_birthday" -> {
+                    val targetBday = value1.toLongOrNull() ?: return false
+                    val calFilter = Calendar.getInstance().apply { timeInMillis = targetBday }
+                    studentCal.get(Calendar.YEAR) == calFilter.get(Calendar.YEAR) &&
+                            studentCal.get(Calendar.DAY_OF_YEAR) == calFilter.get(Calendar.DAY_OF_YEAR)
+                }
+                else -> false
             }
         }
 
+        // specialized Standard Field comparators
         return when (filter.comparison) {
             "contains" -> fieldValue.contains(value1, ignoreCase = true)
+            "does not contain" -> !fieldValue.contains(value1, ignoreCase = true)
             "equal" -> fieldValue.equals(value1, ignoreCase = true)
             "not equal" -> !fieldValue.equals(value1, ignoreCase = true)
-            "does not contain" -> !fieldValue.contains(value1, ignoreCase = true)
-            "empty" -> fieldValue.isBlank()
             "greater than" -> {
                 val numField = fieldValue.toDoubleOrNull()
                 val numVal = value1.toDoubleOrNull()
@@ -146,7 +157,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                 val numVal = value1.toDoubleOrNull()
                 if (numField != null && numVal != null) numField < numVal else false
             }
-            "in range" -> {
+            "In between" -> {
                 val numField = fieldValue.toDoubleOrNull()
                 val numMin = value1.toDoubleOrNull()
                 val numMax = value2.toDoubleOrNull()
