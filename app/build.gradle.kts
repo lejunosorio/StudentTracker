@@ -110,8 +110,6 @@ dependencies {
     implementation(libs.play.services.maps)
     implementation(libs.maps.compose)
 
-    implementation(libs.osmdroid.android)
-
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

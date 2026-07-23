@@ -11,8 +11,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.ArrowBack // AutoMirrored back icon [1]
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Delete
@@ -29,19 +29,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.rememberCameraPositionState
-import com.google.maps.android.compose.rememberMarkerState
 import dev.soloistdev.studenttracker.security.ImageCompressor
 import java.text.SimpleDateFormat
 import java.util.*
-
-import androidx.compose.material.icons.filled.Map
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.Marker
-
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,7 +45,6 @@ fun AddEditStudentScreen(
     var showDatePicker by remember { mutableStateOf(false) }
     var showSaveDialog by remember { mutableStateOf(false) }
 
-    // SPRINT 6 UPDATE: Dialog states for collecting a new guardian dynamically
     var showAddGuardianDialog by remember { mutableStateOf(false) }
     var newGuardianName by remember { mutableStateOf("") }
     var newGuardianRelationship by remember { mutableStateOf("") }
@@ -82,17 +71,6 @@ fun AddEditStudentScreen(
             }
         }
     }
-
-    var showMapPicker by remember { mutableStateOf(false) }
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(
-            LatLng(viewModel.latitude ?: 14.5547, viewModel.longitude ?: 121.0509),
-            13f
-        )
-    }
-    val markerState = rememberMarkerState(
-        position = LatLng(viewModel.latitude ?: 14.5547, viewModel.longitude ?: 121.0509)
-    )
 
     LaunchedEffect(Unit) {
         viewModel.loadStudentForEditing(studentId)
@@ -233,28 +211,18 @@ fun AddEditStudentScreen(
                 }
             }
 
-            // ADDRESS
+            // ADDRESS FIELD (Restored to clean, standard text input without obsolete maps metadata) [1]
             OutlinedTextField(
                 value = viewModel.address,
                 onValueChange = { viewModel.address = it },
                 label = { Text("Address / Location") },
                 colors = m3TextFieldColors,
-                trailingIcon = {
-                    IconButton(onClick = { showMapPicker = true }) {
-                        Icon(
-                            imageVector = Icons.Default.Map, // Ensure import androidx.compose.material.icons.filled.Map
-                            contentDescription = "Select location on Map"
-                        )
-                    }
-                },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // SPRINT 6 DYNAMIC GUARDIANS SECTION (Matches Screen 3 Mockups exactly!)
             Text("Guardians *", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
-            // 1. Loop and draw cards for already added guardians
             viewModel.guardiansStateList.forEachIndexed { index, guardian ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -276,7 +244,6 @@ fun AddEditStudentScreen(
                 }
             }
 
-            // 2. Outlined Add Guardian button (Matches your exact mockup!)
             OutlinedButton(
                 onClick = { showAddGuardianDialog = true },
                 modifier = Modifier.fillMaxWidth(),
@@ -310,7 +277,7 @@ fun AddEditStudentScreen(
             }
         }
 
-        // SPRINT 9 M3 SAVE CONFIRMATION DIALOG
+        // SAVE CONFIRMATION DIALOG
         if (showSaveDialog) {
             AlertDialog(
                 onDismissRequest = { showSaveDialog = false },
@@ -336,7 +303,7 @@ fun AddEditStudentScreen(
             )
         }
 
-        // SPRINT 6 DYNAMIC ADD GUARDIAN INPUT DIALOG (Collects details on button click!)
+        // DYNAMIC ADD GUARDIAN INPUT DIALOG
         if (showAddGuardianDialog) {
             AlertDialog(
                 onDismissRequest = { showAddGuardianDialog = false },
@@ -398,65 +365,38 @@ fun AddEditStudentScreen(
         }
     }
 
-    if (showMapPicker) {
-        AlertDialog(
-            onDismissRequest = { showMapPicker = false },
-            title = { Text("Select Address on Map", fontWeight = FontWeight.Bold) },
-            text = {
-                Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
-                    GoogleMap(
-                        cameraPositionState = cameraPositionState,
-                        onMapClick = { latLng ->
-                            markerState.position = latLng // Tap updates marker placement
-                        }
-                    ) {
-                        Marker(state = markerState)
-                    }
+    if (showDatePicker) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = viewModel.birthday,
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                    return utcTimeMillis <= System.currentTimeMillis()
                 }
-            },
+                override fun isSelectableYear(year: Int): Boolean {
+                    return year <= Calendar.getInstance().get(Calendar.YEAR)
+                }
+            }
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
             confirmButton = {
-                Button(
-                    onClick = {
-                        val selectedPos = markerState.position
-                        viewModel.latitude = selectedPos.latitude
-                        viewModel.longitude = selectedPos.longitude
-
-                        // Perform reverse geocoding via standard Geocoder API
-                        try {
-                            val geocoder = android.location.Geocoder(context, Locale.getDefault())
-                            val addresses = geocoder.getFromLocation(selectedPos.latitude, selectedPos.longitude, 1)
-                            if (!addresses.isNullOrEmpty()) {
-                                viewModel.address = addresses[0].getAddressLine(0) ?: ""
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                            // Fallback to raw coordinate decimals if geocoding fails offline
-                            viewModel.address = "${selectedPos.latitude}, ${selectedPos.longitude}"
-                        }
-                        showMapPicker = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Text("Confirm Location")
+                TextButton(onClick = {
+                    viewModel.birthday = datePickerState.selectedDateMillis
+                    showDatePicker = false
+                }) {
+                    Text("OK")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showMapPicker = false }) {
+                TextButton(onClick = { showDatePicker = false }) {
                     Text("Cancel")
                 }
-            },
-            shape = RoundedCornerShape(28.dp)
-        )
-    }
-
-    if (showDatePicker) {
-        WheelDatePickerDialog(
-            initialDateMillis = viewModel.birthday,
-            onDismiss = { showDatePicker = false },
-            onConfirm = { selectedMillis ->
-                viewModel.birthday = selectedMillis
-                showDatePicker = false
             }
-        )
+        ) {
+            DatePicker(
+                state = datePickerState,
+                showModeToggle = false
+            )
+        }
     }
 }

@@ -35,23 +35,6 @@ class StudentRepository(private val context: Context) {
         studentDao.deleteFormTemplate(templateId)
     }
 
-    // Map Archive Accessors
-    suspend fun getAllMapArchives(): List<MapArchiveEntity> = withContext(Dispatchers.IO) {
-        studentDao.getAllMapArchives()
-    }
-
-    suspend fun insertMapArchive(archive: MapArchiveEntity) = withContext(Dispatchers.IO) {
-        studentDao.insertMapArchive(archive)
-    }
-
-    suspend fun setActiveMapArchive(activeId: Int) = withContext(Dispatchers.IO) {
-        studentDao.setActiveMapArchive(activeId)
-    }
-
-    suspend fun deleteMapArchive(archiveId: Int) = withContext(Dispatchers.IO) {
-        studentDao.deleteMapArchive(archiveId)
-    }
-
     // Recycle Bin & Data Purging
     suspend fun getAllDeletedStudents(): List<StudentEntity> = withContext(Dispatchers.IO) {
         studentDao.getAllDeletedStudents()

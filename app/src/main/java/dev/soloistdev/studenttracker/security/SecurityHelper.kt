@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 import java.util.UUID
+import androidx.core.content.edit
 
 object SecurityHelper {
     private const val PREFS_FILE = "secure_prefs"
@@ -26,7 +27,7 @@ object SecurityHelper {
         if (passphrase == null) {
             // Generate a secure 256-bit random passphrase if it doesn't exist yet
             passphrase = UUID.randomUUID().toString() + UUID.randomUUID().toString()
-            sharedPreferences.edit().putString(KEY_DB_PASSPHRASE, passphrase).apply()
+            sharedPreferences.edit { putString(KEY_DB_PASSPHRASE, passphrase) }
         }
 
         return passphrase.toCharArray()

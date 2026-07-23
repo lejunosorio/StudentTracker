@@ -26,10 +26,6 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
     var address by mutableStateOf("")
     var picturePath by mutableStateOf("")
 
-    // New: State parameters to capture and hold coordinates
-    var latitude by mutableStateOf<Double?>(null)
-    var longitude by mutableStateOf<Double?>(null)
-
     val guardiansStateList = mutableStateListOf<Guardian>()
     val customDataMap = mutableStateMapOf<String, String>()
 
@@ -41,8 +37,6 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
     fun loadStudentForEditing(studentId: Int) {
         customDataMap.clear()
         guardiansStateList.clear()
-        latitude = null
-        longitude = null
 
         viewModelScope.launch {
             val templates = repository.getAllFormTemplates()
@@ -72,12 +66,6 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                     val json = JSONObject(student.customDataJson)
                     templates.forEach { template ->
                         customDataMap[template.fieldName] = json.optString(template.fieldName, "")
-                    }
-
-                    // Retrieve saved coordinates from customDataJson if they exist
-                    if (json.has("latitude") && json.has("longitude")) {
-                        latitude = json.optDouble("latitude")
-                        longitude = json.optDouble("longitude")
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -112,10 +100,6 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
             customDataMap.forEach { (key, value) ->
                 jsonObject.put(key, value.trim())
             }
-
-            // Serialize coordinates directly into customDataJson
-            latitude?.let { jsonObject.put("latitude", it) }
-            longitude?.let { jsonObject.put("longitude", it) }
 
             val student = StudentEntity(
                 id = editingStudentId ?: 0,

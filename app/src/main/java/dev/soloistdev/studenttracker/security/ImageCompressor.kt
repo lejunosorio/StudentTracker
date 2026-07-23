@@ -8,6 +8,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.UUID
+import androidx.core.graphics.scale
 
 object ImageCompressor {
     fun compressAndSaveImage(context: Context, imageUri: Uri): String? {
@@ -31,7 +32,7 @@ object ImageCompressor {
                 Pair((maxSize * ratio).toInt(), maxSize)
             }
 
-            val resizedBitmap = Bitmap.createScaledBitmap(originalBitmap, targetWidth, targetHeight, true)
+            val resizedBitmap = originalBitmap.scale(targetWidth, targetHeight)
 
             // 2. Save the compressed file privately in internal filesDir/student_images/
             val imagesDir = File(context.filesDir, "student_images").apply { mkdirs() }

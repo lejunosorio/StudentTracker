@@ -28,19 +28,6 @@ interface StudentDao {
     @Query("DELETE FROM form_templates WHERE id = :templateId")
     fun deleteFormTemplate(templateId: Int)
 
-    // Map Archive Queries
-    @Query("SELECT * FROM map_archives ORDER BY fileName ASC")
-    fun getAllMapArchives(): List<MapArchiveEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insertMapArchive(archive: MapArchiveEntity): Long
-
-    @Query("UPDATE map_archives SET isActive = (id = :activeId)")
-    fun setActiveMapArchive(activeId: Int)
-
-    @Query("DELETE FROM map_archives WHERE id = :archiveId")
-    fun deleteMapArchive(archiveId: Int)
-
     // SPRINT 9 ADDITIONS: Recycle Bin & Data Purging Queries
     @Query("SELECT * FROM students WHERE isDeleted = 1 ORDER BY lastName ASC")
     fun getAllDeletedStudents(): List<StudentEntity>

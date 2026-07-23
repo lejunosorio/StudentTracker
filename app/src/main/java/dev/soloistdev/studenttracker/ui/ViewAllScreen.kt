@@ -51,7 +51,6 @@ fun ViewAllScreen(
     onAddStudent: (Int) -> Unit,
     onStudentClick: (Int) -> Unit,
     onOpenTemplates: () -> Unit,
-    onOpenMapArchives: () -> Unit,
     onOpenMap: () -> Unit,
     onOpenRecycleBin: () -> Unit,
     onOpenSync: () -> Unit,
@@ -151,20 +150,6 @@ fun ViewAllScreen(
                             scope.launch {
                                 drawerState.close()
                                 onOpenMap()
-                            }
-                        },
-                        colors = drawerItemColors,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                    )
-
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.Layers, contentDescription = null) },
-                        label = { Text("Map Archives (.mbtiles)") },
-                        selected = false,
-                        onClick = {
-                            scope.launch {
-                                drawerState.close()
-                                onOpenMapArchives()
                             }
                         },
                         colors = drawerItemColors,

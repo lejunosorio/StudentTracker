@@ -47,11 +47,6 @@ fun AppNavigation() {
                         navController.navigate("templates")
                     }
                 },
-                onOpenMapArchives = {
-                    if (navController.currentDestination?.route == "view_all") {
-                        navController.navigate("map_archives")
-                    }
-                },
                 // Replaces Maps with Saved Filters
                 onOpenMap = {
                     if (navController.currentDestination?.route == "view_all") {
@@ -100,12 +95,6 @@ fun AppNavigation() {
                         }
                     }
                 },
-                // Routing Maps action to empty or alternative back behavior
-                onViewMap = {
-                    if (navController.previousBackStackEntry != null) {
-                        navController.popBackStack()
-                    }
-                },
                 onSharePdf = { studentEntity ->
                     PdfGeneratorHelper.generateAndShareStudentPdf(context, studentEntity)
                 },
@@ -145,33 +134,8 @@ fun AppNavigation() {
             )
         }
 
-        composable("map_archives") {
-            MapArchivesScreen(
-                onBack = {
-                    if (navController.previousBackStackEntry != null) {
-                        navController.popBackStack()
-                    }
-                }
-            )
-        }
-
         composable("recycle_bin") {
             RecycleBinScreen(
-                onBack = {
-                    if (navController.previousBackStackEntry != null) {
-                        navController.popBackStack()
-                    }
-                }
-            )
-        }
-
-        composable(
-            route = "student_map/{studentId}",
-            arguments = listOf(navArgument("studentId") { type = NavType.IntType })
-        ) { backStackEntry ->
-            val studentId = backStackEntry.arguments?.getInt("studentId") ?: -1
-            StudentMapScreen(
-                studentId = studentId,
                 onBack = {
                     if (navController.previousBackStackEntry != null) {
                         navController.popBackStack()

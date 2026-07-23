@@ -15,13 +15,11 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,7 +37,6 @@ fun StudentProfileScreen(
     studentId: Int,
     onBack: () -> Unit,
     onEdit: (Int) -> Unit,
-    onViewMap: (Int) -> Unit,
     onSharePdf: (StudentEntity) -> Unit,
     onDeleteStudent: (Int) -> Unit,
     repository: StudentRepository = StudentRepository(LocalContext.current)
@@ -130,8 +127,21 @@ fun StudentProfileScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Button directly launches external map app using the text address [2]
                     Button(
-                        onClick = { onViewMap(studentId) },
+                        onClick = {
+                            if (currentStudent.address.isNotBlank()) {
+                                val intentUri = Uri.parse("geo:0,0?q=${Uri.encode(currentStudent.address)}")
+                                val mapIntent = Intent(Intent.ACTION_VIEW, intentUri)
+                                try {
+                                    context.startActivity(mapIntent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "No maps application installed.", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                Toast.makeText(context, "No address listed for this student.", Toast.LENGTH_SHORT).show()
+                            }
+                        },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(20.dp)
@@ -139,7 +149,7 @@ fun StudentProfileScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Map, contentDescription = "Map")
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("View Offline Map")
+                            Text("Open in Maps")
                         }
                     }
 
@@ -158,40 +168,21 @@ fun StudentProfileScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Parse coordinates internally (kept ONLY for your offline OSMDroid map) [1]
-                val customJson = remember(currentStudent.customDataJson) {
-                    try { JSONObject(currentStudent.customDataJson) } catch (e: Exception) { JSONObject() }
-                }
-
-                // CORE FIELD CARD: Clicking launches an implicit geological intent strictly using the text address [2]
+                // CORRECTED: Home Address restored to standard read-only styling (clicking on the text block itself is removed) [1]
                 ProfileInfoCard(
                     label = "Home Address",
-                    value = currentStudent.address,
-                    onClick = {
-                        // FEED ADDRESS DIRECTLY: Bypasses latitude and longitude coordinates entirely [2]
-                        val intentUri = Uri.parse("geo:0,0?q=${Uri.encode(currentStudent.address)}")
-                        val mapIntent = Intent(Intent.ACTION_VIEW, intentUri)
-                        try {
-                            context.startActivity(mapIntent)
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "No maps application installed.", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    trailingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Navigation,
-                            contentDescription = "Open in External Maps",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                    value = currentStudent.address
                 )
 
-                // 100% Dynamic custom field iteration
+                // 100% Dynamic custom fields iteration
+                val customJson = remember(currentStudent.customDataJson) {
+                    try { JSONObject(currentStudent.customDataJson) } catch (_: Exception) { JSONObject() }
+                }
                 val keys = customJson.keys()
                 while (keys.hasNext()) {
                     val key = keys.next()
                     val value = customJson.optString(key, "")
-                    if (value.isNotEmpty() && key != "Gender" && key != "latitude" && key != "longitude") {
+                    if (value.isNotEmpty() && key != "Gender") {
                         val label = key.replace("_", " ")
                         ProfileInfoCard(label = label, value = value)
                     }

@@ -46,11 +46,11 @@ object PdfGeneratorHelper {
         yPosition += 25f
 
         val sdf = SimpleDateFormat("MMMM dd, yyyy", Locale.US)
-        val bdayFormatted = sdf.format(Date(student.birthday))
+        val birthdayFormatted = sdf.format(Date(student.birthday))
         val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
         val genderFull = if (student.gender == "F") "Female" else "Male"
 
-        canvas.drawText("Gender: $genderFull | Age: $age | Birthday: $bdayFormatted", 40f, yPosition, textPaint)
+        canvas.drawText("Gender: $genderFull | Age: $age | Birthday: $birthdayFormatted", 40f, yPosition, textPaint)
         yPosition += 25f
         canvas.drawText("Home Address: ${student.address}", 40f, yPosition, textPaint)
         yPosition += 40f

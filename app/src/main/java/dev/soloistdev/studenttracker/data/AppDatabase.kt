@@ -9,8 +9,9 @@ import dev.soloistdev.studenttracker.security.SecurityHelper
 import net.sqlcipher.database.SupportFactory
 
 @Database(
-    entities = [StudentEntity::class, FormTemplateEntity::class, MapArchiveEntity::class, SavedFilterEntity::class],
-    version = 5,
+    // MapArchiveEntity removed from entities list
+    entities = [StudentEntity::class, FormTemplateEntity::class, SavedFilterEntity::class],
+    version = 4, // Stepped down from 5 [1]
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -31,7 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "student_tracker_secure_db"
                 )
                     .openHelperFactory(factory)
-                    .fallbackToDestructiveMigration() // Auto-creates version 5 tables cleanly
+                    .fallbackToDestructiveMigration(false) // Auto-creates version 5 tables cleanly
                     .build()
 
                 MemoryHelper.zeroMemory(passphrase)

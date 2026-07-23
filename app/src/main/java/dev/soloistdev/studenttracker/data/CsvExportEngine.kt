@@ -28,8 +28,8 @@ object CsvExportEngine {
 
         // 2. Build rows dynamically
         students.forEach { student ->
-            val bdayStr = sdf.format(Date(student.birthday))
-            val customJson = try { JSONObject(student.customDataJson) } catch (e: Exception) { JSONObject() }
+            val birthdayStr = sdf.format(Date(student.birthday))
+            val customJson = try { JSONObject(student.customDataJson) } catch (_: Exception) { JSONObject() }
 
             val guardians = Guardian.listFromJsonString(student.guardiansJson)
             val primaryName = if (guardians.isNotEmpty()) guardians[0].name else "N/A"
@@ -38,7 +38,7 @@ object CsvExportEngine {
             val cleanAddress = student.address.replace(",", " ")
             val cleanGuardian = primaryName.replace(",", " ")
 
-            val coreRow = "${student.lastName},${student.firstName},${student.gender},$bdayStr,$cleanAddress,$cleanGuardian,$primaryContact"
+            val coreRow = "${student.lastName},${student.firstName},${student.gender},$birthdayStr,$cleanAddress,$cleanGuardian,$primaryContact"
 
             // Extract and format all custom attributes generically
             val dynamicRow = if (templates.isNotEmpty()) {
