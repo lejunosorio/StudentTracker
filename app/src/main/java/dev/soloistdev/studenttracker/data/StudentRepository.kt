@@ -64,4 +64,32 @@ class StudentRepository(private val context: Context) {
     suspend fun updateAllSavedFilterOrders(ordersList: List<SavedFilterEntity>) = withContext(Dispatchers.IO) {
         studentDao.updateAllSavedFilterOrders(ordersList)
     }
+
+    suspend fun getAllAttendanceRecords(): List<AttendanceRecordEntity> = withContext(Dispatchers.IO) {
+        studentDao.getAllAttendanceRecords()
+    }
+
+    suspend fun insertAttendanceRecord(record: AttendanceRecordEntity): Long = withContext(Dispatchers.IO) {
+        studentDao.insertAttendanceRecord(record)
+    }
+
+    suspend fun deleteAttendanceRecord(recordId: Int) = withContext(Dispatchers.IO) {
+        studentDao.deleteAttendanceRecord(recordId)
+    }
+
+    suspend fun getLogsForDate(recordId: Int, dateMillis: Long): List<AttendanceLogEntity> = withContext(Dispatchers.IO) {
+        studentDao.getLogsForDate(recordId, dateMillis)
+    }
+
+    suspend fun insertAttendanceLog(log: AttendanceLogEntity) = withContext(Dispatchers.IO) {
+        studentDao.insertAttendanceLog(log)
+    }
+
+    suspend fun updateAttendanceStatus(recordId: Int, dateMillis: Long, studentId: Int, status: String) = withContext(Dispatchers.IO) {
+        studentDao.updateAttendanceStatus(recordId, dateMillis, studentId, status)
+    }
+
+    suspend fun getLogsForRecord(recordId: Int): List<AttendanceLogEntity> = withContext(Dispatchers.IO) {
+        studentDao.getLogsForRecord(recordId)
+    }
 }

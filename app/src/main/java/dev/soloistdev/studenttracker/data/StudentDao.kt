@@ -57,4 +57,26 @@ interface StudentDao {
             updateSavedFilterOrder(filter.id, filter.displayOrder)
         }
     }
+
+    @Query("SELECT * FROM attendance_logs WHERE recordId = :recordId")
+    fun getLogsForRecord(recordId: Int): List<AttendanceLogEntity>
+
+    @Query("SELECT * FROM attendance_records ORDER BY id DESC")
+    fun getAllAttendanceRecords(): List<AttendanceRecordEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertAttendanceRecord(record: AttendanceRecordEntity): Long
+
+    @Query("DELETE FROM attendance_records WHERE id = :recordId")
+    fun deleteAttendanceRecord(recordId: Int)
+
+    @Query("SELECT * FROM attendance_logs WHERE recordId = :recordId AND dateMillis = :dateMillis")
+    fun getLogsForDate(recordId: Int, dateMillis: Long): List<AttendanceLogEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertAttendanceLog(log: AttendanceLogEntity): Long
+
+    @Query("UPDATE attendance_logs SET status = :status WHERE recordId = :recordId AND dateMillis = :dateMillis AND studentId = :studentId")
+    fun updateAttendanceStatus(recordId: Int, dateMillis: Long, studentId: Int, status: String): Int
+
 }

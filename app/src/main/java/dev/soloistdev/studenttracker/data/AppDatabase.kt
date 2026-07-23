@@ -8,10 +8,16 @@ import dev.soloistdev.studenttracker.MemoryHelper
 import dev.soloistdev.studenttracker.security.SecurityHelper
 import net.sqlcipher.database.SupportFactory
 
+// Increment version to 6 and append new attendance entities
 @Database(
-    // MapArchiveEntity removed from entities list
-    entities = [StudentEntity::class, FormTemplateEntity::class, SavedFilterEntity::class],
-    version = 4, // Stepped down from 5 [1]
+    entities = [
+        StudentEntity::class,
+        FormTemplateEntity::class,
+        SavedFilterEntity::class,
+        AttendanceRecordEntity::class,
+        AttendanceLogEntity::class
+    ],
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -32,7 +38,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "student_tracker_secure_db"
                 )
                     .openHelperFactory(factory)
-                    .fallbackToDestructiveMigration(false) // Auto-creates version 5 tables cleanly
+                    .fallbackToDestructiveMigration()
                     .build()
 
                 MemoryHelper.zeroMemory(passphrase)

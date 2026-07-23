@@ -56,6 +56,7 @@ fun ViewAllScreen(
     onOpenSync: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenBiometrics: () -> Unit,
+    onOpenAttendance: () -> Unit,
     viewModel: StudentListViewModel = viewModel()
 ) {
     val students by viewModel.students.collectAsState()
@@ -137,6 +138,20 @@ fun ViewAllScreen(
                             scope.launch {
                                 drawerState.close()
                                 onOpenTemplates()
+                            }
+                        },
+                        colors = drawerItemColors,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                    )
+
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.EventAvailable, contentDescription = null) },
+                        label = { Text("Attendance System") },
+                        selected = false,
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                onOpenAttendance()
                             }
                         },
                         colors = drawerItemColors,

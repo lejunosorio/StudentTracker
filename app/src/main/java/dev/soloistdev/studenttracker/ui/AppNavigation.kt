@@ -72,6 +72,11 @@ fun AppNavigation() {
                     if (navController.currentDestination?.route == "view_all") {
                         navController.navigate("biometrics_privacy")
                     }
+                },
+                onOpenAttendance = {
+                    if (navController.currentDestination?.route == "view_all") {
+                        navController.navigate("attendance")
+                    }
                 }
             )
         }
@@ -144,7 +149,21 @@ fun AppNavigation() {
             )
         }
 
-        // Dedicated Saved Filters Screen replacing Map Screens
+        composable("attendance") {
+            AttendanceScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                },
+                onRedirectToFilters = {
+                    navController.navigate("saved_filters") {
+                        popUpTo("attendance") { inclusive = true }
+                    }
+                }
+            )
+        }
+
         composable("saved_filters") {
             SavedFiltersScreen(
                 onBack = {
