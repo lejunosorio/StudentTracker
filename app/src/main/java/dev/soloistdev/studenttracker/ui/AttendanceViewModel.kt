@@ -19,6 +19,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.zip.ZipEntry // Required native ZIP streams for OpenXML (.xlsx) packaging [2]
+import java.util.zip.ZipOutputStream
 
 class AttendanceViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = StudentRepository(application)
@@ -236,6 +238,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    // NEW: Native, un-corrupted binary OpenXML (.xlsx) file generator [2]
     fun exportOverallReportToCsv(context: Context, record: AttendanceRecordEntity) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -253,34 +256,70 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 }
 
                 val dates = generateDateList(record.startDate, record.endDate)
+                val totalDays = dates.size
                 val sdfDate = SimpleDateFormat("MMM-dd", Locale.US)
                 val sdfRange = SimpleDateFormat("MMMM dd", Locale.US)
                 val rangeStr = "${sdfRange.format(Date(record.startDate))} - ${sdfRange.format(Date(record.endDate))}"
 
-                val csvContent = StringBuilder()
+                val sheetData = StringBuilder()
+                val colSpanTotal = totalDays + 7
+                val lastColLetter = getColLetter(colSpanTotal - 1)
 
-                csvContent.append("Attendance Record Name,${record.name}\n")
-                csvContent.append("Date Range,$rangeStr\n")
+                // Row 1: Title Row
+                sheetData.append("<row r=\"1\" ht=\"32\" customHeight=\"1\">")
+                sheetData.append(writeStringCell("A1", "ATTENDANCE OVERALL REPORT", 1))
+                sheetData.append("</row>")
 
-                val totalDays = dates.size
-                csvContent.append("Total Days,$totalDays")
-                val paddingCount = totalDays + 1
-                for (i in 0 until paddingCount) {
-                    csvContent.append(",")
+                // Row 2: Metadata Record Name
+                sheetData.append("<row r=\"2\" ht=\"20\" customHeight=\"1\">")
+                sheetData.append(writeStringCell("A2", "Attendance Record Name", 8))
+                sheetData.append(writeStringCell("B2", record.name, 0))
+                sheetData.append("</row>")
+
+                // Row 3: Metadata Date Range
+                sheetData.append("<row r=\"3\" ht=\"20\" customHeight=\"1\">")
+                sheetData.append(writeStringCell("A3", "Date Range", 8))
+                sheetData.append(writeStringCell("B3", rangeStr, 0))
+                sheetData.append("</row>")
+
+                // Row 4: Metadata Total Days
+                sheetData.append("<row r=\"4\" ht=\"20\" customHeight=\"1\">")
+                sheetData.append(writeStringCell("A4", "Total Days", 8))
+                sheetData.append(writeNumberCell("B4", totalDays, 0)) // Style 0 is now left-aligned [2]
+
+                val countsHeaderColRef = getCellRef(totalDays + 2, 3)
+                sheetData.append(writeStringCell(countsHeaderColRef, "Count Per Student", 8))
+                sheetData.append("</row>")
+
+                // Row 5: Empty separator row
+                sheetData.append("<row r=\"5\" ht=\"12\" customHeight=\"1\"></row>")
+
+                // Row 6: Table Column Headers
+                sheetData.append("<row r=\"6\" ht=\"24\" customHeight=\"1\">")
+                sheetData.append(writeStringCell("A6", "Name", 8)) // Left-aligned header
+                dates.forEachIndexed { idx, date ->
+                    val ref = getCellRef(idx + 1, 5)
+                    sheetData.append(writeStringCell(ref, sdfDate.format(Date(date)), 2))
                 }
-                csvContent.append("Count Per Student\n")
+                val spacerColRef = getCellRef(totalDays + 1, 5)
+                sheetData.append("<c r=\"$spacerColRef\" s=\"0\"/>") // Spacer column
 
-                csvContent.append("\n")
+                sheetData.append(writeStringCell(getCellRef(totalDays + 2, 5), "P", 2))
+                sheetData.append(writeStringCell(getCellRef(totalDays + 3, 5), "A", 2))
+                sheetData.append(writeStringCell(getCellRef(totalDays + 4, 5), "E", 2))
+                sheetData.append(writeStringCell(getCellRef(totalDays + 5, 5), "R", 2))
+                sheetData.append(writeStringCell(getCellRef(totalDays + 6, 5), "Unmarked", 2))
+                sheetData.append("</row>")
 
-                csvContent.append("Name")
-                dates.forEach { date ->
-                    csvContent.append(",${sdfDate.format(Date(date))}")
-                }
-                csvContent.append(",,P,A,E,R,Unmarked\n")
+                // Rows 7+: Student Rows (Zebra striped with color-coded status cells)
+                roster.forEachIndexed { sIdx, student ->
+                    val rowNum = sIdx + 7
+                    val zebraStyleId = if (sIdx % 2 == 0) 9 else 0
 
-                roster.forEach { student ->
+                    sheetData.append("<row r=\"$rowNum\" ht=\"20\" customHeight=\"1\">")
+
                     val cleanName = "${student.lastName} ${student.firstName}".replace(",", " ")
-                    csvContent.append(cleanName)
+                    sheetData.append(writeStringCell("A$rowNum", cleanName, zebraStyleId))
 
                     var pCount = 0
                     var aCount = 0
@@ -288,76 +327,227 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                     var rCount = 0
                     var uCount = 0
 
-                    dates.forEach { date ->
+                    dates.forEachIndexed { dIdx, date ->
                         val log = logs.find { it.studentId == student.id && it.dateMillis == date }
-                        val mark = when (log?.status) {
-                            "PRESENT" -> { pCount++; "P" }
-                            "ABSENT" -> { aCount++; "A" }
-                            "EXCUSED" -> { eCount++; "E" }
-                            "REMOVED" -> { rCount++; "R" }
-                            else -> { uCount++; "" }
+                        val ref = getCellRef(dIdx + 1, rowNum - 1)
+                        val (mark, cellStyleId) = when (log?.status) {
+                            "PRESENT" -> { pCount++; Pair("P", 3) }
+                            "ABSENT" -> { aCount++; "A" to 4 }
+                            "EXCUSED" -> { eCount++; "E" to 5 }
+                            "REMOVED" -> { rCount++; "R" to 6 }
+                            else -> { uCount++; "" to 7 }
                         }
-                        csvContent.append(",$mark")
+                        sheetData.append(writeStringCell(ref, mark, cellStyleId))
                     }
-                    csvContent.append(",,$pCount,$aCount,$eCount,$rCount,$uCount\n")
+
+                    val spacerCellRef = getCellRef(totalDays + 1, rowNum - 1)
+                    sheetData.append("<c r=\"$spacerCellRef\" s=\"0\"/>") // Spacer
+
+                    sheetData.append(writeNumberCell(getCellRef(totalDays + 2, rowNum - 1), pCount, 3))
+                    sheetData.append(writeNumberCell(getCellRef(totalDays + 3, rowNum - 1), aCount, 4))
+                    sheetData.append(writeNumberCell(getCellRef(totalDays + 4, rowNum - 1), eCount, 5))
+                    sheetData.append(writeNumberCell(getCellRef(totalDays + 5, rowNum - 1), rCount, 6))
+                    sheetData.append(writeNumberCell(getCellRef(totalDays + 6, rowNum - 1), uCount, 7))
+                    sheetData.append("</row>")
                 }
 
-                csvContent.append("\n")
+                // Row Sum Day Header
+                val sumHeaderRowNum = roster.size + 8
+                sheetData.append("<row r=\"$sumHeaderRowNum\" ht=\"22\" customHeight=\"1\">")
+                sheetData.append(writeStringCell("A$sumHeaderRowNum", "Sum per Day", 8))
+                sheetData.append("</row>")
 
-                csvContent.append("Sum per Day\n")
-
-                csvContent.append("Total P")
-                dates.forEach { date ->
+                // Row Total P
+                val totalPRowNum = roster.size + 9
+                sheetData.append("<row r=\"$totalPRowNum\" ht=\"20\" customHeight=\"1\">")
+                sheetData.append(writeStringCell("A$totalPRowNum", "Total P", 8))
+                dates.forEachIndexed { dIdx, date ->
                     val dayP = logs.count { it.dateMillis == date && it.status == "PRESENT" && roster.any { r -> r.id == it.studentId } }
-                    csvContent.append(",$dayP")
+                    sheetData.append(writeNumberCell(getCellRef(dIdx + 1, totalPRowNum - 1), dayP, 3))
                 }
-                csvContent.append("\n")
+                sheetData.append("</row>")
 
-                csvContent.append("Total A")
-                dates.forEach { date ->
+                // Row Total A
+                val totalARowNum = roster.size + 10
+                sheetData.append("<row r=\"$totalARowNum\" ht=\"20\" customHeight=\"1\">")
+                sheetData.append(writeStringCell("A$totalARowNum", "Total A", 8))
+                dates.forEachIndexed { dIdx, date ->
                     val dayA = logs.count { it.dateMillis == date && it.status == "ABSENT" && roster.any { r -> r.id == it.studentId } }
-                    csvContent.append(",$dayA")
+                    sheetData.append(writeNumberCell(getCellRef(dIdx + 1, totalARowNum - 1), dayA, 4))
                 }
-                csvContent.append("\n")
+                sheetData.append("</row>")
 
-                csvContent.append("Total E")
-                dates.forEach { date ->
+                // Row Total E
+                val totalERowNum = roster.size + 11
+                sheetData.append("<row r=\"$totalERowNum\" ht=\"20\" customHeight=\"1\">")
+                sheetData.append(writeStringCell("A$totalERowNum", "Total E", 8))
+                dates.forEachIndexed { dIdx, date ->
                     val dayE = logs.count { it.dateMillis == date && it.status == "EXCUSED" && roster.any { r -> r.id == it.studentId } }
-                    csvContent.append(",$dayE")
+                    sheetData.append(writeNumberCell(getCellRef(dIdx + 1, totalERowNum - 1), dayE, 5))
                 }
-                csvContent.append("\n")
+                sheetData.append("</row>")
 
-                csvContent.append("Total R")
-                dates.forEach { date ->
+                // Row Total R
+                val totalRRowNum = roster.size + 12
+                sheetData.append("<row r=\"$totalRRowNum\" ht=\"20\" customHeight=\"1\">")
+                sheetData.append(writeStringCell("A$totalRRowNum", "Total R", 8))
+                dates.forEachIndexed { dIdx, date ->
                     val dayR = logs.count { it.dateMillis == date && it.status == "REMOVED" && roster.any { r -> r.id == it.studentId } }
-                    csvContent.append(",$dayR")
+                    sheetData.append(writeNumberCell(getCellRef(dIdx + 1, totalRRowNum - 1), dayR, 6))
                 }
-                csvContent.append("\n")
+                sheetData.append("</row>")
 
-                csvContent.append("Total Unmarked")
-                dates.forEach { date ->
+                // Row Total Unmarked
+                val totalURowNum = roster.size + 13
+                sheetData.append("<row r=\"$totalURowNum\" ht=\"20\" customHeight=\"1\">")
+                sheetData.append(writeStringCell("A$totalURowNum", "Total Unmarked", 8))
+                dates.forEachIndexed { dIdx, date ->
                     val dayU = logs.count { it.dateMillis == date && it.status == "NOT_SET" && roster.any { r -> r.id == it.studentId } }
-                    csvContent.append(",$dayU")
+                    sheetData.append(writeNumberCell(getCellRef(dIdx + 1, totalURowNum - 1), dayU, 7))
                 }
-                csvContent.append("\n")
+                sheetData.append("</row>")
 
+                // Compile Zip files securely into private cache
                 val cacheDir = File(context.cacheDir, "attendance_exports").apply { mkdirs() }
-                val csvFile = File(cacheDir, "Overall_Report_${record.name.replace(" ", "_")}.csv")
-                if (csvFile.exists()) csvFile.delete()
+                val excelFile = File(cacheDir, "Overall_Report_${record.name.replace(" ", "_")}.xlsx")
+                if (excelFile.exists()) excelFile.delete()
 
-                FileOutputStream(csvFile).use { fos ->
-                    fos.write(csvContent.toString().toByteArray(Charsets.UTF_8))
-                    fos.flush()
+                FileOutputStream(excelFile).use { fos ->
+                    ZipOutputStream(fos).use { zos ->
+
+                        // [1] _rels/.rels
+                        zos.putNextEntry(ZipEntry("_rels/.rels"))
+                        zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>""".toByteArray(Charsets.UTF_8))
+                        zos.closeEntry()
+
+                        // [2] [Content_Types].xml
+                        zos.putNextEntry(ZipEntry("[Content_Types].xml"))
+                        zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>""".toByteArray(Charsets.UTF_8))
+                        zos.closeEntry()
+
+                        // [3] xl/workbook.xml
+                        zos.putNextEntry(ZipEntry("xl/workbook.xml"))
+                        zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Overall Attendance" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>""".toByteArray(Charsets.UTF_8))
+                        zos.closeEntry()
+
+                        // [4] xl/_rels/workbook.xml.rels
+                        zos.putNextEntry(ZipEntry("xl/_rels/workbook.xml.rels"))
+                        zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>""".toByteArray(Charsets.UTF_8))
+                        zos.closeEntry()
+
+                        // [5] xl/styles.xml
+                        zos.putNextEntry(ZipEntry("xl/styles.xml"))
+                        zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="3">
+    <font><sz val="11"/><name val="Segoe UI"/><family val="2"/></font>
+    <font><bold/><sz val="11"/><name val="Segoe UI"/><family val="2"/></font>
+    <font><bold/><sz val="14"/><name val="Segoe UI"/><family val="2"/></font>
+  </fonts>
+  <fills count="10">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF1B5E20"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF2E7D32"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFE8F5E9"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFFEBEE"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFFF3E0"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF5F5F5"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFFFDE7"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFCFD8DC"/></patternFill></fill>
+  </fills>
+  <borders count="2">
+    <border><left/><right/><top/><bottom/></border>
+    <border>
+      <left style="thin"><color rgb="FFCBD5E1"/></left>
+      <right style="thin"><color rgb="FFCBD5E1"/></right>
+      <top style="thin"><color rgb="FFCBD5E1"/></top>
+      <bottom style="thin"><color rgb="FFCBD5E1"/></bottom>
+    </border>
+  </borders>
+  <cellStyleXfs count="1">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+  </cellStyleXfs>
+  <cellXfs count="10">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf> <!-- 0: Normal (Aligned Left) [2] -->
+    <xf numFmtId="0" fontId="2" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf> <!-- 1: Header Main -->
+    <xf numFmtId="0" fontId="1" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf> <!-- 2: Header Table -->
+    <xf numFmtId="0" fontId="1" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf> <!-- 3: Present -->
+    <xf numFmtId="0" fontId="1" fillId="5" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf> <!-- 4: Absent -->
+    <xf numFmtId="0" fontId="1" fillId="6" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf> <!-- 5: Excused -->
+    <xf numFmtId="0" fontId="1" fillId="7" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf> <!-- 6: Removed -->
+    <xf numFmtId="0" fontId="0" fillId="8" borderId="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf> <!-- 7: Unmarked -->
+    <xf numFmtId="0" fontId="1" fillId="9" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf> <!-- 8: Sum Header (Aligned Left) [2] -->
+    <xf numFmtId="0" fontId="0" fillId="7" borderId="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf> <!-- 9: Zebra Even (Aligned Left) [2] -->
+  </cellXfs>
+</styleSheet>""".toByteArray(Charsets.UTF_8))
+                        zos.closeEntry()
+
+                        // [6] xl/worksheets/sheet1.xml
+                        zos.putNextEntry(ZipEntry("xl/worksheets/sheet1.xml"))
+                        val sheetXml = StringBuilder()
+                        sheetXml.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheetViews>
+    <sheetView tabSelected="1" workbookViewId="0">
+      <showGridLines val="1"/>
+    </sheetView>
+  </sheetViews>
+  <cols>
+    <col min="1" max="1" width="22" customWidth="1"/>
+""")
+                        for (c in 1..totalDays) {
+                            sheetXml.append("    <col min=\"${c + 1}\" max=\"${c + 1}\" width=\"9\" customWidth=\"1\"/>\n")
+                        }
+                        sheetXml.append("    <col min=\"${totalDays + 2}\" max=\"${totalDays + 2}\" width=\"3\" customWidth=\"1\"/>\n")
+                        for (c in 1..5) {
+                            sheetXml.append("    <col min=\"${totalDays + 2 + c}\" max=\"${totalDays + 2 + c}\" width=\"9\" customWidth=\"1\"/>\n")
+                        }
+                        sheetXml.append("  </cols>\n  <sheetData>\n")
+                        sheetXml.append(sheetData.toString())
+                        sheetXml.append("  </sheetData>\n")
+
+                        sheetXml.append("  <mergeCells count=\"5\">\n")
+                        sheetXml.append("    <mergeCell ref=\"A1:${lastColLetter}1\"/>\n")
+                        sheetXml.append("    <mergeCell ref=\"B2:${lastColLetter}2\"/>\n")
+                        sheetXml.append("    <mergeCell ref=\"B3:${lastColLetter}3\"/>\n")
+                        sheetXml.append("    <mergeCell ref=\"B4:${getColLetter(totalDays)}4\"/>\n")
+                        sheetXml.append("    <mergeCell ref=\"${getColLetter(totalDays + 2)}4:${getColLetter(totalDays + 6)}4\"/>\n")
+                        sheetXml.append("  </mergeCells>\n")
+                        sheetXml.append("</worksheet>")
+
+                        zos.write(sheetXml.toString().toByteArray(Charsets.UTF_8))
+                        zos.closeEntry()
+                    }
                 }
 
                 val fileUri = FileProvider.getUriForFile(
                     context,
                     "${context.packageName}.fileprovider",
-                    csvFile
+                    excelFile
                 )
 
                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/csv"
+                    type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     putExtra(Intent.EXTRA_STREAM, fileUri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
@@ -369,6 +559,29 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 e.printStackTrace()
             }
         }
+    }
+
+    private fun getColLetter(col: Int): String {
+        val colName = StringBuilder()
+        var tempCol = col
+        while (tempCol >= 0) {
+            colName.insert(0, ('A' + (tempCol % 26)))
+            tempCol = (tempCol / 26) - 1
+        }
+        return colName.toString()
+    }
+
+    private fun getCellRef(col: Int, row: Int): String {
+        return "${getColLetter(col)}${row + 1}"
+    }
+
+    private fun writeStringCell(ref: String, value: String, styleId: Int): String {
+        val cleanValue = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        return "<c r=\"$ref\" t=\"inlineStr\" s=\"$styleId\"><is><t>$cleanValue</t></is></c>"
+    }
+
+    private fun writeNumberCell(ref: String, value: Int, styleId: Int): String {
+        return "<c r=\"$ref\" t=\"n\" s=\"$styleId\"><v>$value</v></c>"
     }
 
     fun generateDateList(startDate: Long, endDate: Long): List<Long> {
