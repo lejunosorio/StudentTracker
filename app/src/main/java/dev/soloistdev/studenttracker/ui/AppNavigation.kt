@@ -20,6 +20,7 @@ fun AppNavigation() {
 
     NavHost(navController = navController, startDestination = "security_gate") {
 
+        // 1. Security Gate / Unlock (Onboarding setup or Verify PIN)
         composable("security_gate") {
             SecurityGateScreen(
                 onUnlockSuccess = {
@@ -30,6 +31,7 @@ fun AppNavigation() {
             )
         }
 
+        // 2. View All Student Directory
         composable("view_all") {
             ViewAllScreen(
                 onAddStudent = { id ->
@@ -47,7 +49,6 @@ fun AppNavigation() {
                         navController.navigate("templates")
                     }
                 },
-                // Replaces Maps with Saved Filters
                 onOpenMap = {
                     if (navController.currentDestination?.route == "view_all") {
                         navController.navigate("saved_filters")
@@ -77,10 +78,16 @@ fun AppNavigation() {
                     if (navController.currentDestination?.route == "view_all") {
                         navController.navigate("attendance")
                     }
+                },
+                onOpenAttendanceWithArgs = { recordId, dateMillis ->
+                    if (navController.currentDestination?.route == "view_all") {
+                        navController.navigate("attendance?recordId=$recordId&dateMillis=$dateMillis")
+                    }
                 }
             )
         }
 
+        // 3. Student Profile Screen (Read-Only)
         composable(
             route = "profile/{studentId}",
             arguments = listOf(navArgument("studentId") { type = NavType.IntType })
@@ -114,6 +121,7 @@ fun AppNavigation() {
             )
         }
 
+        // 4. Add / Edit Student Form Screen
         composable(
             route = "add_edit/{studentId}",
             arguments = listOf(navArgument("studentId") { type = NavType.IntType })
@@ -129,6 +137,7 @@ fun AppNavigation() {
             )
         }
 
+        // 5. Template Manager Screen
         composable("templates") {
             TemplateManagerScreen(
                 onBack = {
@@ -139,6 +148,7 @@ fun AppNavigation() {
             )
         }
 
+        // 7. Recycle Bin (Soft Deleted) Screen
         composable("recycle_bin") {
             RecycleBinScreen(
                 onBack = {
@@ -149,8 +159,55 @@ fun AppNavigation() {
             )
         }
 
-        composable("attendance") {
+        // 8. Saved Filters Screen
+        composable("saved_filters") {
+            SavedFiltersScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                },
+                onStudentClick = { id ->
+                    navController.navigate("profile/$id")
+                }
+            )
+        }
+
+        // 9. Biometrics & Privacy Screen
+        composable("biometrics_privacy") {
+            BiometricsPrivacyScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
+            )
+        }
+
+        // 10. Backup & Sync Screen
+        composable("sync") {
+            SyncScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
+            )
+        }
+
+        // 11. Attendance System Screen (Supporting optional deep-link redirection parameters)
+        composable(
+            route = "attendance?recordId={recordId}&dateMillis={dateMillis}",
+            arguments = listOf(
+                navArgument("recordId") { type = NavType.IntType; defaultValue = -1 },
+                navArgument("dateMillis") { type = NavType.LongType; defaultValue = -1L }
+            )
+        ) { backStackEntry ->
+            val recordId = backStackEntry.arguments?.getInt("recordId") ?: -1
+            val dateMillis = backStackEntry.arguments?.getLong("dateMillis") ?: -1L
             AttendanceScreen(
+                initialRecordId = recordId,
+                initialDateMillis = dateMillis,
                 onBack = {
                     if (navController.previousBackStackEntry != null) {
                         navController.popBackStack()
@@ -164,39 +221,7 @@ fun AppNavigation() {
             )
         }
 
-        composable("saved_filters") {
-            SavedFiltersScreen(
-                onBack = {
-                    if (navController.previousBackStackEntry != null) {
-                        navController.popBackStack()
-                    }
-                },
-                onStudentClick = { id -> // Enables seamless profile navigation
-                    navController.navigate("profile/$id")
-                }
-            )
-        }
-
-        composable("biometrics_privacy") {
-            BiometricsPrivacyScreen(
-                onBack = {
-                    if (navController.previousBackStackEntry != null) {
-                        navController.popBackStack()
-                    }
-                }
-            )
-        }
-
-        composable("sync") {
-            SyncScreen(
-                onBack = {
-                    if (navController.previousBackStackEntry != null) {
-                        navController.popBackStack()
-                    }
-                }
-            )
-        }
-
+        // 12. App Settings Screen
         composable("app_settings") {
             AppSettingsScreen(
                 onBack = {

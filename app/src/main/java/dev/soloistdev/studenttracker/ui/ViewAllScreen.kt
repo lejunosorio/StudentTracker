@@ -1,6 +1,7 @@
 package dev.soloistdev.studenttracker.ui
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -12,10 +13,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Sort // AutoMirrored Sort Import
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.mutableLongStateOf // Added mutableLongStateOf import [2]
+import androidx.compose.material.icons.filled.CalendarToday // Added calendar icon import [2]
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,8 +47,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 
 import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.ui.zIndex
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ViewAllScreen(
     onAddStudent: (Int) -> Unit,
@@ -57,6 +61,7 @@ fun ViewAllScreen(
     onOpenSettings: () -> Unit,
     onOpenBiometrics: () -> Unit,
     onOpenAttendance: () -> Unit,
+    onOpenAttendanceWithArgs: (Int, Long) -> Unit,
     viewModel: StudentListViewModel = viewModel()
 ) {
     val students by viewModel.students.collectAsState()
@@ -76,6 +81,18 @@ fun ViewAllScreen(
     var showFilterSheet by remember { mutableStateOf(false) }
     var showSortSheet by remember { mutableStateOf(false) }
     var showBulkDeleteConfirmDialog by remember { mutableStateOf(false) }
+
+    // Dialog controllers with dual date-range state tracking [1, 2]
+    var showCreateAttendanceDialog by remember { mutableStateOf(false) }
+    var attendanceRecordName by remember { mutableStateOf("") }
+
+    var startDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) } // Start Date [1, 2]
+    var endDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) } // End Date [1, 2]
+
+    var showStartPicker by remember { mutableStateOf(false) } // Start picker state [1, 2]
+    var showEndPicker by remember { mutableStateOf(false) } // End picker state [1, 2]
+
+    val isDateRangeInvalid = startDateMillis > endDateMillis // Range validator [1, 2]
 
     val coreFields = listOf("First Name", "Last Name", "Gender", "Birthday", "Address", "Age", "Guardian Name", "Guardian Contact")
 
@@ -151,7 +168,7 @@ fun ViewAllScreen(
                         onClick = {
                             scope.launch {
                                 drawerState.close()
-                                onOpenAttendance()
+                                onOpenAttendance() // Navigates to the Attendance screen
                             }
                         },
                         colors = drawerItemColors,
@@ -238,7 +255,6 @@ fun ViewAllScreen(
         Scaffold(
             topBar = {
                 if (isSelectionMode) {
-                    // DYNAMIC SELECTION TOP BAR (M3 Spec)
                     TopAppBar(
                         title = { Text("Selected: ${selectedStudentIds.size}", fontWeight = FontWeight.Bold) },
                         navigationIcon = {
@@ -247,6 +263,13 @@ fun ViewAllScreen(
                             }
                         },
                         actions = {
+                            IconButton(onClick = { showCreateAttendanceDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.EventAvailable,
+                                    contentDescription = "Create Attendance Record",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
                             IconButton(onClick = { showBulkDeleteConfirmDialog = true }) {
                                 Icon(
                                     imageVector = Icons.Default.Delete,
@@ -260,7 +283,6 @@ fun ViewAllScreen(
                         )
                     )
                 } else {
-                    // STANDARD BROWSE MODE TOP BAR
                     CenterAlignedTopAppBar(
                         title = { Text("Choir Directory", fontWeight = FontWeight.Bold) },
                         navigationIcon = {
@@ -277,7 +299,6 @@ fun ViewAllScreen(
                 }
             },
             floatingActionButton = {
-                // Hide floating action button during selection mode to prevent layout distractions
                 if (!isSelectionMode) {
                     FloatingActionButton(
                         onClick = { onAddStudent(-1) },
@@ -301,7 +322,7 @@ fun ViewAllScreen(
                         icon = { Icon(Icons.Default.Bookmarks, contentDescription = "Filters") },
                         label = { Text("Filters") },
                         selected = false,
-                        onClick = onOpenMap // Routes dynamically to Saved Filters
+                        onClick = onOpenMap
                     )
                     NavigationBarItem(
                         icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
@@ -369,7 +390,6 @@ fun ViewAllScreen(
                         ),
                         modifier = Modifier.size(48.dp)
                     ) {
-                        // CORRECTED: Restored with new stable AutoMirrored.Filled.Sort icon [2.1]
                         Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
                     }
                 }
@@ -407,7 +427,7 @@ fun ViewAllScreen(
                             pinnedFilter.value2.toLongOrNull()?.let { sdfLabel.format(Date(it)) } ?: pinnedFilter.value2
                         } else pinnedFilter.value2
 
-                        val labelText = if (pinnedFilter.comparison == "in range") {
+                        val labelText = if (pinnedFilter.comparison == "In between") {
                             "${pinnedFilter.field.replace("_", " ")}: $formattedVal1 - $formattedVal2"
                         } else {
                             "${pinnedFilter.field.replace("_", " ")} ${pinnedFilter.comparison} $formattedVal1"
@@ -435,7 +455,6 @@ fun ViewAllScreen(
                     }
                 }
 
-                // SPRINT 9 HIGH-POLISH EMPTY STATE (Guarantees zero-record visual elegance)
                 if (students.isEmpty() && searchQuery.isEmpty() && activeFilter == null) {
                     Box(
                         modifier = Modifier
@@ -454,14 +473,13 @@ fun ViewAllScreen(
                         )
                     }
                 } else {
-                    // Student List
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 80.dp)
                     ) {
                         items(
                             items = students,
-                            key = { it.id } // Set keys so state transitions render smoothly during deletions
+                            key = { it.id }
                         ) { student ->
                             val currentOnStudentClick = rememberUpdatedState(onStudentClick)
                             val currentOnAddStudent = rememberUpdatedState(onAddStudent)
@@ -469,7 +487,6 @@ fun ViewAllScreen(
 
                             var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
-                            // CORRECTED: Suppressed deprecation warning on confirmValueChange [2.1]
                             @Suppress("DEPRECATION")
                             val dismissState = rememberSwipeToDismissBoxState(
                                 confirmValueChange = { dismissValue ->
@@ -489,7 +506,7 @@ fun ViewAllScreen(
 
                             SwipeToDismissBox(
                                 state = dismissState,
-                                modifier = Modifier.animateItem(),
+                                modifier = Modifier.animateItem().zIndex(if (isStudentSelected) 10f else 0f),
                                 enableDismissFromStartToEnd = !isSelectionMode,
                                 enableDismissFromEndToStart = !isSelectionMode,
                                 backgroundContent = {
@@ -548,7 +565,6 @@ fun ViewAllScreen(
                                 }
                             )
 
-                            // Defensive confirmation dialog before performing soft deletion
                             if (showDeleteConfirmDialog) {
                                 AlertDialog(
                                     onDismissRequest = { showDeleteConfirmDialog = false },
@@ -632,7 +648,6 @@ fun ViewAllScreen(
             val val1Num = tempVal1.toDoubleOrNull()
             val val2Num = tempVal2.toDoubleOrNull()
 
-            // Check for future years inside text inputs
             val currentSystemYear = Calendar.getInstance().get(Calendar.YEAR)
             val isFutureYear1 = tempComparison == "birth_year" && (tempVal1.toIntOrNull() ?: 0) > currentSystemYear
             val isFutureYear2 = tempComparison == "birth_month_year" && (tempVal2.toIntOrNull() ?: 0) > currentSystemYear
@@ -675,7 +690,6 @@ fun ViewAllScreen(
                             readOnly = true,
                             label = { Text("Select Field") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = fieldExpanded) },
-                            // CORRECTED: Modern menuAnchor overload taking ExposedDropdownMenuAnchorType [1]
                             modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                         )
                         ExposedDropdownMenu(
@@ -703,7 +717,6 @@ fun ViewAllScreen(
                         }
                     }
 
-                    // Render operators selection only for non-Gender and non-Birthday fields
                     if (!isGenderMode && !isBirthdayMode) {
                         var compExpanded by remember { mutableStateOf(false) }
                         ExposedDropdownMenuBox(
@@ -716,7 +729,6 @@ fun ViewAllScreen(
                                 readOnly = true,
                                 label = { Text("Select Comparison") },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = compExpanded) },
-                                // CORRECTED: Modern menuAnchor overload taking ExposedDropdownMenuAnchorType [1]
                                 modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                             )
                             ExposedDropdownMenu(
@@ -742,7 +754,6 @@ fun ViewAllScreen(
                         }
                     }
 
-                    // specialized Birthday layout selector
                     if (isBirthdayMode) {
                         var typeExpanded by remember { mutableStateOf(false) }
                         val birthdayTypes = listOf(
@@ -763,7 +774,6 @@ fun ViewAllScreen(
                                 readOnly = true,
                                 label = { Text("Select Birthday Filter Type") },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeExpanded) },
-                                // CORRECTED: Modern menuAnchor overload taking ExposedDropdownMenuAnchorType [1]
                                 modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                             )
                             ExposedDropdownMenu(
@@ -815,7 +825,6 @@ fun ViewAllScreen(
                                         readOnly = true,
                                         label = { Text("Select Birth Month *") },
                                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = monthExpanded) },
-                                        // CORRECTED: Modern menuAnchor overload taking ExposedDropdownMenuAnchorType [1]
                                         modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                                     )
                                     ExposedDropdownMenu(
@@ -854,7 +863,6 @@ fun ViewAllScreen(
                                                 readOnly = true,
                                                 label = { Text("Month *") },
                                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = monthExpanded) },
-                                                // CORRECTED: Modern menuAnchor overload taking ExposedDropdownMenuAnchorType [1]
                                                 modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                                             )
                                             ExposedDropdownMenu(
@@ -927,7 +935,6 @@ fun ViewAllScreen(
                             )
                         }
                     } else {
-                        // Standard input fields logic
                         if (isRangeMode) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1046,7 +1053,6 @@ fun ViewAllScreen(
             }
         }
 
-        // ================= SPRINT 9 SORT SHEET (Screen 13) =================
         if (showSortSheet) {
             ModalBottomSheet(
                 onDismissRequest = { showSortSheet = false },
@@ -1088,6 +1094,157 @@ fun ViewAllScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }
+        }
+
+        // NEW: M3 Naming & Date Range Dialog for Manual Attendance Records [1]
+        if (showCreateAttendanceDialog) {
+            val m3TextFieldColors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                focusedLabelColor = MaterialTheme.colorScheme.primary,
+                unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            AlertDialog(
+                onDismissRequest = {
+                    showCreateAttendanceDialog = false
+                    attendanceRecordName = ""
+                    startDateMillis = System.currentTimeMillis()
+                    endDateMillis = System.currentTimeMillis()
+                },
+                title = { Text("New Attendance Record", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = attendanceRecordName,
+                            onValueChange = { attendanceRecordName = it },
+                            label = { Text("Record Name *") },
+                            colors = m3TextFieldColors,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Text("Select Date Range *", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+
+                        val sdf = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
+
+                        // Clickable Start Date Button with standard M3 DatePickerDialog calendar grid [1]
+                        OutlinedButton(
+                            onClick = { showStartPicker = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            border = if (isDateRangeInvalid) BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) else ButtonDefaults.outlinedButtonBorder
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Start: ${sdf.format(Date(startDateMillis))}", color = MaterialTheme.colorScheme.onSurface)
+                                Icon(Icons.Default.CalendarToday, contentDescription = "Select Start Date", tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                            }
+                        }
+
+                        // Clickable End Date Button with standard M3 DatePickerDialog calendar grid [1]
+                        OutlinedButton(
+                            onClick = { showEndPicker = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            border = if (isDateRangeInvalid) BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) else ButtonDefaults.outlinedButtonBorder
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("End: ${sdf.format(Date(endDateMillis))}", color = MaterialTheme.colorScheme.onSurface)
+                                Icon(Icons.Default.CalendarToday, contentDescription = "Select End Date", tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                            }
+                        }
+
+                        if (isDateRangeInvalid) {
+                            Text(
+                                text = "Start date must be less than or equal to End date",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(start = 4.dp, top = 2.dp)
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (attendanceRecordName.isNotBlank() && !isDateRangeInvalid) {
+                                viewModel.createManualAttendanceRecord(
+                                    name = attendanceRecordName,
+                                    selectedIds = selectedStudentIds.toList(),
+                                    startDateMillis = startDateMillis,
+                                    endDateMillis = endDateMillis
+                                ) { recordId, normalizedStartMillis ->
+                                    showCreateAttendanceDialog = false
+                                    attendanceRecordName = ""
+                                    startDateMillis = System.currentTimeMillis()
+                                    endDateMillis = System.currentTimeMillis()
+                                    onOpenAttendanceWithArgs(recordId, normalizedStartMillis)
+                                }
+                            }
+                        },
+                        enabled = attendanceRecordName.isNotBlank() && !isDateRangeInvalid,
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text("Create")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showCreateAttendanceDialog = false
+                            attendanceRecordName = ""
+                            startDateMillis = System.currentTimeMillis()
+                            endDateMillis = System.currentTimeMillis()
+                        }
+                    ) {
+                        Text("Cancel")
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
+        }
+
+        // CORRECTED: Restored with standard M3 DatePickerDialog calendar grid (Wheel picker removed) [1]
+        if (showStartPicker) {
+            val pickerState = rememberDatePickerState(
+                initialSelectedDateMillis = startDateMillis
+            )
+            DatePickerDialog(
+                onDismissRequest = { showStartPicker = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        pickerState.selectedDateMillis?.let { startDateMillis = it }
+                        showStartPicker = false
+                    }) { Text("OK") }
+                }
+            ) { DatePicker(state = pickerState, showModeToggle = false) }
+        }
+
+        // CORRECTED: Restored with standard M3 DatePickerDialog calendar grid (Wheel picker removed) [1]
+        if (showEndPicker) {
+            val pickerState = rememberDatePickerState(
+                initialSelectedDateMillis = endDateMillis
+            )
+            DatePickerDialog(
+                onDismissRequest = { showEndPicker = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        pickerState.selectedDateMillis?.let { endDateMillis = it }
+                        showEndPicker = false
+                    }) { Text("OK") }
+                }
+            ) { DatePicker(state = pickerState, showModeToggle = false) }
         }
     }
 }

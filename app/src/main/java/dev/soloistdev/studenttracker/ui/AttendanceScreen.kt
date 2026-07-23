@@ -1,17 +1,12 @@
-@file:Suppress("DEPRECATION")
-
 package dev.soloistdev.studenttracker.ui
 
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
@@ -25,15 +20,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import dev.soloistdev.studenttracker.data.AttendanceLogEntity
 import dev.soloistdev.studenttracker.data.AttendanceRecordEntity
 import dev.soloistdev.studenttracker.data.SavedFilterEntity
-import dev.soloistdev.studenttracker.data.StudentEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -42,23 +36,42 @@ import java.util.*
 fun AttendanceScreen(
     onBack: () -> Unit,
     onRedirectToFilters: () -> Unit,
+    initialRecordId: Int = -1,
+    initialDateMillis: Long = -1L,
     viewModel: AttendanceViewModel = viewModel()
 ) {
     val records by viewModel.records.collectAsState()
     val savedFilters by viewModel.savedFilters.collectAsState()
     val context = LocalContext.current
 
-    // Lifecycle trigger to force dynamic queries on screen entrance
-    LaunchedEffect(Unit) {
-        viewModel.loadRecords()
-    }
-
-    // Screen navigation states: 0 = Records List, 1 = Dates List, 2 = Daily Sheet, 3 = Overall Report
+    // CORRECTED: All state variables must be declared AT THE TOP of the Composable [1]
     var currentSubScreen by remember { mutableIntStateOf(0) }
     var selectedRecord by remember { mutableStateOf<AttendanceRecordEntity?>(null) }
     var selectedDateMillis by remember { mutableLongStateOf(0L) }
-
     var showCreateDialog by remember { mutableStateOf(false) }
+
+    // CORRECTED: LaunchedEffect is moved below state declarations to resolve symbol reference errors [1]
+    LaunchedEffect(initialRecordId, initialDateMillis) {
+        viewModel.loadRecords()
+        if (initialRecordId != -1) {
+            val db = dev.soloistdev.studenttracker.data.AppDatabase.getDatabase(context)
+            val recordsList = withContext(Dispatchers.IO) {
+                db.studentDao().getAllAttendanceRecords()
+            }
+            val record = recordsList.find { it.id == initialRecordId }
+            if (record != null) {
+                selectedRecord = record
+                viewModel.loadRecordLogs(record.id)
+                if (initialDateMillis != -1L) {
+                    selectedDateMillis = initialDateMillis
+                    viewModel.loadSheetData(record, initialDateMillis)
+                    currentSubScreen = 2 // Redirect directly to the daily workbook sheet
+                } else {
+                    currentSubScreen = 1
+                }
+            }
+        }
+    }
 
     val backHandler = {
         when (currentSubScreen) {
@@ -93,7 +106,6 @@ fun AttendanceScreen(
                 },
                 actions = {
                     if (currentSubScreen == 1) {
-                        // View Overall Report Action Button [1]
                         IconButton(onClick = {
                             selectedRecord?.let { viewModel.loadSheetData(it, it.startDate) }
                             currentSubScreen = 3
@@ -291,7 +303,6 @@ fun AttendanceScreen(
                         val dates = remember(record) { viewModel.generateDateList(record.startDate, record.endDate) }
 
                         Column(modifier = Modifier.fillMaxSize()) {
-                            // Overall summary header card
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -317,7 +328,6 @@ fun AttendanceScreen(
                                 }
                             }
 
-                            // Roster cards displaying total counts per student [1]
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(bottom = 16.dp)
@@ -367,7 +377,6 @@ fun AttendanceScreen(
             }
         }
 
-        // CREATE DIALOG FOR NEW RECORD
         if (showCreateDialog) {
             RecordCreateForm(
                 savedFilters = savedFilters,

@@ -224,6 +224,84 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
         _pinnedFilters.value = emptyList()
     }
 
+    fun createManualAttendanceRecord(
+        name: String,
+        selectedIds: List<Int>,
+        startDateMillis: Long, // Accept start date range [1]
+        endDateMillis: Long,   // Accept end date range [1]
+        onCreated: (Int, Long) -> Unit
+    ) {
+        viewModelScope.launch {
+            // Normalize selected dates to midnight (00:00:00.000) [1]
+            val normalizedStart = Calendar.getInstance().apply {
+                timeInMillis = startDateMillis
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+
+            val normalizedEnd = Calendar.getInstance().apply {
+                timeInMillis = endDateMillis
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+
+            // 1. Insert parent record. Both boundaries are set to the chosen range [1]
+            val record = dev.soloistdev.studenttracker.data.AttendanceRecordEntity(
+                name = name.trim(),
+                savedFilterId = 0, // 0 represents manual selection
+                startDate = normalizedStart,
+                endDate = normalizedEnd
+            )
+            val recordId = repository.insertAttendanceRecord(record).toInt()
+
+            // 2. Generate and insert unmarked logs for every chosen day in the range [1]
+            val daysList = generateDateList(normalizedStart, normalizedEnd)
+            daysList.forEach { date ->
+                selectedIds.forEach { studentId ->
+                    repository.insertAttendanceLog(
+                        dev.soloistdev.studenttracker.data.AttendanceLogEntity(
+                            recordId = recordId,
+                            dateMillis = date,
+                            studentId = studentId,
+                            status = "NOT_SET"
+                        )
+                    )
+                }
+            }
+
+            clearSelection() // Reset selection mode
+            onCreated(recordId, normalizedStart) // Redirects directly to the start date workbook! [1]
+        }
+    }
+
+    // Helper to generate list of all dates in the selected range [1]
+    private fun generateDateList(startDate: Long, endDate: Long): List<Long> {
+        val dates = mutableListOf<Long>()
+        val startCal = Calendar.getInstance().apply {
+            timeInMillis = startDate
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val endCal = Calendar.getInstance().apply {
+            timeInMillis = endDate
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        while (!startCal.after(endCal)) {
+            dates.add(startCal.timeInMillis)
+            startCal.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        return dates
+    }
+
     fun toggleStudentSelection(studentId: Int) {
         val currentSet = _selectedStudentIds.value.toMutableSet()
         if (currentSet.contains(studentId)) {

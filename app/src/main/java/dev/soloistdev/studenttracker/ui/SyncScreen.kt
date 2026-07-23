@@ -4,26 +4,29 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState // Core animation APIs [1]
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll // Added import to support horizontal scrolling of code
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.ArrowBack // Corrected AutoMirrored import [2.1]
+import androidx.compose.material.icons.filled.ArrowDropDown // Core icon [1]
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.ExpandLess // Added expand arrow imports
-import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate // Graphic rotation modifier [1]
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily // Monospace font import
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,6 +34,9 @@ import dev.soloistdev.studenttracker.data.CsvExportEngine
 import dev.soloistdev.studenttracker.data.JsonSyncEngine
 import dev.soloistdev.studenttracker.data.StudentRepository
 import kotlinx.coroutines.launch
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,7 +46,10 @@ fun SyncScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     var showHelpDialog by remember { mutableStateOf(false) }
-    var showSampleFormat by remember { mutableStateOf(false) } // State to manage collapsible JSON card
+    var showSampleFormat by remember { mutableStateOf(false) }
+
+    // Smooth rotating chevron animation mapping [1]
+    val rotationAngle by animateFloatAsState(targetValue = if (showSampleFormat) 180f else 0f)
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -78,12 +87,13 @@ fun SyncScreen(onBack: () -> Unit) {
                 title = { Text("Backup & Sync", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
+                        // CORRECTED: Standard non-deprecated AutoMirrored back button [2.1]
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
                     IconButton(onClick = { showHelpDialog = true }) {
-                        Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = "Help")
+                        Icon(Icons.Default.HelpOutline, contentDescription = "Help")
                     }
                 }
             )
@@ -190,7 +200,6 @@ fun SyncScreen(onBack: () -> Unit) {
                 }
             }
 
-            // NEW: Collapsible Sample JSON Format Card [1]
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -207,9 +216,11 @@ fun SyncScreen(onBack: () -> Unit) {
                             Text("View Sample JSON Format", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("See the correct schema structure for imports", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                         }
+                        // CORRECTED: Replaced extended icons with animated standard dropdown chevron [1]
                         Icon(
-                            imageVector = if (showSampleFormat) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = if (showSampleFormat) "Collapse" else "Expand"
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = "Toggle Sample Format",
+                            modifier = Modifier.rotate(rotationAngle) // Animates dynamically [1]
                         )
                     }
 
@@ -221,11 +232,11 @@ fun SyncScreen(onBack: () -> Unit) {
                         val sampleJson = """
                         [
                           {
-                            "firstName": "FirstName",
-                            "lastName": "LastName",
+                            "firstName": "Troy",
+                            "lastName": "Ordinario",
                             "gender": "M",
                             "birthday": 1378598400000,
-                            "address": "Street Address, State, Province",
+                            "address": "Street Address, Brgy. 3, Taguig",
                             "guardiansJson": [
                               {
                                 "name": "Jane Doe",
@@ -233,7 +244,7 @@ fun SyncScreen(onBack: () -> Unit) {
                                 "phones": ["555-0198"]
                               }
                             ],
-                            "customDataJson": "{\"Smoker\": \"No\", \"Status\": \"Single\", \"Hobbies\": \"Video Games\"}"
+                            "customDataJson": "{\"Purok\": \"3\", \"Status\": \"Mang-aawit\", \"Bautisado\": \"\"}"
                           }
                         ]
                         """.trimIndent()
@@ -246,11 +257,11 @@ fun SyncScreen(onBack: () -> Unit) {
                             Text(
                                 text = sampleJson,
                                 fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace, // Monospace styling [1]
+                                fontFamily = FontFamily.Monospace,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier
                                     .padding(8.dp)
-                                    .horizontalScroll(rememberScrollState()) // Horizontal scrolling for code safety [1]
+                                    .horizontalScroll(rememberScrollState())
                             )
                         }
                     }
