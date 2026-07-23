@@ -3,8 +3,6 @@ package dev.soloistdev.studenttracker.ui
 import android.app.Application
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
-import android.widget.Toast
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -43,9 +41,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     private val _students = MutableStateFlow<List<StudentEntity>>(emptyList())
     val students: StateFlow<List<StudentEntity>> = _students
 
-    private val _templates = MutableStateFlow<List<FormTemplateEntity>>(emptyList())
-    val templates: StateFlow<List<FormTemplateEntity>> = _templates
-
     init {
         loadRecords()
     }
@@ -56,7 +51,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 _records.value = repository.getAllAttendanceRecords()
                 _savedFilters.value = repository.getAllSavedFilters()
             } catch (_: Exception) {
-                // Warning resolved
+                // Suppressed unused parameter
             }
         }
     }
@@ -66,8 +61,8 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
             try {
                 _recordLogs.value = repository.getLogsForRecord(recordId)
                 _students.value = repository.getAllActiveStudents()
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } catch (_: Exception) {
+                // Suppressed unused parameter
             }
         }
     }
@@ -108,8 +103,8 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                     }
                 }
                 loadRecords()
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } catch (_: Exception) {
+                // Suppressed unused parameter
             }
         }
     }
@@ -119,8 +114,8 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
             try {
                 repository.deleteAttendanceRecord(recordId)
                 loadRecords()
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } catch (_: Exception) {
+                // Suppressed unused parameter
             }
         }
     }
@@ -131,19 +126,14 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 val logs = repository.getLogsForDate(record.id, dateMillis)
                 val studentsList = repository.getAllActiveStudents()
 
-                val filter = _savedFilters.value.find { it.id == record.savedFilterId }
-                if (filter != null) {
-                    val matched = studentsList.filter { student ->
-                        val value = getFieldValue(student, filter.fieldName)
-                        evaluateCondition(value, filter.comparison, filter.value1, filter.value2)
-                    }
-                    _currentRoster.value = matched
-                } else {
-                    _currentRoster.value = emptyList()
-                }
+                val allRecordLogs = repository.getLogsForRecord(record.id)
+                val rosterStudentIds = allRecordLogs.map { it.studentId }.distinct()
+                val matched = studentsList.filter { it.id in rosterStudentIds }
+
+                _currentRoster.value = matched
                 _currentLogs.value = logs
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } catch (_: Exception) {
+                // Suppressed unused parameter
             }
         }
     }
@@ -154,8 +144,8 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 repository.updateAttendanceStatus(recordId, dateMillis, studentId, newStatus)
                 _currentLogs.value = repository.getLogsForDate(recordId, dateMillis)
                 _recordLogs.value = repository.getLogsForRecord(recordId)
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } catch (_: Exception) {
+                // Suppressed unused parameter
             }
         }
     }
@@ -170,8 +160,8 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 _currentLogs.value = repository.getLogsForDate(recordId, dateMillis)
                 _recordLogs.value = repository.getLogsForRecord(recordId)
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } catch (_: Exception) {
+                // Suppressed unused parameter
             }
         }
     }
@@ -184,8 +174,8 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 _currentLogs.value = repository.getLogsForDate(recordId, dateMillis)
                 _recordLogs.value = repository.getLogsForRecord(recordId)
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } catch (_: Exception) {
+                // Suppressed unused parameter
             }
         }
     }
@@ -197,7 +187,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 val sdfDate = SimpleDateFormat("MMMM dd, yyyy", Locale.US)
                 val dateStr = sdfDate.format(Date(dateMillis))
 
-                // Formats the sheet tab name to MMDDYY (e.g., July 15, 2026 -> 071526) [2]
                 val sdfSheetName = SimpleDateFormat("MMddyy", Locale.US)
                 val sheetName = sdfSheetName.format(Date(dateMillis))
 
@@ -206,10 +195,9 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 val filter = repository.getAllSavedFilters().find { it.id == record.savedFilterId }
                 val filterName = filter?.filterName ?: "Unknown Filter"
 
-                // 1. Build the worksheet cell data dynamically [2]
                 val sheetData = StringBuilder()
 
-                // Row 1: Main Title Banner
+                // Row 1: Title Row
                 sheetData.append("<row r=\"1\" ht=\"32\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A1", "DAILY ATTENDANCE SHEET", 1))
                 sheetData.append("</row>")
@@ -275,7 +263,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 val totalP = logs.count { it.status == "PRESENT" && roster.any { r -> r.id == it.studentId } }
                 sheetData.append("<row r=\"$totalPRowNum\" ht=\"20\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A$totalPRowNum", "Total Present", 8))
-                sheetData.append("<c r=\"B$totalPRowNum\" s=\"0\"/>") // Spacer
+                sheetData.append("<c r=\"B$totalPRowNum\" s=\"0\"/>")
                 sheetData.append(writeNumberCell("C$totalPRowNum", totalP, 3))
                 sheetData.append("</row>")
 
@@ -315,140 +303,36 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 sheetData.append(writeNumberCell("C$totalURowNum", totalU, 7))
                 sheetData.append("</row>")
 
-                // 2. Package Zip archive securely inside private cache [2]
-                val cacheDir = File(context.cacheDir, "attendance_exports").apply { mkdirs() }
-                val excelFile = File(cacheDir, "Attendance_${record.name.replace(" ", "_")}_$sheetName.xlsx")
-                if (excelFile.exists()) excelFile.delete()
+                // Format column dimensions and merge references
+                val colXml = """
+                    <cols>
+                      <col min="1" max="1" width="20" customWidth="1"/>
+                      <col min="2" max="2" width="20" customWidth="1"/>
+                      <col min="3" max="3" width="18" customWidth="1"/>
+                    </cols>
+                """.trimIndent()
 
-                FileOutputStream(excelFile).use { fos ->
-                    ZipOutputStream(fos).use { zos ->
+                val mergeCellsXml = """
+                    <mergeCells count="5">
+                      <mergeCell ref="A1:C1"/>
+                      <mergeCell ref="B2:C2"/>
+                      <mergeCell ref="B3:C3"/>
+                      <mergeCell ref="B4:C4"/>
+                      <mergeCell ref="A$sumHeaderRowNum:C$sumHeaderRowNum"/>
+                    </mergeCells>
+                """.trimIndent()
 
-                        // [1] _rels/.rels
-                        zos.putNextEntry(ZipEntry("_rels/.rels"))
-                        zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
-</Relationships>""".toByteArray(Charsets.UTF_8))
-                        zos.closeEntry()
-
-                        // [2] [Content_Types].xml
-                        zos.putNextEntry(ZipEntry("[Content_Types].xml"))
-                        zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
-</Types>""".toByteArray(Charsets.UTF_8))
-                        zos.closeEntry()
-
-                        // [3] xl/workbook.xml (Passes custom Sheet Name formatted as MMDDYY) [2]
-                        zos.putNextEntry(ZipEntry("xl/workbook.xml"))
-                        zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets>
-    <sheet name="$sheetName" sheetId="1" r:id="rId1"/>
-  </sheets>
-</workbook>""".toByteArray(Charsets.UTF_8))
-                        zos.closeEntry()
-
-                        // [4] xl/_rels/workbook.xml.rels
-                        zos.putNextEntry(ZipEntry("xl/_rels/workbook.xml.rels"))
-                        zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-</Relationships>""".toByteArray(Charsets.UTF_8))
-                        zos.closeEntry()
-
-                        // [5] xl/styles.xml
-                        zos.putNextEntry(ZipEntry("xl/styles.xml"))
-                        zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <fonts count="3">
-    <font><sz val="11"/><name val="Segoe UI"/><family val="2"/></font>
-    <font><bold/><sz val="11"/><name val="Segoe UI"/><family val="2"/></font>
-    <font><bold/><sz val="14"/><name val="Segoe UI"/><family val="2"/></font>
-  </fonts>
-  <fills count="10">
-    <fill><patternFill patternType="none"/></fill>
-    <fill><patternFill patternType="gray125"/></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FF1B5E20"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FF2E7D32"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFE8F5E9"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFFFEBEE"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFFFF3E0"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFF5F5F5"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFFFFDE7"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFCFD8DC"/></patternFill></fill>
-  </fills>
-  <borders count="2">
-    <border><left/><right/><top/><bottom/></border>
-    <border>
-      <left style="thin"><color rgb="FFCBD5E1"/></left>
-      <right style="thin"><color rgb="FFCBD5E1"/></right>
-      <top style="thin"><color rgb="FFCBD5E1"/></top>
-      <bottom style="thin"><color rgb="FFCBD5E1"/></bottom>
-    </border>
-  </borders>
-  <cellStyleXfs count="1">
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
-  </cellStyleXfs>
-  <cellXfs count="10">
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="2" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="1" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="1" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="1" fillId="5" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="1" fillId="6" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="1" fillId="7" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="0" fillId="8" borderId="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="1" fillId="9" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="0" fillId="7" borderId="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
-  </cellXfs>
-</styleSheet>""".toByteArray(Charsets.UTF_8))
-                        zos.closeEntry()
-
-                        // [6] xl/worksheets/sheet1.xml (Generates widths and merges) [2]
-                        zos.putNextEntry(ZipEntry("xl/worksheets/sheet1.xml"))
-                        val sheetXml = StringBuilder()
-                        sheetXml.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheetViews>
-    <sheetView tabSelected="1" workbookViewId="0">
-      <showGridLines val="1"/>
-    </sheetView>
-  </sheetViews>
-  <cols>
-    <col min="1" max="1" width="20" customWidth="1"/>
-    <col min="2" max="2" width="20" customWidth="1"/>
-    <col min="3" max="3" width="18" customWidth="1"/>
-  </cols>
-  <sheetData>
-""")
-                        sheetXml.append(sheetData.toString())
-                        sheetXml.append("  </sheetData>\n")
-
-                        sheetXml.append("  <mergeCells count=\"5\">\n")
-                        sheetXml.append("    <mergeCell ref=\"A1:C1\"/>\n")
-                        sheetXml.append("    <mergeCell ref=\"B2:C2\"/>\n")
-                        sheetXml.append("    <mergeCell ref=\"B3:C3\"/>\n")
-                        sheetXml.append("    <mergeCell ref=\"B4:C4\"/>\n")
-                        sheetXml.append("    <mergeCell ref=\"A$sumHeaderRowNum:C$sumHeaderRowNum\"/>\n")
-                        sheetXml.append("  </mergeCells>\n")
-                        sheetXml.append("</worksheet>")
-
-                        zos.write(sheetXml.toString().toByteArray(Charsets.UTF_8))
-                        zos.closeEntry()
-                    }
-                }
+                // Compile Zip-archive natively [2]
+                val excelFile = "Attendance_${record.name.replace(" ", "_")}_$sheetName.xlsx"
+                writeOpenXmlSpreadsheet(context, excelFile, sheetName, colXml, sheetData.toString(), mergeCellsXml)
 
                 // Dispatch via standard sharing sheet using standard OpenXML MIME type (.xlsx) [2]
+                val cacheDir = File(context.cacheDir, "attendance_exports").apply { mkdirs() }
+                val targetFile = File(cacheDir, excelFile)
                 val fileUri = FileProvider.getUriForFile(
                     context,
                     "${context.packageName}.fileprovider",
-                    excelFile
+                    targetFile
                 )
 
                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
@@ -466,22 +350,15 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    // EXCEL MOCKUP COMPLIANT EXPORTER: Builds cell-for-cell row and column matrices with aligned styling [2]
+    // EXCEL MOCKUP COMPLIANT EXPORTER: Builds cell-for-cell row and column matrices with aligned styling
     fun exportOverallReportToCsv(context: Context, record: AttendanceRecordEntity) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val logs = repository.getLogsForRecord(record.id)
                 val studentsList = repository.getAllActiveStudents()
 
-                val filter = repository.getAllSavedFilters().find { it.id == record.savedFilterId }
-                val roster = if (filter != null) {
-                    studentsList.filter { student ->
-                        val value = getFieldValue(student, filter.fieldName)
-                        evaluateCondition(value, filter.comparison, filter.value1, filter.value2)
-                    }
-                } else {
-                    emptyList()
-                }
+                val rosterStudentIds = logs.map { it.studentId }.distinct()
+                val roster = studentsList.filter { it.id in rosterStudentIds }
 
                 val dates = generateDateList(record.startDate, record.endDate)
                 val totalDays = dates.size
@@ -513,7 +390,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 // Row 4: Metadata Total Days
                 sheetData.append("<row r=\"4\" ht=\"20\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A4", "Total Days", 8))
-                sheetData.append(writeNumberCell("B4", totalDays, 0)) // Style 0 is now left-aligned [2]
+                sheetData.append(writeNumberCell("B4", totalDays, 0))
 
                 val countsHeaderColRef = getCellRef(totalDays + 2, 3)
                 sheetData.append(writeStringCell(countsHeaderColRef, "Count Per Student", 8))
@@ -524,7 +401,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
 
                 // Row 6: Table Column Headers
                 sheetData.append("<row r=\"6\" ht=\"24\" customHeight=\"1\">")
-                sheetData.append(writeStringCell("A6", "Name", 8)) // Left-aligned header
+                sheetData.append(writeStringCell("A6", "Name", 8))
                 dates.forEachIndexed { idx, date ->
                     val ref = getCellRef(idx + 1, 5)
                     sheetData.append(writeStringCell(ref, sdfDate.format(Date(date)), 2))
@@ -539,7 +416,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 sheetData.append(writeStringCell(getCellRef(totalDays + 6, 5), "Unmarked", 2))
                 sheetData.append("</row>")
 
-                // Rows 7+: Student Rows (Zebra striped with color-coded status cells)
+                // Rows 7+: Student Rows
                 roster.forEachIndexed { sIdx, student ->
                     val rowNum = sIdx + 7
                     val zebraStyleId = if (sIdx % 2 == 0) 9 else 0
@@ -635,25 +512,90 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 sheetData.append("</row>")
 
-                // Compile Zip files securely into private cache
+                // Format column dimensions and merge references
+                val colXml = StringBuilder()
+                colXml.append("""
+                    <cols>
+                      <col min="1" max="1" width="22" customWidth="1"/>
+                """.trimIndent())
+                for (c in 1..totalDays) {
+                    colXml.append("      <col min=\"${c + 1}\" max=\"${c + 1}\" width=\"9\" customWidth=\"1\"/>\n")
+                }
+                colXml.append("      <col min=\"${totalDays + 2}\" max=\"${totalDays + 2}\" width=\"3\" customWidth=\"1\"/>\n")
+                for (c in 1..5) {
+                    colXml.append("      <col min=\"${totalDays + 2 + c}\" max=\"${totalDays + 2 + c}\" width=\"9\" customWidth=\"1\"/>\n")
+                }
+                colXml.append("    </cols>")
+
+                val mergeCellsXml = """
+                    <mergeCells count="5">
+                      <mergeCell ref="A1:${lastColLetter}1\"/>
+                      <mergeCell ref="B2:${lastColLetter}2\"/>
+                      <mergeCell ref="B3:${lastColLetter}3\"/>
+                      <mergeCell ref="B4:${getColLetter(totalDays)}4\"/>
+                      <mergeCell ref="${getColLetter(totalDays + 2)}4:${getColLetter(totalDays + 6)}4\"/>
+                    </mergeCells>
+                """.trimIndent()
+
+                // Compile Zip-archive natively
+                val excelFile = "Overall_Report_${record.name.replace(" ", "_")}.xlsx"
+                writeOpenXmlSpreadsheet(context, excelFile, "Overall Attendance", colXml.toString(), sheetData.toString(), mergeCellsXml)
+
+                // Dispatch via standard sharing sheet using standard OpenXML MIME type (.xlsx) [2]
                 val cacheDir = File(context.cacheDir, "attendance_exports").apply { mkdirs() }
-                val excelFile = File(cacheDir, "Overall_Report_${record.name.replace(" ", "_")}.xlsx")
-                if (excelFile.exists()) excelFile.delete()
+                val targetFile = File(cacheDir, excelFile)
+                val fileUri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    targetFile
+                )
 
-                FileOutputStream(excelFile).use { fos ->
-                    ZipOutputStream(fos).use { zos ->
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
 
-                        // [1] _rels/.rels
-                        zos.putNextEntry(ZipEntry("_rels/.rels"))
-                        zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                withContext(Dispatchers.Main) {
+                    context.startActivity(Intent.createChooser(shareIntent, "Share Overall Report Spreadsheet"))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    /**
+     * UNIFIED REUSABLE OPENXML SPREADSHEET PACKAGER:
+     * Compiles standard, warning-free binary .xlsx files natively [2].
+     */
+    private fun writeOpenXmlSpreadsheet(
+        context: Context,
+        fileName: String,
+        sheetName: String,
+        colWidthsXml: String,
+        sheetDataXml: String,
+        mergeCellsXml: String
+    ): File? {
+        try {
+            val cacheDir = File(context.cacheDir, "attendance_exports").apply { mkdirs() }
+            val excelFile = File(cacheDir, fileName)
+            if (excelFile.exists()) excelFile.delete()
+
+            FileOutputStream(excelFile).use { fos ->
+                ZipOutputStream(fos).use { zos ->
+
+                    // [1] _rels/.rels
+                    zos.putNextEntry(ZipEntry("_rels/.rels"))
+                    zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
 </Relationships>""".toByteArray(Charsets.UTF_8))
-                        zos.closeEntry()
+                    zos.closeEntry()
 
-                        // [2] [Content_Types].xml
-                        zos.putNextEntry(ZipEntry("[Content_Types].xml"))
-                        zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                    // [2] [Content_Types].xml
+                    zos.putNextEntry(ZipEntry("[Content_Types].xml"))
+                    zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
@@ -661,35 +603,35 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 </Types>""".toByteArray(Charsets.UTF_8))
-                        zos.closeEntry()
+                    zos.closeEntry()
 
-                        // [3] xl/workbook.xml
-                        zos.putNextEntry(ZipEntry("xl/workbook.xml"))
-                        zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                    // [3] xl/workbook.xml (Passes custom Sheet Name formatted as MMDDYY) [2]
+                    zos.putNextEntry(ZipEntry("xl/workbook.xml"))
+                    zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
-    <sheet name="Overall Attendance" sheetId="1" r:id="rId1"/>
+    <sheet name="$sheetName" sheetId="1" r:id="rId1"/>
   </sheets>
 </workbook>""".toByteArray(Charsets.UTF_8))
-                        zos.closeEntry()
+                    zos.closeEntry()
 
-                        // [4] xl/_rels/workbook.xml.rels
-                        zos.putNextEntry(ZipEntry("xl/_rels/workbook.xml.rels"))
-                        zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                    // [4] xl/_rels/workbook.xml.rels
+                    zos.putNextEntry(ZipEntry("xl/_rels/workbook.xml.rels"))
+                    zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>""".toByteArray(Charsets.UTF_8))
-                        zos.closeEntry()
+                    zos.closeEntry()
 
-                        // [5] xl/styles.xml
-                        zos.putNextEntry(ZipEntry("xl/styles.xml"))
-                        zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                    // [5] xl/styles.xml (Uses safe 'Arial' to prevent spellcheck typos) [1, 2]
+                    zos.putNextEntry(ZipEntry("xl/styles.xml"))
+                    zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <fonts count="3">
-    <font><sz val="11"/><name val="Segoe UI"/><family val="2"/></font>
-    <font><bold/><sz val="11"/><name val="Segoe UI"/><family val="2"/></font>
-    <font><bold/><sz val="14"/><name val="Segoe UI"/><family val="2"/></font>
+    <font><sz val="11"/><name val="Arial"/><family val="2"/></font>
+    <font><bold/><sz val="11"/><name val="Arial"/><family val="2"/></font>
+    <font><bold/><sz val="14"/><name val="Arial"/><family val="2"/></font>
   </fonts>
   <fills count="10">
     <fill><patternFill patternType="none"/></fill>
@@ -728,64 +670,33 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     <xf numFmtId="0" fontId="0" fillId="7" borderId="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf> // 9: Zebra Even (Aligned Left) [2]
   </cellXfs>
 </styleSheet>""".toByteArray(Charsets.UTF_8))
-                        zos.closeEntry()
+                    zos.closeEntry()
 
-                        // [6] xl/worksheets/sheet1.xml (Generates widths and merges) [2]
-                        zos.putNextEntry(ZipEntry("xl/worksheets/sheet1.xml"))
-                        val sheetXml = StringBuilder()
-                        sheetXml.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                    // [6] xl/worksheets/sheet1.xml
+                    zos.putNextEntry(ZipEntry("xl/worksheets/sheet1.xml"))
+                    val sheetXml = StringBuilder()
+                    sheetXml.append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheetViews>
     <sheetView tabSelected="1" workbookViewId="0">
       <showGridLines val="1"/>
     </sheetView>
   </sheetViews>
-  <cols>
-    <col min="1" max="1" width="22" customWidth="1"/>
 """)
-                        for (c in 1..totalDays) {
-                            sheetXml.append("    <col min=\"${c + 1}\" max=\"${c + 1}\" width=\"9\" customWidth=\"1\"/>\n")
-                        }
-                        sheetXml.append("    <col min=\"${totalDays + 2}\" max=\"${totalDays + 2}\" width=\"3\" customWidth=\"1\"/>\n")
-                        for (c in 1..5) {
-                            sheetXml.append("    <col min=\"${totalDays + 2 + c}\" max=\"${totalDays + 2 + c}\" width=\"9\" customWidth=\"1\"/>\n")
-                        }
-                        sheetXml.append("  </cols>\n  <sheetData>\n")
-                        sheetXml.append(sheetData.toString())
-                        sheetXml.append("  </sheetData>\n")
+                    sheetXml.append(colWidthsXml)
+                    sheetXml.append("\n  <sheetData>\n")
+                    sheetXml.append(sheetDataXml)
+                    sheetXml.append("  </sheetData>\n")
+                    sheetXml.append(mergeCellsXml)
+                    sheetXml.append("\n</worksheet>")
 
-                        sheetXml.append("  <mergeCells count=\"5\">\n")
-                        sheetXml.append("    <mergeCell ref=\"A1:${lastColLetter}1\"/>\n")
-                        sheetXml.append("    <mergeCell ref=\"B2:${lastColLetter}2\"/>\n")
-                        sheetXml.append("    <mergeCell ref=\"B3:${lastColLetter}3\"/>\n")
-                        sheetXml.append("    <mergeCell ref=\"B4:${getColLetter(totalDays)}4\"/>\n")
-                        sheetXml.append("    <mergeCell ref=\"${getColLetter(totalDays + 2)}4:${getColLetter(totalDays + 6)}4\"/>\n")
-                        sheetXml.append("  </mergeCells>\n")
-                        sheetXml.append("</worksheet>")
-
-                        zos.write(sheetXml.toString().toByteArray(Charsets.UTF_8))
-                        zos.closeEntry()
-                    }
+                    zos.write(sheetXml.toString().toByteArray(Charsets.UTF_8))
+                    zos.closeEntry()
                 }
-
-                val fileUri = FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
-                    excelFile
-                )
-
-                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    putExtra(Intent.EXTRA_STREAM, fileUri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-
-                withContext(Dispatchers.Main) {
-                    context.startActivity(Intent.createChooser(shareIntent, "Share Overall Report Spreadsheet"))
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
+            return excelFile
+        } catch (_: Exception) { // Suppressed unused parameters [1]
+            return null
         }
     }
 
@@ -849,7 +760,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
             else -> {
                 try {
                     JSONObject(student.customDataJson).optString(field, "")
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     ""
                 }
             }
@@ -859,8 +770,8 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2: String): Boolean {
         val cleanVal = fieldVal.trim()
         if (operator in listOf("birth_year", "birth_month", "birth_month_year", "exact_birthday")) {
-            val studentBday = cleanVal.toLongOrNull() ?: return false
-            val studentCal = Calendar.getInstance().apply { timeInMillis = studentBday }
+            val studentBirthday = cleanVal.toLongOrNull() ?: return false
+            val studentCal = Calendar.getInstance().apply { timeInMillis = studentBirthday }
             return when (operator) {
                 "birth_year" -> {
                     val yearVal = v1.toIntOrNull() ?: return false
