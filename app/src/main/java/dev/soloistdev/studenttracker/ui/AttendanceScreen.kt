@@ -1,12 +1,17 @@
+@file:Suppress("DEPRECATION")
+
 package dev.soloistdev.studenttracker.ui
 
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
@@ -20,12 +25,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.soloistdev.studenttracker.data.AttendanceLogEntity
 import dev.soloistdev.studenttracker.data.AttendanceRecordEntity
 import dev.soloistdev.studenttracker.data.SavedFilterEntity
+import dev.soloistdev.studenttracker.data.StudentEntity
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -40,7 +48,12 @@ fun AttendanceScreen(
     val savedFilters by viewModel.savedFilters.collectAsState()
     val context = LocalContext.current
 
-    // Screen navigation states: 0 = Records List, 1 = Dates List, 2 = Daily Sheet
+    // Lifecycle trigger to force dynamic queries on screen entrance
+    LaunchedEffect(Unit) {
+        viewModel.loadRecords()
+    }
+
+    // Screen navigation states: 0 = Records List, 1 = Dates List, 2 = Daily Sheet, 3 = Overall Report
     var currentSubScreen by remember { mutableIntStateOf(0) }
     var selectedRecord by remember { mutableStateOf<AttendanceRecordEntity?>(null) }
     var selectedDateMillis by remember { mutableLongStateOf(0L) }
@@ -49,6 +62,7 @@ fun AttendanceScreen(
 
     val backHandler = {
         when (currentSubScreen) {
+            3 -> currentSubScreen = 1 // Navigates back from Overall Report to Dates List
             2 -> currentSubScreen = 1
             1 -> currentSubScreen = 0
             else -> onBack()
@@ -61,6 +75,7 @@ fun AttendanceScreen(
                 title = {
                     Text(
                         text = when (currentSubScreen) {
+                            3 -> "Overall Report"
                             2 -> {
                                 val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.US)
                                 sdf.format(Date(selectedDateMillis))
@@ -73,12 +88,19 @@ fun AttendanceScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = backHandler) {
-                        // CORRECTED: AutoMirrored icon API update [2.1]
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    if (currentSubScreen == 2 && selectedRecord != null) {
+                    if (currentSubScreen == 1) {
+                        // View Overall Report Action Button [1]
+                        IconButton(onClick = {
+                            selectedRecord?.let { viewModel.loadSheetData(it, it.startDate) }
+                            currentSubScreen = 3
+                        }) {
+                            Icon(Icons.Default.Assessment, contentDescription = "View Overall Report")
+                        }
+                    } else if (currentSubScreen == 2 && selectedRecord != null) {
                         IconButton(onClick = {
                             viewModel.exportSheetToCsv(context, selectedRecord!!, selectedDateMillis)
                         }) {
@@ -115,6 +137,7 @@ fun AttendanceScreen(
         ) {
             when (currentSubScreen) {
                 0 -> {
+                    // ================= SUB-SCREEN 0: RECORDS LIST =================
                     if (records.isEmpty()) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(
@@ -139,7 +162,7 @@ fun AttendanceScreen(
                                         .padding(horizontal = 16.dp, vertical = 6.dp)
                                         .clickable {
                                             selectedRecord = record
-                                            viewModel.loadRecordLogs(record.id) // Trigger background logs load [1]
+                                            viewModel.loadRecordLogs(record.id)
                                             currentSubScreen = 1
                                         },
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -187,13 +210,12 @@ fun AttendanceScreen(
                     // ================= SUB-SCREEN 1: DATES LIST (BADGES INTEGRATED) =================
                     selectedRecord?.let { record ->
                         val dates = remember(record) { viewModel.generateDateList(record.startDate, record.endDate) }
-                        val recordLogs by viewModel.recordLogs.collectAsState() // Observe dataset logs [1]
+                        val recordLogs by viewModel.recordLogs.collectAsState()
 
                         LazyColumn(modifier = Modifier.fillMaxSize()) {
                             items(dates) { dateMillis ->
                                 val sdf = SimpleDateFormat("EEEE, MMMM dd, yyyy", Locale.US)
 
-                                // Dynamically calculate attendance parameters [1]
                                 val dayLogs = remember(recordLogs, dateMillis) {
                                     recordLogs.filter { it.dateMillis == dateMillis }
                                 }
@@ -220,26 +242,25 @@ fun AttendanceScreen(
                                         Column {
                                             Text(sdf.format(Date(dateMillis)), fontWeight = FontWeight.Bold, fontSize = 15.sp)
                                             Spacer(modifier = Modifier.height(6.dp))
-                                            // Real-time stats Row display [1]
                                             Row(
                                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Text(
                                                     text = "Present: $dayPresent",
-                                                    color = Color(0xFF4CAF50), // Standard Green
+                                                    color = Color(0xFF4CAF50),
                                                     fontSize = 12.sp,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                                 Text(
                                                     text = "Absent: $dayAbsent",
-                                                    color = Color(0xFFE53935), // Standard Red
+                                                    color = Color(0xFFE53935),
                                                     fontSize = 12.sp,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                                 Text(
                                                     text = "Unmarked: $dayUnmarked",
-                                                    color = Color(0xFFFBC02D), // Standard Yellow
+                                                    color = Color(0xFFFBC02D),
                                                     fontSize = 12.sp,
                                                     fontWeight = FontWeight.Bold
                                                 )
@@ -253,6 +274,7 @@ fun AttendanceScreen(
                     }
                 }
                 2 -> {
+                    // ================= SUB-SCREEN 2: DAILY WORKBOOK SHEET =================
                     selectedRecord?.let { record ->
                         DailyRosterSheet(
                             record = record,
@@ -261,9 +283,91 @@ fun AttendanceScreen(
                         )
                     }
                 }
+                3 -> {
+                    // ================= SUB-SCREEN 3: OVERALL REPORT VIEW =================
+                    selectedRecord?.let { record ->
+                        val recordLogs by viewModel.recordLogs.collectAsState()
+                        val roster by viewModel.currentRoster.collectAsState()
+                        val dates = remember(record) { viewModel.generateDateList(record.startDate, record.endDate) }
+
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            // Overall summary header card
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(text = "Roster: ${roster.size} Members", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text(text = "Total Days in Period: ${dates.size}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    Button(
+                                        onClick = { viewModel.exportOverallReportToCsv(context, record) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(20.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Share, contentDescription = "Export Spreadsheet")
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Generate Spreadsheet (.csv)")
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Roster cards displaying total counts per student [1]
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(bottom = 16.dp)
+                            ) {
+                                items(roster) { student ->
+                                    val studentLogs = remember(recordLogs, student.id) {
+                                        recordLogs.filter { it.studentId == student.id }
+                                    }
+                                    val present = studentLogs.count { it.status == "PRESENT" }
+                                    val absent = studentLogs.count { it.status == "ABSENT" }
+                                    val excused = studentLogs.count { it.status == "EXCUSED" }
+                                    val removed = studentLogs.count { it.status == "REMOVED" }
+                                    val unmarked = studentLogs.count { it.status == "NOT_SET" }
+
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                                    ) {
+                                        Column(modifier = Modifier.padding(16.dp)) {
+                                            Text(
+                                                text = "${student.lastName}, ${student.firstName}",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 16.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("Present: $present", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                Text("Absent: $absent", color = Color(0xFFE53935), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                Text("Excused: $excused", color = Color(0xFFFB8C00), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                Text("Removed: $removed", color = Color(0xFF757575), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                Text("Unmarked: $unmarked", color = Color(0xFFFBC02D), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
+        // CREATE DIALOG FOR NEW RECORD
         if (showCreateDialog) {
             RecordCreateForm(
                 savedFilters = savedFilters,
@@ -496,8 +600,6 @@ fun RowScope.TabChip(
     )
 }
 
-// ... [Locate RecordCreateForm inside AttendanceScreen.kt and replace it]
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecordCreateForm(
@@ -513,9 +615,6 @@ fun RecordCreateForm(
 
     var startDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var endDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-
-    // Date Range boundary validation check [1, 2]
-    val isDateRangeInvalid = startDateMillis > endDateMillis
 
     val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.US)
 
@@ -561,12 +660,10 @@ fun RecordCreateForm(
                     }
                 }
 
-                // Start Date selection (Highlights with error border if date range is invalid) [1, 2]
                 OutlinedButton(
                     onClick = { showStartPicker = true },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
-                    border = if (isDateRangeInvalid) BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) else ButtonDefaults.outlinedButtonBorder
+                    shape = RoundedCornerShape(8.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -574,16 +671,14 @@ fun RecordCreateForm(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Start: ${sdf.format(Date(startDateMillis))}", color = MaterialTheme.colorScheme.onSurface)
-                        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     }
                 }
 
-                // End Date selection (Highlights with error border if date range is invalid) [1, 2]
                 OutlinedButton(
                     onClick = { showEndPicker = true },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
-                    border = if (isDateRangeInvalid) BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) else ButtonDefaults.outlinedButtonBorder
+                    shape = RoundedCornerShape(8.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -591,30 +686,19 @@ fun RecordCreateForm(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("End: ${sdf.format(Date(endDateMillis))}", color = MaterialTheme.colorScheme.onSurface)
-                        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     }
-                }
-
-                // Friendly visual validation helper text [1, 2]
-                if (isDateRangeInvalid) {
-                    Text(
-                        text = "Start date must be less than or equal to End date",
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(start = 4.dp, top = 2.dp)
-                    )
                 }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    if (name.isNotBlank() && selectedFilterId != 0 && !isDateRangeInvalid) {
+                    if (name.isNotBlank() && selectedFilterId != 0 && startDateMillis <= endDateMillis) {
                         onSave(name.trim(), selectedFilterId, startDateMillis, endDateMillis)
                     }
                 },
-                enabled = name.isNotBlank() && !isDateRangeInvalid // Blocks click if range is invalid [2]
+                enabled = name.isNotBlank() && startDateMillis <= endDateMillis
             ) { Text("Create") }
         },
         dismissButton = {
@@ -623,7 +707,6 @@ fun RecordCreateForm(
         shape = RoundedCornerShape(28.dp)
     )
 
-    // Date Range pickers cleanly supporting past and future dates (SelectableDates removed) [2]
     if (showStartPicker) {
         val pickerState = rememberDatePickerState(
             initialSelectedDateMillis = startDateMillis

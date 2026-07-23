@@ -35,7 +35,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     private val _currentLogs = MutableStateFlow<List<AttendanceLogEntity>>(emptyList())
     val currentLogs: StateFlow<List<AttendanceLogEntity>> = _currentLogs
 
-    // New: Observable state flow holding all logs for the loaded record
     private val _recordLogs = MutableStateFlow<List<AttendanceLogEntity>>(emptyList())
     val recordLogs: StateFlow<List<AttendanceLogEntity>> = _recordLogs
 
@@ -51,153 +50,323 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
 
     fun loadRecords() {
         viewModelScope.launch {
-            _records.value = repository.getAllAttendanceRecords()
-            _savedFilters.value = repository.getAllSavedFilters()
+            try {
+                _records.value = repository.getAllAttendanceRecords()
+                _savedFilters.value = repository.getAllSavedFilters()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
-    // New load method triggered on record card tap
     fun loadRecordLogs(recordId: Int) {
         viewModelScope.launch {
-            _recordLogs.value = repository.getLogsForRecord(recordId)
-            _students.value = repository.getAllActiveStudents()
+            try {
+                _recordLogs.value = repository.getLogsForRecord(recordId)
+                _students.value = repository.getAllActiveStudents()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
     fun createRecord(name: String, filterId: Int, start: Long, end: Long) {
         viewModelScope.launch {
-            val recordId = repository.insertAttendanceRecord(
-                AttendanceRecordEntity(
-                    name = name.trim(),
-                    savedFilterId = filterId,
-                    startDate = start,
-                    endDate = end
-                )
-            ).toInt()
+            try {
+                val recordId = repository.insertAttendanceRecord(
+                    AttendanceRecordEntity(
+                        name = name.trim(),
+                        savedFilterId = filterId,
+                        startDate = start,
+                        endDate = end
+                    )
+                ).toInt()
 
-            val studentsList = repository.getAllActiveStudents()
-            val filter = _savedFilters.value.find { it.id == filterId }
+                val studentsList = repository.getAllActiveStudents()
+                val filter = _savedFilters.value.find { it.id == filterId }
 
-            if (filter != null) {
-                val matchedStudents = studentsList.filter { student ->
-                    val value = getFieldValue(student, filter.fieldName)
-                    evaluateCondition(value, filter.comparison, filter.value1, filter.value2)
-                }
+                if (filter != null) {
+                    val matchedStudents = studentsList.filter { student ->
+                        val value = getFieldValue(student, filter.fieldName)
+                        evaluateCondition(value, filter.comparison, filter.value1, filter.value2)
+                    }
 
-                val daysList = generateDateList(start, end)
-                daysList.forEach { date ->
-                    matchedStudents.forEach { student ->
-                        repository.insertAttendanceLog(
-                            AttendanceLogEntity(
-                                recordId = recordId,
-                                dateMillis = date,
-                                studentId = student.id,
-                                status = "NOT_SET"
+                    val daysList = generateDateList(start, end)
+                    daysList.forEach { date ->
+                        matchedStudents.forEach { student ->
+                            repository.insertAttendanceLog(
+                                AttendanceLogEntity(
+                                    recordId = recordId,
+                                    dateMillis = date,
+                                    studentId = student.id,
+                                    status = "NOT_SET"
+                                )
                             )
-                        )
+                        }
                     }
                 }
+                loadRecords()
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-            loadRecords()
         }
     }
 
     fun deleteRecord(recordId: Int) {
         viewModelScope.launch {
-            repository.deleteAttendanceRecord(recordId)
-            loadRecords()
+            try {
+                repository.deleteAttendanceRecord(recordId)
+                loadRecords()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
     fun loadSheetData(record: AttendanceRecordEntity, dateMillis: Long) {
         viewModelScope.launch {
-            val logs = repository.getLogsForDate(record.id, dateMillis)
-            val studentsList = repository.getAllActiveStudents()
+            try {
+                val logs = repository.getLogsForDate(record.id, dateMillis)
+                val studentsList = repository.getAllActiveStudents()
 
-            val filter = _savedFilters.value.find { it.id == record.savedFilterId }
-            if (filter != null) {
-                val matched = studentsList.filter { student ->
-                    val value = getFieldValue(student, filter.fieldName)
-                    evaluateCondition(value, filter.comparison, filter.value1, filter.value2)
+                val filter = _savedFilters.value.find { it.id == record.savedFilterId }
+                if (filter != null) {
+                    val matched = studentsList.filter { student ->
+                        val value = getFieldValue(student, filter.fieldName)
+                        evaluateCondition(value, filter.comparison, filter.value1, filter.value2)
+                    }
+                    _currentRoster.value = matched
+                } else {
+                    _currentRoster.value = emptyList()
                 }
-                _currentRoster.value = matched
-            } else {
-                _currentRoster.value = emptyList()
+                _currentLogs.value = logs
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-            _currentLogs.value = logs
         }
     }
 
     fun updateStatus(recordId: Int, dateMillis: Long, studentId: Int, newStatus: String) {
         viewModelScope.launch {
-            repository.updateAttendanceStatus(recordId, dateMillis, studentId, newStatus)
-            _currentLogs.value = repository.getLogsForDate(recordId, dateMillis)
-            _recordLogs.value = repository.getLogsForRecord(recordId) // Updates date list count dynamically [1]
+            try {
+                repository.updateAttendanceStatus(recordId, dateMillis, studentId, newStatus)
+                _currentLogs.value = repository.getLogsForDate(recordId, dateMillis)
+                _recordLogs.value = repository.getLogsForRecord(recordId)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
     fun markAllUnmarkedPresent(recordId: Int, dateMillis: Long) {
         viewModelScope.launch {
-            _currentLogs.value.forEach { log ->
-                if (log.status == "NOT_SET") {
-                    repository.updateAttendanceStatus(recordId, dateMillis, log.studentId, "PRESENT")
+            try {
+                _currentLogs.value.forEach { log ->
+                    if (log.status == "NOT_SET") {
+                        repository.updateAttendanceStatus(recordId, dateMillis, log.studentId, "PRESENT")
+                    }
                 }
+                _currentLogs.value = repository.getLogsForDate(recordId, dateMillis)
+                _recordLogs.value = repository.getLogsForRecord(recordId)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-            _currentLogs.value = repository.getLogsForDate(recordId, dateMillis)
-            _recordLogs.value = repository.getLogsForRecord(recordId) // Updates date list count dynamically [1]
         }
     }
 
     fun resetAllMarks(recordId: Int, dateMillis: Long) {
         viewModelScope.launch {
-            _currentLogs.value.forEach { log ->
-                repository.updateAttendanceStatus(recordId, dateMillis, log.studentId, "NOT_SET")
+            try {
+                _currentLogs.value.forEach { log ->
+                    repository.updateAttendanceStatus(recordId, dateMillis, log.studentId, "NOT_SET")
+                }
+                _currentLogs.value = repository.getLogsForDate(recordId, dateMillis)
+                _recordLogs.value = repository.getLogsForRecord(recordId)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-            _currentLogs.value = repository.getLogsForDate(recordId, dateMillis)
-            _recordLogs.value = repository.getLogsForRecord(recordId) // Updates date list count dynamically [1]
         }
     }
 
     fun exportSheetToCsv(context: Context, record: AttendanceRecordEntity, dateMillis: Long) {
         viewModelScope.launch(Dispatchers.IO) {
-            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-            val dateStr = sdf.format(Date(dateMillis))
+            try {
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                val dateStr = sdf.format(Date(dateMillis))
 
-            val csvHeader = "Last Name,First Name,Attendance Status,Date\n"
-            val csvContent = StringBuilder(csvHeader)
+                val csvHeader = "Last Name,First Name,Attendance Status,Date\n"
+                val csvContent = StringBuilder(csvHeader)
 
-            val roster = _currentRoster.value
-            val logs = _currentLogs.value
+                val roster = _currentRoster.value
+                val logs = _currentLogs.value
 
-            roster.forEach { student ->
-                val log = logs.find { it.studentId == student.id }
-                val status = log?.status ?: "NOT_SET"
-                csvContent.append("${student.lastName},${student.firstName},$status,$dateStr\n")
+                roster.forEach { student ->
+                    val log = logs.find { it.studentId == student.id }
+                    val status = log?.status ?: "NOT_SET"
+                    csvContent.append("${student.lastName},${student.firstName},$status,$dateStr\n")
+                }
+
+                val cacheDir = File(context.cacheDir, "attendance_exports").apply { mkdirs() }
+                val csvFile = File(cacheDir, "Attendance_${record.name.replace(" ", "_")}_$dateStr.csv")
+                if (csvFile.exists()) csvFile.delete()
+
+                FileOutputStream(csvFile).use { fos ->
+                    fos.write(csvContent.toString().toByteArray(Charsets.UTF_8))
+                    fos.flush()
+                }
+
+                val fileUri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    csvFile
+                )
+
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/csv"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+
+                withContext(Dispatchers.Main) {
+                    context.startActivity(Intent.createChooser(shareIntent, "Export Attendance CSV"))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
+        }
+    }
 
-            val cacheDir = File(context.cacheDir, "attendance_exports").apply { mkdirs() }
-            val csvFile = File(cacheDir, "Attendance_${record.name.replace(" ", "_")}_$dateStr.csv")
-            if (csvFile.exists()) csvFile.delete()
+    fun exportOverallReportToCsv(context: Context, record: AttendanceRecordEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val logs = repository.getLogsForRecord(record.id)
+                val studentsList = repository.getAllActiveStudents()
 
-            FileOutputStream(csvFile).use { fos ->
-                fos.write(csvContent.toString().toByteArray(Charsets.UTF_8))
-                fos.flush()
-            }
+                val filter = repository.getAllSavedFilters().find { it.id == record.savedFilterId }
+                val roster = if (filter != null) {
+                    studentsList.filter { student ->
+                        val value = getFieldValue(student, filter.fieldName)
+                        evaluateCondition(value, filter.comparison, filter.value1, filter.value2)
+                    }
+                } else {
+                    emptyList()
+                }
 
-            val fileUri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                csvFile
-            )
+                val dates = generateDateList(record.startDate, record.endDate)
+                val sdfDate = SimpleDateFormat("MMM-dd", Locale.US)
+                val sdfRange = SimpleDateFormat("MMMM dd", Locale.US)
+                val rangeStr = "${sdfRange.format(Date(record.startDate))} - ${sdfRange.format(Date(record.endDate))}"
 
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/csv"
-                putExtra(Intent.EXTRA_STREAM, fileUri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
+                val csvContent = StringBuilder()
 
-            withContext(Dispatchers.Main) {
-                context.startActivity(Intent.createChooser(shareIntent, "Export Attendance CSV"))
+                csvContent.append("Attendance Record Name,${record.name}\n")
+                csvContent.append("Date Range,$rangeStr\n")
+
+                val totalDays = dates.size
+                csvContent.append("Total Days,$totalDays")
+                val paddingCount = totalDays + 1
+                for (i in 0 until paddingCount) {
+                    csvContent.append(",")
+                }
+                csvContent.append("Count Per Student\n")
+
+                csvContent.append("\n")
+
+                csvContent.append("Name")
+                dates.forEach { date ->
+                    csvContent.append(",${sdfDate.format(Date(date))}")
+                }
+                csvContent.append(",,P,A,E,R,Unmarked\n")
+
+                roster.forEach { student ->
+                    val cleanName = "${student.lastName} ${student.firstName}".replace(",", " ")
+                    csvContent.append(cleanName)
+
+                    var pCount = 0
+                    var aCount = 0
+                    var eCount = 0
+                    var rCount = 0
+                    var uCount = 0
+
+                    dates.forEach { date ->
+                        val log = logs.find { it.studentId == student.id && it.dateMillis == date }
+                        val mark = when (log?.status) {
+                            "PRESENT" -> { pCount++; "P" }
+                            "ABSENT" -> { aCount++; "A" }
+                            "EXCUSED" -> { eCount++; "E" }
+                            "REMOVED" -> { rCount++; "R" }
+                            else -> { uCount++; "" }
+                        }
+                        csvContent.append(",$mark")
+                    }
+                    csvContent.append(",,$pCount,$aCount,$eCount,$rCount,$uCount\n")
+                }
+
+                csvContent.append("\n")
+
+                csvContent.append("Sum per Day\n")
+
+                csvContent.append("Total P")
+                dates.forEach { date ->
+                    val dayP = logs.count { it.dateMillis == date && it.status == "PRESENT" && roster.any { r -> r.id == it.studentId } }
+                    csvContent.append(",$dayP")
+                }
+                csvContent.append("\n")
+
+                csvContent.append("Total A")
+                dates.forEach { date ->
+                    val dayA = logs.count { it.dateMillis == date && it.status == "ABSENT" && roster.any { r -> r.id == it.studentId } }
+                    csvContent.append(",$dayA")
+                }
+                csvContent.append("\n")
+
+                csvContent.append("Total E")
+                dates.forEach { date ->
+                    val dayE = logs.count { it.dateMillis == date && it.status == "EXCUSED" && roster.any { r -> r.id == it.studentId } }
+                    csvContent.append(",$dayE")
+                }
+                csvContent.append("\n")
+
+                csvContent.append("Total R")
+                dates.forEach { date ->
+                    val dayR = logs.count { it.dateMillis == date && it.status == "REMOVED" && roster.any { r -> r.id == it.studentId } }
+                    csvContent.append(",$dayR")
+                }
+                csvContent.append("\n")
+
+                csvContent.append("Total Unmarked")
+                dates.forEach { date ->
+                    val dayU = logs.count { it.dateMillis == date && it.status == "NOT_SET" && roster.any { r -> r.id == it.studentId } }
+                    csvContent.append(",$dayU")
+                }
+                csvContent.append("\n")
+
+                val cacheDir = File(context.cacheDir, "attendance_exports").apply { mkdirs() }
+                val csvFile = File(cacheDir, "Overall_Report_${record.name.replace(" ", "_")}.csv")
+                if (csvFile.exists()) csvFile.delete()
+
+                FileOutputStream(csvFile).use { fos ->
+                    fos.write(csvContent.toString().toByteArray(Charsets.UTF_8))
+                    fos.flush()
+                }
+
+                val fileUri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    csvFile
+                )
+
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/csv"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+
+                withContext(Dispatchers.Main) {
+                    context.startActivity(Intent.createChooser(shareIntent, "Share Overall Report Spreadsheet"))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
