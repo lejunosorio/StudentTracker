@@ -32,14 +32,30 @@ abstract class AppDatabase : RoomDatabase() {
                 val passphrase = SecurityHelper.getDatabasePassphrase(context)
                 val factory = SupportFactory(passphrase.map { it.code.toByte() }.toByteArray())
 
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "student_tracker_secure_db"
-                )
-                    .openHelperFactory(factory)
-                    .fallbackToDestructiveMigration()
-                    .build()
+                val instance = try {
+                    Room.databaseBuilder(
+                        context.applicationContext,
+                        AppDatabase::class.java,
+                        "student_tracker_secure_db"
+                    )
+                        .openHelperFactory(factory)
+                        .fallbackToDestructiveMigration()
+                        .build().also {
+                            // Trigger a quick database write connection to verify key decryption is successful [1]
+                            it.openHelper.writableDatabase
+                        }
+                } catch (_: Exception) {
+                    // SELF-HEALING RECOVERY: Delete the corrupted database file on disk and rebuild cleanly [1]
+                    context.deleteDatabase("student_tracker_secure_db")
+                    Room.databaseBuilder(
+                        context.applicationContext,
+                        AppDatabase::class.java,
+                        "student_tracker_secure_db"
+                    )
+                        .openHelperFactory(factory)
+                        .fallbackToDestructiveMigration()
+                        .build()
+                }
 
                 MemoryHelper.zeroMemory(passphrase)
 

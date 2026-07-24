@@ -3,6 +3,7 @@ package dev.soloistdev.studenttracker.data
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File // Required for disk-level file operations [1]
 
 class StudentRepository(private val context: Context) {
     private val studentDao: StudentDao by lazy {
@@ -35,7 +36,7 @@ class StudentRepository(private val context: Context) {
         studentDao.deleteFormTemplate(templateId)
     }
 
-    // Recycle Bin & Data Purging
+    // Recycle Bin & Data Purging (With file cleanup) [1]
     suspend fun getAllDeletedStudents(): List<StudentEntity> = withContext(Dispatchers.IO) {
         studentDao.getAllDeletedStudents()
     }
@@ -45,6 +46,22 @@ class StudentRepository(private val context: Context) {
     }
 
     suspend fun permanentDeleteStudent(studentId: Int) = withContext(Dispatchers.IO) {
+        // Query the soft-deleted list to find and purge their profile image file [1]
+        try {
+            val deletedRoster = studentDao.getAllDeletedStudents()
+            val targetStudent = deletedRoster.find { it.id == studentId }
+
+            targetStudent?.let { student ->
+                if (student.picturePath.isNotEmpty()) {
+                    val imageFile = File(student.picturePath)
+                    if (imageFile.exists()) {
+                        imageFile.delete() // Permanently delete the file to prevent storage bloat [1]
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            // Suppressed
+        }
         studentDao.permanentDeleteStudent(studentId)
     }
 

@@ -3,7 +3,6 @@ package dev.soloistdev.studenttracker
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
-import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -13,20 +12,28 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.lifecycleScope // Required for coroutine scope launches [1]
 import dev.soloistdev.studenttracker.security.IntegrityChecker
 import dev.soloistdev.studenttracker.ui.AppNavigation
 import dev.soloistdev.studenttracker.ui.theme.StudentTrackerTheme
+import kotlinx.coroutines.Dispatchers // Required for thread scheduling [1]
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 1. Root Check
+        // 1. Asynchronous Root Check to prevent main-thread ANR stutters [1]
         val integrityChecker = IntegrityChecker(this)
-        if (integrityChecker.isDeviceRooted()) {
-            Toast.makeText(this, "Security Error: Rooted environment detected. App closing.", Toast.LENGTH_LONG).show()
-            finishAffinity()
-            return
+        lifecycleScope.launch(Dispatchers.IO) {
+            val isRooted = integrityChecker.isDeviceRooted()
+            if (isRooted) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Security Error: Rooted environment detected. App closing.", Toast.LENGTH_LONG).show()
+                    finishAffinity()
+                }
+            }
         }
 
         // 2. Anti-Tapjacking Overlay Protection
