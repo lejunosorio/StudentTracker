@@ -1,5 +1,6 @@
 package dev.soloistdev.studenttracker.ui
 
+import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -116,9 +117,28 @@ fun SavedFiltersScreen(
     val templates by viewModel.templates.collectAsState()
     val context = LocalContext.current
 
+    // Observe active selection state to handle transition view states
     var activeFilterForListing by remember { mutableStateOf<SavedFilterEntity?>(null) }
+
     var showAddDialog by remember { mutableStateOf(false) }
     var editingFilter by remember { mutableStateOf<SavedFilterEntity?>(null) }
+
+    // Retrieve active card badge settings from unencrypted shared preferences [1, 2]
+    val sharedPrefs = remember { context.getSharedPreferences("app_settings", Context.MODE_PRIVATE) }
+    var activeBadgeField by remember { mutableStateOf(sharedPrefs.getString("card_banner_field", "") ?: "") }
+
+    // Keep active badge state reactively updated with Settings screen modifications [1, 2]
+    DisposableEffect(sharedPrefs) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "card_banner_field") {
+                activeBadgeField = sharedPrefs.getString("card_banner_field", "") ?: ""
+            }
+        }
+        sharedPrefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose {
+            sharedPrefs.unregisterOnSharedPreferenceChangeListener(listener)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -198,9 +218,11 @@ fun SavedFiltersScreen(
                             )
                         }
                         items(filteredList) { student ->
+                            // CORRECTED: Pass activeBadgeField configuration argument to StudentCard [1, 2]
                             StudentCard(
                                 student = student,
                                 isSelected = false,
+                                activeBadgeField = activeBadgeField, // Dynamically draws active badge in sublists [1, 2]
                                 onClick = { onStudentClick(student.id) },
                                 onLongClick = {}
                             )
@@ -225,9 +247,7 @@ fun SavedFiltersScreen(
                 } else {
                     val lazyListState = rememberLazyListState()
                     var draggedItemIndex by remember { mutableStateOf<Int?>(null) }
-
-                    // Tracks accumulated Y offset value of active card during drag [1]
-                    var draggedOffsetY by remember { mutableStateOf(0f) }
+                    var draggedOffsetY by remember { mutableFloatStateOf(0f) }
 
                     LazyColumn(
                         state = lazyListState,
@@ -243,7 +263,7 @@ fun SavedFiltersScreen(
                                         item?.let {
                                             if (it.index > 0) {
                                                 draggedItemIndex = it.index - 1
-                                                draggedOffsetY = 0f // Reset offset on drag start [1]
+                                                draggedOffsetY = 0f
                                             }
                                         }
                                     },
@@ -258,7 +278,7 @@ fun SavedFiltersScreen(
                                     onDrag = { change, dragAmount ->
                                         change.consume()
                                         val currentIndex = draggedItemIndex ?: return@detectDragGesturesAfterLongPress
-                                        draggedOffsetY += dragAmount.y // Accumulate continuous Y displacement [1]
+                                        draggedOffsetY += dragAmount.y
 
                                         val layoutInfo = lazyListState.layoutInfo
                                         val itemBelow = layoutInfo.visibleItemsInfo.firstOrNull { visibleItem ->
@@ -268,7 +288,6 @@ fun SavedFiltersScreen(
                                             val targetIndex = visibleItem.index - 1
                                             if (targetIndex in filters.indices && targetIndex != currentIndex) {
                                                 viewModel.moveFilter(currentIndex, targetIndex)
-                                                // Reset displacement during list-index swap to prevent visual jumping [1]
                                                 draggedOffsetY = 0f
                                                 draggedItemIndex = targetIndex
                                             }
@@ -299,7 +318,6 @@ fun SavedFiltersScreen(
                                 }
                             }
 
-                            // Dynamic physical float settings [1]
                             val cardElevation = if (isDragging) 16.dp else 1.dp
                             val cardScale = if (isDragging) 1.05f else 1.0f
                             val cardAlpha = if (isDragging) 0.92f else 1.0f
@@ -331,7 +349,7 @@ fun SavedFiltersScreen(
                                 modifier = Modifier
                                     .animateItem()
                                     .zIndex(if (isDragging) 10f else 0f),
-                                enableDismissFromStartToEnd = !isDragging, // Disable swipes during drag interactions
+                                enableDismissFromStartToEnd = !isDragging,
                                 enableDismissFromEndToStart = !isDragging,
                                 backgroundContent = {
                                     val color = when (dismissState.dismissDirection) {
@@ -374,8 +392,8 @@ fun SavedFiltersScreen(
                                                 scaleX = cardScale
                                                 scaleY = cardScale
                                                 alpha = cardAlpha
-                                                translationY = cardTranslationY // Physically glides card along Y-axis [1]
-                                                shadowElevation = if (isDragging) 24f else 0f // Suspends real shadow depth [1]
+                                                translationY = cardTranslationY
+                                                shadowElevation = if (isDragging) 24f else 0f
                                             }
                                             .clickable { activeFilterForListing = filter },
                                         colors = CardDefaults.cardColors(
@@ -472,6 +490,7 @@ fun SavedFiltersScreen(
         }
     }
 }
+
 
 
 @Composable

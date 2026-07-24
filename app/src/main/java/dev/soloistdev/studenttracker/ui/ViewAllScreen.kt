@@ -1,5 +1,6 @@
 package dev.soloistdev.studenttracker.ui
 
+import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -13,12 +14,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.automirrored.filled.Sort // AutoMirrored Sort [2.1]
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.mutableLongStateOf // Added mutableLongStateOf import [2]
-import androidx.compose.material.icons.filled.CalendarToday // Added calendar icon import [2]
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,6 +34,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.StudentEntity
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -45,7 +47,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.ui.zIndex
 
@@ -82,17 +83,15 @@ fun ViewAllScreen(
     var showSortSheet by remember { mutableStateOf(false) }
     var showBulkDeleteConfirmDialog by remember { mutableStateOf(false) }
 
-    // Dialog controllers with dual date-range state tracking [1, 2]
+    // Dialog controllers with dual date-range state tracking
     var showCreateAttendanceDialog by remember { mutableStateOf(false) }
     var attendanceRecordName by remember { mutableStateOf("") }
+    var startDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var endDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var showStartPicker by remember { mutableStateOf(false) }
+    var showEndPicker by remember { mutableStateOf(false) }
 
-    var startDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) } // Start Date [1, 2]
-    var endDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) } // End Date [1, 2]
-
-    var showStartPicker by remember { mutableStateOf(false) } // Start picker state [1, 2]
-    var showEndPicker by remember { mutableStateOf(false) } // End picker state [1, 2]
-
-    val isDateRangeInvalid = startDateMillis > endDateMillis // Range validator [1, 2]
+    val isDateRangeInvalid = startDateMillis > endDateMillis
 
     val coreFields = listOf("First Name", "Last Name", "Gender", "Birthday", "Address", "Age", "Guardian Name", "Guardian Contact")
 
@@ -161,6 +160,7 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
+                    // Restored: Drawer item for the Attendance System [1]
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.EventAvailable, contentDescription = null) },
                         label = { Text("Attendance System") },
@@ -168,7 +168,7 @@ fun ViewAllScreen(
                         onClick = {
                             scope.launch {
                                 drawerState.close()
-                                onOpenAttendance() // Navigates to the Attendance screen
+                                onOpenAttendance()
                             }
                         },
                         colors = drawerItemColors,
@@ -284,7 +284,7 @@ fun ViewAllScreen(
                     )
                 } else {
                     CenterAlignedTopAppBar(
-                        title = { Text("Choir Directory", fontWeight = FontWeight.Bold) },
+                        title = { Text("Student Directory", fontWeight = FontWeight.Bold) },
                         navigationIcon = {
                             IconButton(onClick = { scope.launch { drawerState.open() } }) {
                                 Icon(Icons.Default.Menu, contentDescription = "Menu")
@@ -333,6 +333,21 @@ fun ViewAllScreen(
                 }
             }
         ) { paddingValues ->
+            val sharedPrefs = remember { context.getSharedPreferences("app_settings", Context.MODE_PRIVATE) }
+            var activeBadgeField by remember { mutableStateOf(sharedPrefs.getString("card_banner_field", "") ?: "") }
+
+            DisposableEffect(sharedPrefs) {
+                val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                    if (key == "card_banner_field") {
+                        activeBadgeField = sharedPrefs.getString("card_banner_field", "") ?: ""
+                    }
+                }
+                sharedPrefs.registerOnSharedPreferenceChangeListener(listener)
+                onDispose {
+                    sharedPrefs.unregisterOnSharedPreferenceChangeListener(listener)
+                }
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -455,6 +470,7 @@ fun ViewAllScreen(
                     }
                 }
 
+                // Empty state trigger
                 if (students.isEmpty() && searchQuery.isEmpty() && activeFilter == null) {
                     Box(
                         modifier = Modifier
@@ -463,7 +479,7 @@ fun ViewAllScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "Choir Directory is empty.\nTap '+' to add a member.",
+                            text = "Directory is empty.\nTap '+' to add a member.",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
@@ -473,6 +489,7 @@ fun ViewAllScreen(
                         )
                     }
                 } else {
+                    // Student List
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 80.dp)
@@ -551,6 +568,7 @@ fun ViewAllScreen(
                                     StudentCard(
                                         student = student,
                                         isSelected = isStudentSelected,
+                                        activeBadgeField = activeBadgeField,
                                         onClick = {
                                             if (isSelectionMode) {
                                                 viewModel.toggleStudentSelection(student.id)
@@ -1053,6 +1071,7 @@ fun ViewAllScreen(
             }
         }
 
+        // ================= SPRINT 9 SORT SHEET (Screen 13) =================
         if (showSortSheet) {
             ModalBottomSheet(
                 onDismissRequest = { showSortSheet = false },
@@ -1135,7 +1154,7 @@ fun ViewAllScreen(
                             onClick = { showStartPicker = true },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(8.dp),
-                            border = if (isDateRangeInvalid) BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) else ButtonDefaults.outlinedButtonBorder
+                            border = if (isDateRangeInvalid) BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) else ButtonDefaults.outlinedButtonBorder(enabled = true)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1152,7 +1171,7 @@ fun ViewAllScreen(
                             onClick = { showEndPicker = true },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(8.dp),
-                            border = if (isDateRangeInvalid) BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) else ButtonDefaults.outlinedButtonBorder
+                            border = if (isDateRangeInvalid) BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) else ButtonDefaults.outlinedButtonBorder(enabled = true)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1249,6 +1268,8 @@ fun ViewAllScreen(
     }
 }
 
+
+
 @Composable
 fun SortOptionItem(label: String, isSelected: Boolean, onClick: () -> Unit) {
     Row(
@@ -1272,9 +1293,10 @@ fun SortOptionItem(label: String, isSelected: Boolean, onClick: () -> Unit) {
 @Composable
 fun StudentCard(
     student: StudentEntity,
-    isSelected: Boolean, // Receives dynamic selection status
+    isSelected: Boolean,
+    activeBadgeField: String,
     onClick: () -> Unit,
-    onLongClick: () -> Unit // Handles gesture-press actions
+    onLongClick: () -> Unit
 ) {
     ElevatedCard(
         modifier = Modifier
@@ -1285,7 +1307,6 @@ fun StudentCard(
                 onLongClick = onLongClick
             ),
         colors = CardDefaults.elevatedCardColors(
-            // Container highlights to primaryContainer when selected
             containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
             contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
         )
@@ -1301,7 +1322,6 @@ fun StudentCard(
                 color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer
             ) {
                 if (isSelected) {
-                    // Check icon swaps in when selected
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                         Icon(
                             imageVector = Icons.Default.Check,
@@ -1347,6 +1367,33 @@ fun StudentCard(
                         color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f, fill = false)
                     )
+
+                    val dynamicBadgeValue = remember(student.customDataJson, activeBadgeField) {
+                        if (activeBadgeField.isNotEmpty()) {
+                            try {
+                                val json = JSONObject(student.customDataJson)
+                                json.optString(activeBadgeField, "").trim().ifEmpty { null }
+                            } catch (e: Exception) {
+                                null
+                            }
+                        } else null
+                    }
+
+                    if (dynamicBadgeValue != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = dynamicBadgeValue,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
                 }
 
                 val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.US)

@@ -1,6 +1,7 @@
 package dev.soloistdev.studenttracker.ui
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
@@ -44,10 +45,26 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
         return true
     }
 
+    // UPDATED: Deletes template and automatically clears the shared card banner preference if matched [3]
     fun deleteTemplate(id: Int) {
         viewModelScope.launch {
-            repository.deleteFormTemplate(id)
-            loadTemplates()
+            try {
+                val list = repository.getAllFormTemplates()
+                val targetTemplate = list.find { it.id == id }
+
+                targetTemplate?.let { template ->
+                    val sharedPrefs = getApplication<Application>().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+                    val activeBannerField = sharedPrefs.getString("card_banner_field", "")
+                    if (activeBannerField == template.fieldName) {
+                        sharedPrefs.edit().remove("card_banner_field").apply() // Automatic cleanup [3]
+                    }
+                }
+
+                repository.deleteFormTemplate(id)
+                loadTemplates()
+            } catch (_: Exception) {
+                // Suppressed warning
+            }
         }
     }
 }

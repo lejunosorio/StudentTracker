@@ -622,28 +622,54 @@ fun RecordCreateForm(
     var showStartPicker by remember { mutableStateOf(false) }
     var showEndPicker by remember { mutableStateOf(false) }
 
-    var startDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var endDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    // Normalize initial states to local midnight to prevent time-of-day offset mismatch bugs [1]
+    val todayMidnight = remember {
+        Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    }
+
+    var startDateMillis by remember { mutableLongStateOf(todayMidnight) }
+    var endDateMillis by remember { mutableLongStateOf(todayMidnight) }
+
+    // Date Range boundary validation check [1, 2]
+    val isDateRangeInvalid = startDateMillis > endDateMillis
 
     val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.US)
 
+    // Standardized M3 Textfield Colors
+    val m3TextFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = MaterialTheme.colorScheme.primary,
+        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+        focusedLabelColor = MaterialTheme.colorScheme.primary,
+        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+        unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+    )
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New Attendance Record", fontWeight = FontWeight.Bold) },
+        title = { Text("New Attendance Record", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
         text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp) // Generous vertical spacing
             ) {
+                // Record Name Input
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Record Name *") },
+                    colors = m3TextFieldColors,
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // Roster Filter Dropdown
                 var filterExpanded by remember { mutableStateOf(false) }
                 val selectedFilterName = savedFilters.find { it.id == selectedFilterId }?.filterName ?: "Select Filter"
 
@@ -653,10 +679,20 @@ fun RecordCreateForm(
                         onValueChange = {},
                         readOnly = true,
                         label = { Text("Roster Filter *") },
-                        trailingIcon = { Icon(Icons.Default.ArrowDropDown, null, Modifier.clickable { filterExpanded = true }) },
+                        colors = m3TextFieldColors,
+                        trailingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "Expand",
+                                modifier = Modifier.clickable { filterExpanded = true }
+                            )
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
-                    DropdownMenu(expanded = filterExpanded, onDismissRequest = { filterExpanded = false }) {
+                    DropdownMenu(
+                        expanded = filterExpanded,
+                        onDismissRequest = { filterExpanded = false }
+                    ) {
                         savedFilters.forEach { option ->
                             DropdownMenuItem(
                                 text = { Text(option.filterName) },
@@ -669,33 +705,107 @@ fun RecordCreateForm(
                     }
                 }
 
-                OutlinedButton(
-                    onClick = { showStartPicker = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Start: ${sdf.format(Date(startDateMillis))}", color = MaterialTheme.colorScheme.onSurface)
-                        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    }
-                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                OutlinedButton(
-                    onClick = { showEndPicker = true },
+                // Date Selection Section
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    Text(
+                        text = "Event Duration Period *",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                    )
+
+                    // Horizontal Date Selectors Row (Saves dialog real-estate and looks cleaner) [2]
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("End: ${sdf.format(Date(endDateMillis))}", color = MaterialTheme.colorScheme.onSurface)
-                        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        // Start Date Button
+                        OutlinedButton(
+                            onClick = { showStartPicker = true },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            border = if (isDateRangeInvalid) {
+                                BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) // Highlights red on error [2]
+                            } else {
+                                ButtonDefaults.outlinedButtonBorder(enabled = true)
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Start: ${sdf.format(Date(startDateMillis))}",
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 11.sp
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.CalendarToday,
+                                    contentDescription = "Select Start Date",
+                                    tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        // End Date Button
+                        OutlinedButton(
+                            onClick = { showEndPicker = true },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            border = if (isDateRangeInvalid) {
+                                BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) // Highlights red on error [2]
+                            } else {
+                                ButtonDefaults.outlinedButtonBorder(enabled = true)
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "End: ${sdf.format(Date(endDateMillis))}",
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 11.sp
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.CalendarToday,
+                                    contentDescription = "Select End Date",
+                                    tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Polished Warning Alert Row [1, 2]
+                    if (isDateRangeInvalid) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = "Error",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Start date must be less than or equal to End date",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -703,11 +813,13 @@ fun RecordCreateForm(
         confirmButton = {
             Button(
                 onClick = {
-                    if (name.isNotBlank() && selectedFilterId != 0 && startDateMillis <= endDateMillis) {
+                    if (name.isNotBlank() && selectedFilterId != 0 && !isDateRangeInvalid) {
                         onSave(name.trim(), selectedFilterId, startDateMillis, endDateMillis)
                     }
                 },
-                enabled = name.isNotBlank() && startDateMillis <= endDateMillis
+                enabled = name.isNotBlank() && !isDateRangeInvalid, // State locked on validation failure [1, 2]
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                shape = RoundedCornerShape(20.dp)
             ) { Text("Create") }
         },
         dismissButton = {
