@@ -205,18 +205,17 @@ fun TemplateManagerScreen(
             }
         }
 
-        // SPRINT 9 M3 DELETE SCHEMA WARNING DIALOG
         templateToDelete?.let { template ->
             AlertDialog(
                 onDismissRequest = { templateToDelete = null },
                 title = { Text("Delete Custom Field?", fontWeight = FontWeight.Bold) },
-                text = { Text("Are you sure you want to delete the '${template.fieldName.replace("_", " ")}' custom field? This will permanently erase any saved data under this field for all 59 members.") },
+                text = { Text("Are you sure you want to move the '${template.fieldName.replace("_", " ")}' custom field to the Recycle Bin? It can be restored within 30 days.") },
                 confirmButton = {
                     Button(
                         onClick = {
                             viewModel.deleteTemplate(template.id)
                             templateToDelete = null
-                            Toast.makeText(context, "Field deleted successfully.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Field moved to Recycle Bin.", Toast.LENGTH_SHORT).show() // Updated feedback [1]
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {

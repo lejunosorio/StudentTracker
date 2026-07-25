@@ -198,12 +198,13 @@ fun AttendanceScreen(
                                     AlertDialog(
                                         onDismissRequest = { showDeleteDialog = false },
                                         title = { Text("Delete Attendance Record?") },
-                                        text = { Text("Permanently delete '${record.name}'? This clears all saved attendance logs associated with this event.") },
+                                        text = { Text("Are you sure you want to move '${record.name}' to the Recycle Bin? It can be restored within 30 days.") },
                                         confirmButton = {
                                             Button(
                                                 onClick = {
                                                     showDeleteDialog = false
                                                     viewModel.deleteRecord(record.id)
+                                                    Toast.makeText(context, "${record.name} moved to Recycle Bin.", Toast.LENGTH_SHORT).show()
                                                 },
                                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                                             ) { Text("Delete") }

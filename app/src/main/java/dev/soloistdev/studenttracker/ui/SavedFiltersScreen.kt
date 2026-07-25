@@ -436,9 +436,8 @@ fun SavedFiltersScreen(
                                 AlertDialog(
                                     onDismissRequest = { showDeleteDialog = false },
                                     title = { Text("Delete Filter?") },
-                                    text = { Text("Are you sure you want to move the '${filter.filterName}' group to the Recycle Bin?") },
+                                    text = { Text("Are you sure you want to move the '${filter.filterName}' group to the Recycle Bin? It can be restored within 30 days.") },
                                     confirmButton = {
-                                        // CORRECTED: Maps dialog confirmations directly to ViewModel boundaries [1, 2]
                                         Button(
                                             onClick = {
                                                 showDeleteDialog = false
