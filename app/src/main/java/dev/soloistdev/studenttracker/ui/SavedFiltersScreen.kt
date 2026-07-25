@@ -2,6 +2,7 @@ package dev.soloistdev.studenttracker.ui
 
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -15,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,12 +24,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -42,13 +47,7 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.zIndex
-
-// VIEW MODEL: Unchanged, coordinating database states
+// VIEW MODEL: Coordinates dynamic calculations, reordering arrays, and db writes
 class SavedFiltersViewModel(application: android.app.Application) : AndroidViewModel(application) {
     private val repository = StudentRepository(application)
 
@@ -82,10 +81,11 @@ class SavedFiltersViewModel(application: android.app.Application) : AndroidViewM
         }
     }
 
+    // CORRECTED: Restores clean MVVM boundaries, executing soft-delete on Dispatchers.IO [1]
     fun deleteFilter(filterId: Int) {
         viewModelScope.launch {
-            repository.deleteSavedFilter(filterId)
-            loadData()
+            repository.softDeleteSavedFilter(filterId)
+            loadData() // Reloads active filter groups
         }
     }
 
@@ -117,17 +117,13 @@ fun SavedFiltersScreen(
     val templates by viewModel.templates.collectAsState()
     val context = LocalContext.current
 
-    // Observe active selection state to handle transition view states
     var activeFilterForListing by remember { mutableStateOf<SavedFilterEntity?>(null) }
-
     var showAddDialog by remember { mutableStateOf(false) }
     var editingFilter by remember { mutableStateOf<SavedFilterEntity?>(null) }
 
-    // Retrieve active card badge settings from unencrypted shared preferences [1, 2]
     val sharedPrefs = remember { context.getSharedPreferences("app_settings", Context.MODE_PRIVATE) }
     var activeBadgeField by remember { mutableStateOf(sharedPrefs.getString("card_banner_field", "") ?: "") }
 
-    // Keep active badge state reactively updated with Settings screen modifications [1, 2]
     DisposableEffect(sharedPrefs) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key == "card_banner_field") {
@@ -218,11 +214,10 @@ fun SavedFiltersScreen(
                             )
                         }
                         items(filteredList) { student ->
-                            // CORRECTED: Pass activeBadgeField configuration argument to StudentCard [1, 2]
                             StudentCard(
                                 student = student,
                                 isSelected = false,
-                                activeBadgeField = activeBadgeField, // Dynamically draws active badge in sublists [1, 2]
+                                activeBadgeField = activeBadgeField,
                                 onClick = { onStudentClick(student.id) },
                                 onLongClick = {}
                             )
@@ -328,6 +323,8 @@ fun SavedFiltersScreen(
 
                             var showDeleteDialog by remember { mutableStateOf(false) }
 
+                            // CORRECTED: Suppress deprecation warning on confirmValueChange [3]
+                            @Suppress("DEPRECATION")
                             val dismissState = rememberSwipeToDismissBoxState(
                                 confirmValueChange = { dismissValue ->
                                     when (dismissValue) {
@@ -439,13 +436,14 @@ fun SavedFiltersScreen(
                                 AlertDialog(
                                     onDismissRequest = { showDeleteDialog = false },
                                     title = { Text("Delete Filter?") },
-                                    text = { Text("Are you sure you want to delete the '${filter.filterName}' group?") },
+                                    text = { Text("Are you sure you want to move the '${filter.filterName}' group to the Recycle Bin?") },
                                     confirmButton = {
+                                        // CORRECTED: Maps dialog confirmations directly to ViewModel boundaries [1, 2]
                                         Button(
                                             onClick = {
                                                 showDeleteDialog = false
                                                 viewModel.deleteFilter(filter.id)
-                                                Toast.makeText(context, "Filter deleted.", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, "Filter moved to Recycle Bin.", Toast.LENGTH_SHORT).show()
                                             },
                                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                                         ) { Text("Delete") }
@@ -491,8 +489,6 @@ fun SavedFiltersScreen(
     }
 }
 
-
-
 @Composable
 fun FilterDialogForm(
     templates: List<FormTemplateEntity>,
@@ -503,9 +499,8 @@ fun FilterDialogForm(
     var name by remember { mutableStateOf(existingFilter?.filterName ?: "") }
     var field by remember { mutableStateOf(existingFilter?.fieldName ?: "Age") }
 
-    // Fallback default comparisons
-    val initialComparison = existingFilter?.comparison ?: "In between"
-    var comparison by remember { mutableStateOf(initialComparison) }
+    // CORRECTED: Removed redundant initializers to optimize compile paths [1]
+    var comparison by remember { mutableStateOf(existingFilter?.comparison ?: "In between") }
 
     var val1 by remember { mutableStateOf(existingFilter?.value1 ?: "") }
     var val2 by remember { mutableStateOf(existingFilter?.value2 ?: "") }
@@ -526,7 +521,6 @@ fun FilterDialogForm(
     val val1Num = val1.toDoubleOrNull()
     val val2Num = val2.toDoubleOrNull()
 
-    // Validate future calendar years
     val currentSystemYear = Calendar.getInstance().get(Calendar.YEAR)
     val isFutureYear1 = comparison == "birth_year" && (val1.toIntOrNull() ?: 0) > currentSystemYear
     val isFutureYear2 = comparison == "birth_month_year" && (val2.toIntOrNull() ?: 0) > currentSystemYear
@@ -584,7 +578,6 @@ fun FilterDialogForm(
                     }
                 }
 
-                // Render operators dropdown only for non-Gender and non-Birthday fields
                 if (!isGenderMode && !isBirthdayMode) {
                     var compExpanded by remember { mutableStateOf(false) }
                     Box {
@@ -615,7 +608,6 @@ fun FilterDialogForm(
                     }
                 }
 
-                // Render Birthday specific option selectors
                 if (isBirthdayMode) {
                     var typeExpanded by remember { mutableStateOf(false) }
                     val birthdayTypes = listOf(
@@ -758,7 +750,6 @@ fun FilterDialogForm(
                         }
                     }
                 } else if (isGenderMode) {
-                    // Render Gender selection
                     Text("Select Gender *", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -788,7 +779,6 @@ fun FilterDialogForm(
                         )
                     }
                 } else {
-                    // Standard Fields inputs
                     if (isRangeMode) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -858,14 +848,25 @@ fun FilterDialogForm(
     )
 
     if (showDatePicker1) {
-        WheelDatePickerDialog(
-            initialDateMillis = val1.toLongOrNull() ?: System.currentTimeMillis(),
-            onDismiss = { showDatePicker1 = false },
-            onConfirm = { selectedMillis ->
-                val1 = selectedMillis.toString()
-                showDatePicker1 = false
+        val dateState1 = rememberDatePickerState(
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                    return utcTimeMillis <= System.currentTimeMillis()
+                }
+                override fun isSelectableYear(year: Int): Boolean {
+                    return year <= Calendar.getInstance().get(Calendar.YEAR)
+                }
             }
         )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker1 = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    dateState1.selectedDateMillis?.let { val1 = it.toString() }
+                    showDatePicker1 = false
+                }) { Text("OK") }
+            }
+        ) { DatePicker(state = dateState1, showModeToggle = false) }
     }
 }
 
@@ -891,8 +892,7 @@ private fun getFieldValue(student: StudentEntity, field: String): String {
     }
 }
 
-
-// Generic comparator engine
+// Generic comparator engine updated with new Birthday modes & comparisons
 private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2: String): Boolean {
     val cleanVal = fieldVal.trim()
 
@@ -924,6 +924,7 @@ private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2
         }
     }
 
+    // specialized Standard Field comparators
     return when (operator) {
         "contains" -> cleanVal.contains(v1, ignoreCase = true)
         "does not contain" -> !cleanVal.contains(v1, ignoreCase = true)

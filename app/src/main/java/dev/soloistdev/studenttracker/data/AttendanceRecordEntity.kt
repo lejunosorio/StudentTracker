@@ -9,5 +9,6 @@ data class AttendanceRecordEntity(
     val name: String,
     val savedFilterId: Int, // Links to SavedFilterEntity.id
     val startDate: Long,    // Epoch millis
-    val endDate: Long       // Epoch millis
+    val endDate: Long,       // Epoch millis
+    val isDeleted: Boolean = false // New soft delete flag [1]
 )

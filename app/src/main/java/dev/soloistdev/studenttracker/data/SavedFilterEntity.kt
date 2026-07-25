@@ -8,8 +8,9 @@ data class SavedFilterEntity(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val filterName: String,     // Friendly customized label name
     val fieldName: String,      // Target DB attribute (e.g. Age, Gender)
-    val comparison: String,     // Operator (e.g. contains, in range)
+    val comparison: String,     // Operator (e.g. contains, In between)
     val value1: String,         // Primary filtering condition value
-    val value2: String = "",    // Secondary boundary value (for in range mode)
-    val displayOrder: Int = 0   // Drag-and-drop sort indicator
+    val value2: String = "",    // Secondary boundary value (for In between mode)
+    val displayOrder: Int = 0,  // Drag-and-drop sort indicator
+    val isDeleted: Boolean = false // New soft delete flag [1]
 )

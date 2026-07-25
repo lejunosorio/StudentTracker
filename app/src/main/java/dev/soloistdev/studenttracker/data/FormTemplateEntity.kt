@@ -9,5 +9,6 @@ data class FormTemplateEntity(
     val fieldName: String, // Sanitized alphanumeric name (e.g. Bus_Route)
     val fieldType: String, // TEXT, NUMBER, DROPDOWN
     val isRequired: Boolean = false,
-    val optionsJson: String = "[]" // Holds array of dropdown values if DROPDOWN
+    val optionsJson: String = "[]", // Holds array of dropdown values if DROPDOWN
+    val isDeleted: Boolean = false  // New soft delete flag [1]
 )

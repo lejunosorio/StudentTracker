@@ -9,9 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CleaningServices
-import androidx.compose.material.icons.filled.DisplaySettings // Customization icon [1]
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.*
@@ -44,10 +42,19 @@ fun AppSettingsScreen(onBack: () -> Unit) {
     var dynamicColorsEnabled by remember { mutableStateOf(sharedPrefs.getBoolean("dynamic_colors", true)) }
     var darkThemeEnabled by remember { mutableStateOf(sharedPrefs.getBoolean("force_dark_theme", true)) }
 
-    // State managers for the dynamic card badge dialog [1]
-    var showBadgeDialog by remember { mutableStateOf(false) }
+    // State managers for the dynamic card badge dropdown [1, 2]
     var activeBadgeField by remember { mutableStateOf(sharedPrefs.getString("card_banner_field", "") ?: "") }
     var availableTemplates by remember { mutableStateOf<List<FormTemplateEntity>>(emptyList()) }
+    var dropdownExpanded by remember { mutableStateOf(false) } // Controls dropdown state [2]
+
+    val m3TextFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = MaterialTheme.colorScheme.primary,
+        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+        focusedLabelColor = MaterialTheme.colorScheme.primary,
+        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+        unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+    )
 
     LaunchedEffect(Unit) {
         availableTemplates = repository.getAllFormTemplates()
@@ -126,31 +133,63 @@ fun AppSettingsScreen(onBack: () -> Unit) {
                 }
             }
 
-            // NEW: Card Customization Category [1]
+            // Card Customization Category (Updated from popup dialog to inline ExposedDropdownMenuBox) [1, 2]
             Text("Card Customization", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showBadgeDialog = true } // Launches choice dialog [1]
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Set Custom Field as Card Badge", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(
-                            text = if (activeBadgeField.isEmpty()) "None" else "Active: ${activeBadgeField.replace("_", " ")}",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold
+                Column(modifier = Modifier.padding(16.dp)) {
+                    val currentLabel = if (activeBadgeField.isEmpty()) "None" else activeBadgeField.replace("_", " ")
+
+                    ExposedDropdownMenuBox(
+                        expanded = dropdownExpanded,
+                        onExpandedChange = { dropdownExpanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = currentLabel,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Set Custom Field as Card Badge") },
+                            colors = m3TextFieldColors,
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownExpanded) },
+                            // CORRECTED: Uses modern non-deprecated menuAnchor overload [2]
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                         )
+
+                        ExposedDropdownMenu(
+                            expanded = dropdownExpanded,
+                            onDismissRequest = { dropdownExpanded = false }
+                        ) {
+                            // Standard Option: Disable badge [2]
+                            DropdownMenuItem(
+                                text = { Text("None (Disable Badge)") },
+                                onClick = {
+                                    activeBadgeField = ""
+                                    sharedPrefs.edit().putString("card_banner_field", "").apply()
+                                    dropdownExpanded = false
+                                    Toast.makeText(context, "Card badges disabled.", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+
+                            // Dynamic Option list of your custom template fields [1, 2]
+                            availableTemplates.forEach { template ->
+                                val userFriendlyLabel = template.fieldName.replace("_", " ")
+                                DropdownMenuItem(
+                                    text = { Text(userFriendlyLabel) },
+                                    onClick = {
+                                        activeBadgeField = template.fieldName
+                                        sharedPrefs.edit().putString("card_banner_field", template.fieldName).apply()
+                                        dropdownExpanded = false
+                                        Toast.makeText(context, "Card badge set to $userFriendlyLabel", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            }
+                        }
                     }
-                    Icon(Icons.Default.DisplaySettings, contentDescription = "Customize Card", tint = MaterialTheme.colorScheme.primary)
                 }
             }
 
@@ -231,78 +270,6 @@ fun AppSettingsScreen(onBack: () -> Unit) {
                     lineHeight = 16.sp
                 )
             }
-        }
-
-        // M3 MULTI-CHOICE BADGE DIALOG [1]
-        if (showBadgeDialog) {
-            AlertDialog(
-                onDismissRequest = { showBadgeDialog = false },
-                title = { Text("Set Card Badge Field", fontWeight = FontWeight.Bold) },
-                text = {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // Standard option: Disable Badge
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    activeBadgeField = ""
-                                    sharedPrefs.edit().putString("card_banner_field", "").apply()
-                                    showBadgeDialog = false
-                                }
-                                .padding(vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("None (Disable Badge)", fontSize = 15.sp)
-                            RadioButton(
-                                selected = activeBadgeField.isEmpty(),
-                                onClick = {
-                                    activeBadgeField = ""
-                                    sharedPrefs.edit().putString("card_banner_field", "").apply()
-                                    showBadgeDialog = false
-                                }
-                            )
-                        }
-
-                        // List all templates as choices dynamically [1]
-                        availableTemplates.forEach { template ->
-                            val userFriendlyLabel = template.fieldName.replace("_", " ")
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        activeBadgeField = template.fieldName
-                                        sharedPrefs.edit().putString("card_banner_field", template.fieldName).apply()
-                                        showBadgeDialog = false
-                                    }
-                                    .padding(vertical = 12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(userFriendlyLabel, fontSize = 15.sp)
-                                RadioButton(
-                                    selected = activeBadgeField == template.fieldName,
-                                    onClick = {
-                                        activeBadgeField = template.fieldName
-                                        sharedPrefs.edit().putString("card_banner_field", template.fieldName).apply()
-                                        showBadgeDialog = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-                },
-                confirmButton = {},
-                dismissButton = {
-                    TextButton(onClick = { showBadgeDialog = false }) {
-                        Text("Cancel")
-                    }
-                },
-                shape = RoundedCornerShape(28.dp)
-            )
         }
     }
 }

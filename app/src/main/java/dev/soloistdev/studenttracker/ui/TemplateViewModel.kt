@@ -45,7 +45,6 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
         return true
     }
 
-    // UPDATED: Deletes template and automatically clears the shared card banner preference if matched [3]
     fun deleteTemplate(id: Int) {
         viewModelScope.launch {
             try {
@@ -56,14 +55,15 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
                     val sharedPrefs = getApplication<Application>().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
                     val activeBannerField = sharedPrefs.getString("card_banner_field", "")
                     if (activeBannerField == template.fieldName) {
-                        sharedPrefs.edit().remove("card_banner_field").apply() // Automatic cleanup [3]
+                        sharedPrefs.edit().remove("card_banner_field").apply()
                     }
                 }
 
-                repository.deleteFormTemplate(id)
+                // CORRECTED: Call the soft-delete repository action [1]
+                repository.softDeleteFormTemplate(id)
                 loadTemplates()
             } catch (_: Exception) {
-                // Suppressed warning
+                // Suppressed
             }
         }
     }

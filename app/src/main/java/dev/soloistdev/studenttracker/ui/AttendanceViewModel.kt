@@ -3,6 +3,8 @@ package dev.soloistdev.studenttracker.ui
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -17,7 +19,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
-import java.util.zip.ZipEntry // Required native ZIP streams for OpenXML (.xlsx) packaging [2]
+import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 class AttendanceViewModel(application: Application) : AndroidViewModel(application) {
@@ -51,7 +53,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 _records.value = repository.getAllAttendanceRecords()
                 _savedFilters.value = repository.getAllSavedFilters()
             } catch (_: Exception) {
-                // Suppressed unused parameter
+                // Suppressed
             }
         }
     }
@@ -62,7 +64,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 _recordLogs.value = repository.getLogsForRecord(recordId)
                 _students.value = repository.getAllActiveStudents()
             } catch (_: Exception) {
-                // Suppressed unused parameter
+                // Suppressed
             }
         }
     }
@@ -104,7 +106,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 loadRecords()
             } catch (_: Exception) {
-                // Suppressed unused parameter
+                // Suppressed
             }
         }
     }
@@ -112,10 +114,11 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     fun deleteRecord(recordId: Int) {
         viewModelScope.launch {
             try {
-                repository.deleteAttendanceRecord(recordId)
+                // CORRECTED: Call the repository soft-delete method [1]
+                repository.softDeleteAttendanceRecord(recordId)
                 loadRecords()
             } catch (_: Exception) {
-                // Suppressed unused parameter
+                // Suppressed
             }
         }
     }
@@ -133,7 +136,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 _currentRoster.value = matched
                 _currentLogs.value = logs
             } catch (_: Exception) {
-                // Suppressed unused parameter
+                // Suppressed
             }
         }
     }
@@ -145,7 +148,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 _currentLogs.value = repository.getLogsForDate(recordId, dateMillis)
                 _recordLogs.value = repository.getLogsForRecord(recordId)
             } catch (_: Exception) {
-                // Suppressed unused parameter
+                // Suppressed
             }
         }
     }
@@ -161,7 +164,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 _currentLogs.value = repository.getLogsForDate(recordId, dateMillis)
                 _recordLogs.value = repository.getLogsForRecord(recordId)
             } catch (_: Exception) {
-                // Suppressed unused parameter
+                // Suppressed
             }
         }
     }
@@ -175,12 +178,11 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 _currentLogs.value = repository.getLogsForDate(recordId, dateMillis)
                 _recordLogs.value = repository.getLogsForRecord(recordId)
             } catch (_: Exception) {
-                // Suppressed unused parameter
+                // Suppressed
             }
         }
     }
 
-    // NEW: Highly styled, un-corrupted binary OpenXML (.xlsx) Per-Date Attendance Exporter [2]
     fun exportSheetToCsv(context: Context, record: AttendanceRecordEntity, dateMillis: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -197,40 +199,33 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
 
                 val sheetData = StringBuilder()
 
-                // Row 1: Title Row
                 sheetData.append("<row r=\"1\" ht=\"32\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A1", "DAILY ATTENDANCE SHEET", 1))
                 sheetData.append("</row>")
 
-                // Row 2: Metadata Record Name
                 sheetData.append("<row r=\"2\" ht=\"20\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A2", "Attendance Record Name", 8))
                 sheetData.append(writeStringCell("B2", record.name, 0))
                 sheetData.append("</row>")
 
-                // Row 3: Metadata Date
                 sheetData.append("<row r=\"3\" ht=\"20\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A3", "Date", 8))
                 sheetData.append(writeStringCell("B3", dateStr, 0))
                 sheetData.append("</row>")
 
-                // Row 4: Metadata Filter Name
                 sheetData.append("<row r=\"4\" ht=\"20\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A4", "Attendance Filter", 8))
                 sheetData.append(writeStringCell("B4", filterName, 0))
                 sheetData.append("</row>")
 
-                // Row 5: Empty separator row
                 sheetData.append("<row r=\"5\" ht=\"12\" customHeight=\"1\"></row>")
 
-                // Row 6: Column Headers (Name on left, status centered. Date column removed entirely) [2]
                 sheetData.append("<row r=\"6\" ht=\"24\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A6", "Last Name", 8))
                 sheetData.append(writeStringCell("B6", "First Name", 8))
                 sheetData.append(writeStringCell("C6", "Attendance Status", 2))
                 sheetData.append("</row>")
 
-                // Rows 7+: Student Rows (Zebra striped with color-coded status cells) [2]
                 roster.forEachIndexed { sIdx, student ->
                     val rowNum = sIdx + 7
                     val zebraStyleId = if (sIdx % 2 == 0) 9 else 0
@@ -252,13 +247,11 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                     sheetData.append("</row>")
                 }
 
-                // Row Sum Day Header
                 val sumHeaderRowNum = roster.size + 8
                 sheetData.append("<row r=\"$sumHeaderRowNum\" ht=\"22\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A$sumHeaderRowNum", "Daily Totals", 8))
                 sheetData.append("</row>")
 
-                // Row Total Present
                 val totalPRowNum = roster.size + 9
                 val totalP = logs.count { it.status == "PRESENT" && roster.any { r -> r.id == it.studentId } }
                 sheetData.append("<row r=\"$totalPRowNum\" ht=\"20\" customHeight=\"1\">")
@@ -267,7 +260,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 sheetData.append(writeNumberCell("C$totalPRowNum", totalP, 3))
                 sheetData.append("</row>")
 
-                // Row Total Absent
                 val totalARowNum = roster.size + 10
                 val totalA = logs.count { it.status == "ABSENT" && roster.any { r -> r.id == it.studentId } }
                 sheetData.append("<row r=\"$totalARowNum\" ht=\"20\" customHeight=\"1\">")
@@ -276,7 +268,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 sheetData.append(writeNumberCell("C$totalARowNum", totalA, 4))
                 sheetData.append("</row>")
 
-                // Row Total Excused
                 val totalERowNum = roster.size + 11
                 val totalE = logs.count { it.status == "EXCUSED" && roster.any { r -> r.id == it.studentId } }
                 sheetData.append("<row r=\"$totalERowNum\" ht=\"20\" customHeight=\"1\">")
@@ -285,7 +276,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 sheetData.append(writeNumberCell("C$totalERowNum", totalE, 5))
                 sheetData.append("</row>")
 
-                // Row Total Removed
                 val totalRRowNum = roster.size + 12
                 val totalR = logs.count { it.status == "REMOVED" && roster.any { r -> r.id == it.studentId } }
                 sheetData.append("<row r=\"$totalRRowNum\" ht=\"20\" customHeight=\"1\">")
@@ -294,7 +284,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 sheetData.append(writeNumberCell("C$totalRRowNum", totalR, 6))
                 sheetData.append("</row>")
 
-                // Row Total Unmarked
                 val totalURowNum = roster.size + 13
                 val totalU = logs.count { it.status == "NOT_SET" && roster.any { r -> r.id == it.studentId } }
                 sheetData.append("<row r=\"$totalURowNum\" ht=\"20\" customHeight=\"1\">")
@@ -303,7 +292,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 sheetData.append(writeNumberCell("C$totalURowNum", totalU, 7))
                 sheetData.append("</row>")
 
-                // Format column dimensions and merge references
                 val colXml = """
                     <cols>
                       <col min="1" max="1" width="20" customWidth="1"/>
@@ -322,11 +310,9 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                     </mergeCells>
                 """.trimIndent()
 
-                // Compile Zip-archive natively [2]
                 val excelFile = "Attendance_${record.name.replace(" ", "_")}_$sheetName.xlsx"
                 writeOpenXmlSpreadsheet(context, excelFile, sheetName, colXml, sheetData.toString(), mergeCellsXml)
 
-                // Dispatch via standard sharing sheet using standard OpenXML MIME type (.xlsx) [2]
                 val cacheDir = File(context.cacheDir, "attendance_exports").apply { mkdirs() }
                 val targetFile = File(cacheDir, excelFile)
                 val fileUri = FileProvider.getUriForFile(
@@ -350,7 +336,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    // EXCEL MOCKUP COMPLIANT EXPORTER: Builds cell-for-cell row and column matrices with aligned styling
     fun exportOverallReportToCsv(context: Context, record: AttendanceRecordEntity) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -370,24 +355,20 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 val colSpanTotal = totalDays + 7
                 val lastColLetter = getColLetter(colSpanTotal - 1)
 
-                // Row 1: Title Row
                 sheetData.append("<row r=\"1\" ht=\"32\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A1", "ATTENDANCE OVERALL REPORT", 1))
                 sheetData.append("</row>")
 
-                // Row 2: Metadata Record Name
                 sheetData.append("<row r=\"2\" ht=\"20\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A2", "Attendance Record Name", 8))
                 sheetData.append(writeStringCell("B2", record.name, 0))
                 sheetData.append("</row>")
 
-                // Row 3: Metadata Date Range
                 sheetData.append("<row r=\"3\" ht=\"20\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A3", "Date Range", 8))
                 sheetData.append(writeStringCell("B3", rangeStr, 0))
                 sheetData.append("</row>")
 
-                // Row 4: Metadata Total Days
                 sheetData.append("<row r=\"4\" ht=\"20\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A4", "Total Days", 8))
                 sheetData.append(writeNumberCell("B4", totalDays, 0))
@@ -396,10 +377,8 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 sheetData.append(writeStringCell(countsHeaderColRef, "Count Per Student", 8))
                 sheetData.append("</row>")
 
-                // Row 5: Empty separator row
                 sheetData.append("<row r=\"5\" ht=\"12\" customHeight=\"1\"></row>")
 
-                // Row 6: Table Column Headers
                 sheetData.append("<row r=\"6\" ht=\"24\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A6", "Name", 8))
                 dates.forEachIndexed { idx, date ->
@@ -407,7 +386,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                     sheetData.append(writeStringCell(ref, sdfDate.format(Date(date)), 2))
                 }
                 val spacerColRef = getCellRef(totalDays + 1, 5)
-                sheetData.append("<c r=\"$spacerColRef\" s=\"0\"/>") // Spacer column
+                sheetData.append("<c r=\"$spacerColRef\" s=\"0\"/>")
 
                 sheetData.append(writeStringCell(getCellRef(totalDays + 2, 5), "P", 2))
                 sheetData.append(writeStringCell(getCellRef(totalDays + 3, 5), "A", 2))
@@ -416,7 +395,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 sheetData.append(writeStringCell(getCellRef(totalDays + 6, 5), "Unmarked", 2))
                 sheetData.append("</row>")
 
-                // Rows 7+: Student Rows
                 roster.forEachIndexed { sIdx, student ->
                     val rowNum = sIdx + 7
                     val zebraStyleId = if (sIdx % 2 == 0) 9 else 0
@@ -446,7 +424,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                     }
 
                     val spacerCellRef = getCellRef(totalDays + 1, rowNum - 1)
-                    sheetData.append("<c r=\"$spacerCellRef\" s=\"0\"/>") // Spacer
+                    sheetData.append("<c r=\"$spacerCellRef\" s=\"0\"/>")
 
                     sheetData.append(writeNumberCell(getCellRef(totalDays + 2, rowNum - 1), pCount, 3))
                     sheetData.append(writeNumberCell(getCellRef(totalDays + 3, rowNum - 1), aCount, 4))
@@ -456,13 +434,11 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                     sheetData.append("</row>")
                 }
 
-                // Row Sum Day Header
                 val sumHeaderRowNum = roster.size + 8
                 sheetData.append("<row r=\"$sumHeaderRowNum\" ht=\"22\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A$sumHeaderRowNum", "Sum per Day", 8))
                 sheetData.append("</row>")
 
-                // Row Total P
                 val totalPRowNum = roster.size + 9
                 sheetData.append("<row r=\"$totalPRowNum\" ht=\"20\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A$totalPRowNum", "Total P", 8))
@@ -472,7 +448,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 sheetData.append("</row>")
 
-                // Row Total A
                 val totalARowNum = roster.size + 10
                 sheetData.append("<row r=\"$totalARowNum\" ht=\"20\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A$totalARowNum", "Total A", 8))
@@ -482,7 +457,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 sheetData.append("</row>")
 
-                // Row Total E
                 val totalERowNum = roster.size + 11
                 sheetData.append("<row r=\"$totalERowNum\" ht=\"20\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A$totalERowNum", "Total E", 8))
@@ -492,7 +466,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 sheetData.append("</row>")
 
-                // Row Total R
                 val totalRRowNum = roster.size + 12
                 sheetData.append("<row r=\"$totalRRowNum\" ht=\"20\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A$totalRRowNum", "Total R", 8))
@@ -502,7 +475,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 sheetData.append("</row>")
 
-                // Row Total Unmarked
                 val totalURowNum = roster.size + 13
                 sheetData.append("<row r=\"$totalURowNum\" ht=\"20\" customHeight=\"1\">")
                 sheetData.append(writeStringCell("A$totalURowNum", "Total Unmarked", 8))
@@ -512,7 +484,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 sheetData.append("</row>")
 
-                // Format column dimensions and merge references
                 val colXml = StringBuilder()
                 colXml.append("""
                     <cols>
@@ -537,11 +508,9 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                     </mergeCells>
                 """.trimIndent()
 
-                // Compile Zip-archive natively
                 val excelFile = "Overall_Report_${record.name.replace(" ", "_")}.xlsx"
                 writeOpenXmlSpreadsheet(context, excelFile, "Overall Attendance", colXml.toString(), sheetData.toString(), mergeCellsXml)
 
-                // Dispatch via standard sharing sheet using standard OpenXML MIME type (.xlsx) [2]
                 val cacheDir = File(context.cacheDir, "attendance_exports").apply { mkdirs() }
                 val targetFile = File(cacheDir, excelFile)
                 val fileUri = FileProvider.getUriForFile(
@@ -565,10 +534,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    /**
-     * UNIFIED REUSABLE OPENXML SPREADSHEET PACKAGER:
-     * Compiles standard, warning-free binary .xlsx files natively [2].
-     */
     private fun writeOpenXmlSpreadsheet(
         context: Context,
         fileName: String,
@@ -605,7 +570,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
 </Types>""".toByteArray(Charsets.UTF_8))
                     zos.closeEntry()
 
-                    // [3] xl/workbook.xml (Passes custom Sheet Name formatted as MMDDYY) [2]
+                    // [3] xl/workbook.xml
                     zos.putNextEntry(ZipEntry("xl/workbook.xml"))
                     zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -624,7 +589,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
 </Relationships>""".toByteArray(Charsets.UTF_8))
                     zos.closeEntry()
 
-                    // [5] xl/styles.xml (Uses safe 'Arial' to prevent spellcheck typos) [1, 2]
+                    // [5] xl/styles.xml
                     zos.putNextEntry(ZipEntry("xl/styles.xml"))
                     zos.write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
@@ -638,7 +603,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     <fill><patternFill patternType="gray125"/></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FF1B5E20"/></patternFill></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FF2E7D32"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FFE8F5E9"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFE8F5E9"/></fgColor></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFFFEBEE"/></patternFill></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFFFF3E0"/></patternFill></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFF5F5F5"/></patternFill></fill>
@@ -658,16 +623,16 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
   </cellStyleXfs>
   <cellXfs count="10">
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf> // 0: Normal (Aligned Left) [2]
-    <xf numFmtId="0" fontId="2" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf> // 1: Header Main
-    <xf numFmtId="0" fontId="1" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf> // 2: Header Table
-    <xf numFmtId="0" fontId="1" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf> // 3: Present
-    <xf numFmtId="0" fontId="1" fillId="5" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf> // 4: Absent
-    <xf numFmtId="0" fontId="1" fillId="6" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf> // 5: Excused
-    <xf numFmtId="0" fontId="1" fillId="7" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf> // 6: Removed
-    <xf numFmtId="0" fontId="0" fillId="8" borderId="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf> // 7: Unmarked
-    <xf numFmtId="0" fontId="1" fillId="9" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf> // 8: Sum Header (Aligned Left) [2]
-    <xf numFmtId="0" fontId="0" fillId="7" borderId="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf> // 9: Zebra Even (Aligned Left) [2]
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="5" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="6" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="7" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="8" borderId="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="9" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="7" borderId="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
   </cellXfs>
 </styleSheet>""".toByteArray(Charsets.UTF_8))
                     zos.closeEntry()
@@ -695,7 +660,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 }
             }
             return excelFile
-        } catch (_: Exception) { // Suppressed unused parameters [1]
+        } catch (_: Exception) {
             return null
         }
     }
@@ -787,8 +752,8 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                     (studentCal.get(Calendar.MONTH) + 1) == monthVal && studentCal.get(Calendar.YEAR) == yearVal
                 }
                 "exact_birthday" -> {
-                    val targetBday = v1.toLongOrNull() ?: return false
-                    val calFilter = Calendar.getInstance().apply { timeInMillis = targetBday }
+                    val targetBirthday = v1.toLongOrNull() ?: return false
+                    val calFilter = Calendar.getInstance().apply { timeInMillis = targetBirthday }
                     studentCal.get(Calendar.YEAR) == calFilter.get(Calendar.YEAR) &&
                             studentCal.get(Calendar.DAY_OF_YEAR) == calFilter.get(Calendar.DAY_OF_YEAR)
                 }
