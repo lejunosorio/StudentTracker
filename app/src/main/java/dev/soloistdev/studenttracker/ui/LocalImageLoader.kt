@@ -1,9 +1,22 @@
 package dev.soloistdev.studenttracker.ui
 
 import android.graphics.BitmapFactory
+import androidx.compose.animation.core.EaseInOutSine
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.runtime.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -20,6 +33,18 @@ fun LocalImageLoader(
 ) {
     var bitmap by remember(imagePath) { mutableStateOf<android.graphics.Bitmap?>(null) }
     var isLoaded by remember(imagePath) { mutableStateOf(false) }
+
+    // Infinite transition to generate a smooth, memory-safe pulsing placeholder [1]
+    val transition = rememberInfiniteTransition(label = "shimmer_transition")
+    val alpha by transition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.9f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 800, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "shimmer_alpha"
+    )
 
     LaunchedEffect(imagePath) {
         if (imagePath.isNotEmpty()) {
@@ -52,8 +77,10 @@ fun LocalImageLoader(
             fallback()
         }
     } else {
-        Box(modifier = modifier) {
-            fallback()
-        }
+        // Renders a pulsing placeholder to prevent layout pop stutters during disk-seek latency [1]
+        Box(
+            modifier = modifier
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = alpha * 0.15f))
+        )
     }
 }

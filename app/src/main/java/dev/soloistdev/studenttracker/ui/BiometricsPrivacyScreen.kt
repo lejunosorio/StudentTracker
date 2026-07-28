@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.verticalScroll // Resolved: Explicit verticalScroll import
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.LockReset
@@ -31,7 +31,7 @@ fun BiometricsPrivacyScreen(
 ) {
     val context = LocalContext.current
     val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
-    val isSecurityGateEnabled by viewModel.isSecurityGateEnabled.collectAsState() // Collected gate state [1]
+    val isSecurityGateEnabled by viewModel.isSecurityGateEnabled.collectAsState()
 
     var showResetPinDialog by remember { mutableStateOf(false) }
     var oldPin by remember { mutableStateOf("") }
@@ -70,8 +70,6 @@ fun BiometricsPrivacyScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-
-                    // Security Gate Enable Switch [1]
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -92,7 +90,6 @@ fun BiometricsPrivacyScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-                    // Biometric Authentication switch
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -104,7 +101,7 @@ fun BiometricsPrivacyScreen(
                         }
                         Switch(
                             checked = isBiometricEnabled,
-                            enabled = isSecurityGateEnabled, // Only active if security gate is enabled [1]
+                            enabled = isSecurityGateEnabled,
                             onCheckedChange = { enabled ->
                                 viewModel.setBiometricEnabled(enabled)
                                 Toast.makeText(context, if (enabled) "Biometrics Enabled" else "Biometrics Disabled", Toast.LENGTH_SHORT).show()
@@ -114,7 +111,6 @@ fun BiometricsPrivacyScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-                    // Change PIN action
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -133,7 +129,6 @@ fun BiometricsPrivacyScreen(
             }
         }
 
-        // Secure PIN setup dialog
         if (showResetPinDialog) {
             val m3TextFieldColors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -147,8 +142,11 @@ fun BiometricsPrivacyScreen(
                 title = { Text("Reset Recovery PIN", fontWeight = FontWeight.Bold) },
                 text = {
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()) // Resolved: Scrollable layout prevents visual cutoffs [1]
+                            .imePadding(), // Resolved: Dynamic padding adjustment based on system IME/Keyboard [1]
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         OutlinedTextField(
                             value = oldPin,

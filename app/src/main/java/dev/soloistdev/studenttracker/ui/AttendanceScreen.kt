@@ -610,6 +610,8 @@ fun RowScope.TabChip(
     )
 }
 
+// ... inside dev/soloistdev/studenttracker/ui/AttendanceScreen.kt [1]
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecordCreateForm(
@@ -623,7 +625,6 @@ fun RecordCreateForm(
     var showStartPicker by remember { mutableStateOf(false) }
     var showEndPicker by remember { mutableStateOf(false) }
 
-    // Normalize initial states to local midnight to prevent time-of-day offset mismatch bugs [1]
     val todayMidnight = remember {
         Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)
@@ -636,12 +637,9 @@ fun RecordCreateForm(
     var startDateMillis by remember { mutableLongStateOf(todayMidnight) }
     var endDateMillis by remember { mutableLongStateOf(todayMidnight) }
 
-    // Date Range boundary validation check [1, 2]
     val isDateRangeInvalid = startDateMillis > endDateMillis
-
     val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.US)
 
-    // Standardized M3 Textfield Colors
     val m3TextFieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = MaterialTheme.colorScheme.primary,
         unfocusedBorderColor = MaterialTheme.colorScheme.outline,
@@ -658,10 +656,10 @@ fun RecordCreateForm(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp) // Generous vertical spacing
+                    .verticalScroll(rememberScrollState())
+                    .imePadding(), // Resolved: Adjust padding dynamically based on system IME/Keyboard [1]
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Record Name Input
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -670,7 +668,6 @@ fun RecordCreateForm(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // Roster Filter Dropdown
                 var filterExpanded by remember { mutableStateOf(false) }
                 val selectedFilterName = savedFilters.find { it.id == selectedFilterId }?.filterName ?: "Select Filter"
 
@@ -708,7 +705,6 @@ fun RecordCreateForm(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                // Date Selection Section
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -720,19 +716,17 @@ fun RecordCreateForm(
                         color = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                     )
 
-                    // Horizontal Date Selectors Row (Saves dialog real-estate and looks cleaner) [2]
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Start Date Button
                         OutlinedButton(
                             onClick = { showStartPicker = true },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
                             border = if (isDateRangeInvalid) {
-                                BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) // Highlights red on error [2]
+                                BorderStroke(1.5.dp, MaterialTheme.colorScheme.error)
                             } else {
                                 ButtonDefaults.outlinedButtonBorder(enabled = true)
                             }
@@ -756,13 +750,12 @@ fun RecordCreateForm(
                             }
                         }
 
-                        // End Date Button
                         OutlinedButton(
                             onClick = { showEndPicker = true },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
                             border = if (isDateRangeInvalid) {
-                                BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) // Highlights red on error [2]
+                                BorderStroke(1.5.dp, MaterialTheme.colorScheme.error)
                             } else {
                                 ButtonDefaults.outlinedButtonBorder(enabled = true)
                             }
@@ -787,7 +780,6 @@ fun RecordCreateForm(
                         }
                     }
 
-                    // Polished Warning Alert Row [1, 2]
                     if (isDateRangeInvalid) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -818,7 +810,7 @@ fun RecordCreateForm(
                         onSave(name.trim(), selectedFilterId, startDateMillis, endDateMillis)
                     }
                 },
-                enabled = name.isNotBlank() && !isDateRangeInvalid, // State locked on validation failure [1, 2]
+                enabled = name.isNotBlank() && !isDateRangeInvalid,
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 shape = RoundedCornerShape(20.dp)
             ) { Text("Create") }

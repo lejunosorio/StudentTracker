@@ -25,7 +25,6 @@ fun AppNavigation() {
     val securityViewModel: SecurityViewModel = viewModel()
     val isUnlocked by securityViewModel.isUnlocked.collectAsState()
 
-    // Resolved: Standardizes bi-directional routing boundaries without flashes [1]
     LaunchedEffect(isUnlocked) {
         if (isUnlocked) {
             navController.navigate("view_all") {
@@ -147,8 +146,13 @@ fun AppNavigation() {
             AddEditStudentScreen(
                 studentId = studentId,
                 onBack = {
-                    navController.navigate("view_all") {
-                        popUpTo("view_all") { inclusive = true }
+                    // Resolved: Replaced aggressive layout-wiping navigation with standard pop [1]
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack() // Smooth natural popping backstack transition [1]
+                    } else {
+                        navController.navigate("view_all") {
+                            popUpTo(0) { inclusive = true }
+                        }
                     }
                 }
             )
@@ -232,6 +236,7 @@ fun AppNavigation() {
             )
         }
 
+        // 12. App Settings Screen
         composable("app_settings") {
             AppSettingsScreen(
                 onBack = {
