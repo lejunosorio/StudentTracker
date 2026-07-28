@@ -23,7 +23,6 @@ class SavedFiltersViewModel(application: android.app.Application) : AndroidViewM
 
     private val _students = MutableStateFlow<List<StudentEntity>>(emptyList())
 
-    // Expose mapped UI states computed on Dispatchers.Default to eliminate main-thread bottlenecks [1]
     val students: StateFlow<List<StudentUiState>> = _students
         .map { list ->
             val activeBadgeField = sharedPrefs.getString("card_banner_field", "") ?: ""
@@ -45,7 +44,6 @@ class SavedFiltersViewModel(application: android.app.Application) : AndroidViewM
                     }
                 } else null
 
-                // Resolved: Maps to the 5-parameter StudentUiState constructor [1]
                 StudentUiState(
                     student = student,
                     genderString = genderStr,
@@ -73,10 +71,15 @@ class SavedFiltersViewModel(application: android.app.Application) : AndroidViewM
         }
     }
 
+    // Resolved: Keeps original displayOrder during filter updates [1]
     fun saveFilter(entity: SavedFilterEntity) {
         viewModelScope.launch {
-            val maxOrder = _filters.value.maxOfOrNull { it.displayOrder } ?: 0
-            val filterToInsert = entity.copy(displayOrder = maxOrder + 1)
+            val filterToInsert = if (entity.id == 0) {
+                val maxOrder = _filters.value.maxOfOrNull { it.displayOrder } ?: 0
+                entity.copy(displayOrder = maxOrder + 1)
+            } else {
+                entity // Retains the original drag-and-drop order on edit [1]
+            }
             repository.insertSavedFilter(filterToInsert)
             loadData()
         }

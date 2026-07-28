@@ -335,7 +335,7 @@ fun SavedFiltersScreen(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
-                                            Column {
+                                            Column(modifier = Modifier.weight(1f)) {
                                                 Text(
                                                     text = "${filter.filterName} ($matchingCount)",
                                                     fontWeight = FontWeight.Bold,
@@ -347,11 +347,32 @@ fun SavedFiltersScreen(
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                                 )
                                             }
-                                            Icon(
-                                                imageVector = Icons.Default.DragHandle,
-                                                contentDescription = "Drag to reorder",
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                            )
+
+                                            // Direct layout action buttons [1]
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                IconButton(onClick = { editingFilter = filter }) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Edit,
+                                                        contentDescription = "Edit Filter",
+                                                        tint = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                                IconButton(onClick = { showDeleteDialog = true }) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Delete,
+                                                        contentDescription = "Delete Filter",
+                                                        tint = MaterialTheme.colorScheme.error
+                                                    )
+                                                }
+                                                Icon(
+                                                    imageVector = Icons.Default.DragHandle,
+                                                    contentDescription = "Drag to reorder",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -382,36 +403,35 @@ fun SavedFiltersScreen(
                     }
                 }
             }
+        }
 
-            if (showAddDialog) {
-                FilterDialogForm(
-                    templates = templates,
-                    onDismiss = { showAddDialog = false },
-                    onSave = { newFilter ->
-                        viewModel.saveFilter(newFilter)
-                        showAddDialog = false
-                        Toast.makeText(context, "Filter saved!", Toast.LENGTH_SHORT).show()
-                    }
-                )
-            }
+        if (showAddDialog) {
+            FilterDialogForm(
+                templates = templates,
+                onDismiss = { showAddDialog = false },
+                onSave = { newFilter ->
+                    viewModel.saveFilter(newFilter)
+                    showAddDialog = false
+                    Toast.makeText(context, "Filter saved!", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
 
-            editingFilter?.let { filter ->
-                FilterDialogForm(
-                    templates = templates,
-                    existingFilter = filter,
-                    onDismiss = { editingFilter = null },
-                    onSave = { updatedFilter ->
-                        viewModel.saveFilter(updatedFilter)
-                        editingFilter = null
-                        Toast.makeText(context, "Filter updated!", Toast.LENGTH_SHORT).show()
-                    }
-                )
-            }
+        editingFilter?.let { filter ->
+            FilterDialogForm(
+                templates = templates,
+                existingFilter = filter,
+                onDismiss = { editingFilter = null },
+                onSave = { updatedFilter ->
+                    viewModel.saveFilter(updatedFilter)
+                    editingFilter = null
+                    Toast.makeText(context, "Filter updated!", Toast.LENGTH_SHORT).show()
+                }
+            )
         }
     }
 }
 
-// Resolved: Restored complete Filter Dialog Form [1]
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FilterDialogForm(
@@ -790,7 +810,6 @@ fun FilterDialogForm(
     }
 }
 
-// Resolved: Restored complete private getFieldValue parser helper [1]
 private fun getFieldValue(student: StudentEntity, field: String): String {
     return when (field) {
         "First Name" -> student.firstName
@@ -812,7 +831,6 @@ private fun getFieldValue(student: StudentEntity, field: String): String {
     }
 }
 
-// Resolved: Restored complete private evaluateCondition parser helper [1]
 private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2: String): Boolean {
     val cleanVal = fieldVal.trim()
 
