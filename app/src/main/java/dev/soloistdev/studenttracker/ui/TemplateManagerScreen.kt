@@ -9,7 +9,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Notifications // Notification icon [1]
+import androidx.compose.material.icons.filled.Edit // Explicit Edit icon import [1]
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,7 +30,7 @@ fun TemplateManagerScreen(
     viewModel: TemplateViewModel = viewModel()
 ) {
     val templates by viewModel.templates.collectAsState()
-    val unconfiguredFields by viewModel.unconfiguredCustomFields.collectAsState() // Missing keys state [1]
+    val unconfiguredFields by viewModel.unconfiguredCustomFields.collectAsState()
     val context = LocalContext.current
     var showBottomSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
@@ -40,8 +41,27 @@ fun TemplateManagerScreen(
 
     var templateToDelete by remember { mutableStateOf<FormTemplateEntity?>(null) }
 
-    // Shows the custom field creation selection page [1]
+    // Shows the custom field creation selection page
     var showDiscoveredFieldsScreen by remember { mutableStateOf(false) }
+
+    // Active editing template state manager [1]
+    var editingTemplate by remember { mutableStateOf<FormTemplateEntity?>(null) }
+
+    // Dynamic state synchronization on bottom sheet open [1]
+    LaunchedEffect(showBottomSheet, editingTemplate) {
+        if (showBottomSheet) {
+            val template = editingTemplate
+            if (template != null) {
+                newFieldName = template.fieldName
+                selectedType = template.fieldType
+                tempIsRequired = template.isRequired
+            } else {
+                newFieldName = ""
+                selectedType = "TEXT"
+                tempIsRequired = false
+            }
+        }
+    }
 
     if (showDiscoveredFieldsScreen) {
         CustomFieldSelectorScreen(
@@ -64,7 +84,6 @@ fun TemplateManagerScreen(
                         }
                     },
                     actions = {
-                        // Badged notification action triggering custom field wizard [1]
                         if (unconfiguredFields.isNotEmpty()) {
                             IconButton(onClick = { showDiscoveredFieldsScreen = true }) {
                                 BadgedBox(
@@ -79,7 +98,10 @@ fun TemplateManagerScreen(
             },
             floatingActionButton = {
                 FloatingActionButton(
-                    onClick = { showBottomSheet = true },
+                    onClick = {
+                        editingTemplate = null // Nullifies to treat sheet as New Creation [1]
+                        showBottomSheet = true
+                    },
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     shape = RoundedCornerShape(16.dp)
@@ -117,7 +139,7 @@ fun TemplateManagerScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = template.fieldName.replace("_", " "),
                                     fontWeight = FontWeight.Bold,
@@ -130,8 +152,29 @@ fun TemplateManagerScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                 )
                             }
-                            IconButton(onClick = { templateToDelete = template }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+
+                            // Row Actions Container [1]
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                IconButton(onClick = {
+                                    editingTemplate = template // Directs sheet to populate with values [1]
+                                    showBottomSheet = true
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Edit Template",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                IconButton(onClick = { templateToDelete = template }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Delete",
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
                             }
                         }
                     }
@@ -140,7 +183,10 @@ fun TemplateManagerScreen(
 
             if (showBottomSheet) {
                 ModalBottomSheet(
-                    onDismissRequest = { showBottomSheet = false },
+                    onDismissRequest = {
+                        showBottomSheet = false
+                        editingTemplate = null
+                    },
                     sheetState = sheetState,
                     containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                 ) {
@@ -151,7 +197,7 @@ fun TemplateManagerScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Text(
-                            text = "New Custom Field",
+                            text = if (editingTemplate != null) "Edit Custom Field" else "New Custom Field",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -206,11 +252,18 @@ fun TemplateManagerScreen(
 
                         Button(
                             onClick = {
-                                val success = viewModel.addTemplate(newFieldName, selectedType, tempIsRequired)
+                                val isEdit = editingTemplate != null
+                                val success = viewModel.saveTemplate(
+                                    id = editingTemplate?.id ?: 0,
+                                    name = newFieldName,
+                                    type = selectedType,
+                                    isRequired = tempIsRequired
+                                )
                                 if (success) {
-                                    Toast.makeText(context, "Field Created Successfully!", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, if (isEdit) "Field Updated Successfully!" else "Field Created Successfully!", Toast.LENGTH_SHORT).show()
                                     newFieldName = ""
                                     tempIsRequired = false
+                                    editingTemplate = null
                                     showBottomSheet = false
                                 } else {
                                     Toast.makeText(context, "Invalid name. Alphanumeric & underscores only.", Toast.LENGTH_LONG).show()
@@ -223,7 +276,7 @@ fun TemplateManagerScreen(
                             ),
                             shape = RoundedCornerShape(20.dp)
                         ) {
-                            Text("Create Template")
+                            Text(if (editingTemplate != null) "Update Template" else "Create Template")
                         }
                     }
                 }

@@ -23,11 +23,9 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
         loadTemplates()
     }
 
-    // Centralized strict sanitization block [1]
     private fun sanitizeFieldName(name: String): String {
         return name.trim()
             .replace(" ", "_")
-            // Strictly retains only letters, digits, and underscores, stripping out any SQL command characters [1]
             .filter { it.isLetterOrDigit() || it == '_' }
     }
 
@@ -50,28 +48,29 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun addTemplate(name: String, type: String, isRequired: Boolean): Boolean {
-        val sanitized = sanitizeFieldName(name) // Applies strict sanitization [1]
+    // Resolved: Handles both dynamic creations (id = 0) and edits (existing id) natively [1]
+    fun saveTemplate(id: Int, name: String, type: String, isRequired: Boolean): Boolean {
+        val sanitized = sanitizeFieldName(name)
         val regex = Regex("^[a-zA-Z0-9_]+$")
         if (!regex.matches(sanitized) || sanitized.isBlank()) return false
 
         viewModelScope.launch {
-            val newTemplate = FormTemplateEntity(
+            val templateToSave = FormTemplateEntity(
+                id = id, // Matches primary key to execute standard SQL REPLACE update on conflict [1]
                 fieldName = sanitized,
                 fieldType = type.uppercase(),
                 isRequired = isRequired
             )
-            repository.insertFormTemplate(newTemplate)
+            repository.insertFormTemplate(templateToSave)
             loadTemplates()
         }
         return true
     }
 
-    // Resolved: Strict sanitization applied to bulk imports [1]
     fun addTemplatesBulk(fields: List<String>) {
         viewModelScope.launch {
             fields.forEach { field ->
-                val sanitized = sanitizeFieldName(field) // Strips malicious SQL strings during JSON ingestion [1]
+                val sanitized = sanitizeFieldName(field)
                 if (sanitized.isNotBlank()) {
                     val newTemplate = FormTemplateEntity(
                         fieldName = sanitized,
