@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.Guardian
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
@@ -45,9 +46,15 @@ fun StudentProfileScreen(
     var student by remember { mutableStateOf<StudentEntity?>(null) }
     var showDeleteDialog by remember { mutableStateOf(false) }
 
+    // Active custom field templates registry [1]
+    var activeTemplates by remember { mutableStateOf<List<FormTemplateEntity>>(emptyList()) }
+
     LaunchedEffect(Unit) {
         val list = repository.getAllActiveStudents()
         student = list.find { studentEntity -> studentEntity.id == studentId }
+
+        // Load active configured field keys [1]
+        activeTemplates = repository.getAllFormTemplates()
     }
 
     Scaffold(
@@ -127,7 +134,6 @@ fun StudentProfileScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Button directly launches external map app using the text address [2]
                     Button(
                         onClick = {
                             if (currentStudent.address.isNotBlank()) {
@@ -173,7 +179,6 @@ fun StudentProfileScreen(
                     value = currentStudent.address
                 )
 
-                // STUDENT CONTACT NUMBER [1]
                 if (currentStudent.contactNumber.isNotBlank()) {
                     ProfileInfoCard(
                         label = "Student Contact Number",
@@ -198,15 +203,19 @@ fun StudentProfileScreen(
                     )
                 }
 
-                // 100% Dynamic custom fields iteration
+                // Dynamic custom fields iteration restricted by template manager configuration [1]
                 val customJson = remember(currentStudent.customDataJson) {
                     try { JSONObject(currentStudent.customDataJson) } catch (_: Exception) { JSONObject() }
                 }
+
+                // Keep only keys that exist in activeTemplates list [1]
+                val activeTemplateKeys = remember(activeTemplates) { activeTemplates.map { it.fieldName } }
+
                 val keys = customJson.keys()
                 while (keys.hasNext()) {
                     val key = keys.next()
                     val value = customJson.optString(key, "")
-                    if (value.isNotEmpty() && key != "Gender") {
+                    if (value.isNotEmpty() && key != "Gender" && activeTemplateKeys.contains(key)) {
                         val label = key.replace("_", " ")
                         ProfileInfoCard(label = label, value = value)
                     }

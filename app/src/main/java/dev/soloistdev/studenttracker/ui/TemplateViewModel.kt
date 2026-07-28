@@ -9,11 +9,16 @@ import dev.soloistdev.studenttracker.data.StudentRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 class TemplateViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = StudentRepository(application)
     private val _templates = MutableStateFlow<List<FormTemplateEntity>>(emptyList())
     val templates: StateFlow<List<FormTemplateEntity>> = _templates
+
+    // Missing unconfigured keys scanner [1]
+    private val _unconfiguredCustomFields = MutableStateFlow<List<String>>(emptyList())
+    val unconfiguredCustomFields: StateFlow<List<String>> = _unconfiguredCustomFields
 
     init {
         loadTemplates()
@@ -22,12 +27,23 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
     fun loadTemplates() {
         viewModelScope.launch {
             val list = repository.getAllFormTemplates()
-
             _templates.value = list
+
+            // Scan unconfigured fields inside active student payloads safely [1]
+            val activeStudents = repository.getAllActiveStudents()
+            val studentKeys = mutableSetOf<String>()
+            activeStudents.forEach { student ->
+                try {
+                    val json = JSONObject(student.customDataJson)
+                    json.keys().forEach { studentKeys.add(it) }
+                } catch (_: Exception) {}
+            }
+            val templateKeys = list.map { it.fieldName }.toSet()
+            val missingKeys = studentKeys.filter { !templateKeys.contains(it) }
+            _unconfiguredCustomFields.value = missingKeys
         }
     }
 
-    // UPDATED: Now accepts isRequired parameter to save dynamic mandatory states
     fun addTemplate(name: String, type: String, isRequired: Boolean): Boolean {
         val sanitized = name.trim().replace(" ", "_")
         val regex = Regex("^[a-zA-Z0-9_]+$")
@@ -37,12 +53,28 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
             val newTemplate = FormTemplateEntity(
                 fieldName = sanitized,
                 fieldType = type.uppercase(),
-                isRequired = isRequired // Fixed: Saves true/false dynamically
+                isRequired = isRequired
             )
             repository.insertFormTemplate(newTemplate)
             loadTemplates()
         }
         return true
+    }
+
+    // Bulk creation support for the discovered field dialogs [1]
+    fun addTemplatesBulk(fields: List<String>) {
+        viewModelScope.launch {
+            fields.forEach { field ->
+                val sanitized = field.trim().replace(" ", "_")
+                val newTemplate = FormTemplateEntity(
+                    fieldName = sanitized,
+                    fieldType = "TEXT", // Defaults to standard Text type on quick-create
+                    isRequired = false
+                )
+                repository.insertFormTemplate(newTemplate)
+            }
+            loadTemplates()
+        }
     }
 
     fun deleteTemplate(id: Int) {
@@ -59,7 +91,6 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
 
-                // CORRECTED: Call the soft-delete repository action [1]
                 repository.softDeleteFormTemplate(id)
                 loadTemplates()
             } catch (_: Exception) {
