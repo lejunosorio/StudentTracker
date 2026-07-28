@@ -70,12 +70,13 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
         }
     }
 
-    // Observe biometric status dynamically
+    // Observe biometric and security gate status dynamically [1]
     val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
+    val isSecurityGateEnabled by viewModel.isSecurityGateEnabled.collectAsState()
 
-    // Auto-launch biometrics on start if configured
-    LaunchedEffect(isAlreadyConfigured, isBiometricEnabled) {
-        if (isAlreadyConfigured && isBiometricsAvailable) {
+    // Auto-launch biometrics on start ONLY if gate is active and biometrics are configured [1]
+    LaunchedEffect(isAlreadyConfigured, isBiometricEnabled, isSecurityGateEnabled) {
+        if (isAlreadyConfigured && isBiometricsAvailable && isBiometricEnabled && isSecurityGateEnabled) {
             launchBiometricPrompt()
         }
     }
@@ -88,112 +89,167 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = if (isAlreadyConfigured) "App Locked" else "Secure Setup",
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            )
+            // Hide header if security gate is disabled to keep background transition clean [1]
+            if (isSecurityGateEnabled) {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Text(
+                            text = if (isAlreadyConfigured) "App Locked" else "Secure Setup",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                )
+            }
         }
     ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(24.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            if (isAlreadyConfigured) {
-                Icon(
-                    imageVector = Icons.Default.Lock,
-                    contentDescription = "Locked",
-                    tint = Color(0xFF6750A4),
-                    modifier = Modifier.size(64.dp)
+        if (isSecurityGateEnabled) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (isAlreadyConfigured) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Locked",
+                        tint = Color(0xFF6750A4),
+                        modifier = Modifier.size(64.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                Text(
+                    text = if (isAlreadyConfigured) "Enter PIN to Unlock" else "Configure Recovery PIN",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1D192B)
                 )
-                Spacer(modifier = Modifier.height(16.dp))
-            }
 
-            Text(
-                text = if (isAlreadyConfigured) "Enter PIN to Unlock" else "Configure Recovery PIN",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF1D192B)
-            )
+                Spacer(modifier = Modifier.height(8.dp))
 
-            Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = if (isAlreadyConfigured) {
+                        "Enter your master PIN or use biometrics to access the student directory."
+                    } else {
+                        "Create a secure database PIN. Ensure both fields match exactly before saving."
+                    },
+                    fontSize = 14.sp,
+                    color = Color(0xFF49454F),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
 
-            Text(
-                text = if (isAlreadyConfigured) {
-                    "Enter your master PIN or use biometrics to access the student directory."
-                } else {
-                    "Create a secure database PIN. Ensure both fields match exactly before saving."
-                },
-                fontSize = 14.sp,
-                color = Color(0xFF49454F),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
+                Spacer(modifier = Modifier.height(24.dp))
 
-            Spacer(modifier = Modifier.height(24.dp))
+                OutlinedTextField(
+                    value = pin,
+                    onValueChange = { input ->
+                        val sanitized = input.filter { it.isDigit() }
+                        if (sanitized.length <= 6) {
+                            pin = sanitized
+                        }
+                    },
+                    label = { Text(if (isAlreadyConfigured) "Enter PIN" else "Create Master PIN") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.NumberPassword,
+                        imeAction = if (isAlreadyConfigured) ImeAction.Done else ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) },
+                        onDone = {
+                            if (isAlreadyConfigured) {
+                                val success = viewModel.verifyPin(pin)
+                                if (!success) {
+                                    Toast.makeText(context, "Incorrect PIN. Access Denied.", Toast.LENGTH_SHORT).show()
+                                    pin = ""
+                                }
+                            }
+                        }
+                    ),
+                    singleLine = true,
+                    maxLines = 1,
+                    modifier = Modifier.fillMaxWidth()
+                )
 
-            // 1. PRIMARY PIN INPUT FIELD
-            OutlinedTextField(
-                value = pin,
-                onValueChange = { input ->
-                    val sanitized = input.filter { it.isDigit() }
-                    if (sanitized.length <= 6) {
-                        pin = sanitized
+                if (!isAlreadyConfigured) {
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    val pinMismatch = confirmPin.isNotEmpty() && pin != confirmPin
+
+                    OutlinedTextField(
+                        value = confirmPin,
+                        onValueChange = { input ->
+                            val sanitized = input.filter { it.isDigit() }
+                            if (sanitized.length <= 6) {
+                                confirmPin = sanitized
+                            }
+                        },
+                        label = { Text("Confirm Master PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.NumberPassword,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                if (pin == confirmPin) {
+                                    val success = viewModel.saveRecoveryPin(pin)
+                                    if (success) {
+                                        Toast.makeText(context, "Recovery PIN Saved Successfully!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "PIN must be 4 to 6 digits.", Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    Toast.makeText(context, "PINs do not match. Please verify.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        ),
+                        singleLine = true,
+                        maxLines = 1,
+                        isError = pinMismatch,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            errorBorderColor = Color(0xFFB3261E),
+                            errorLabelColor = Color(0xFFB3261E)
+                        ),
+                        supportingText = {
+                            if (pinMismatch) {
+                                Text("PINs do not match", color = Color(0xFFB3261E))
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                if (isAlreadyConfigured && isBiometricsAvailable && isBiometricEnabled) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    IconButton(
+                        onClick = { launchBiometricPrompt() },
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Fingerprint,
+                            contentDescription = "Authenticate with Fingerprint",
+                            tint = Color(0xFF6750A4),
+                            modifier = Modifier.size(48.dp)
+                        )
                     }
-                },
-                label = { Text(if (isAlreadyConfigured) "Enter PIN" else "Create Master PIN") },
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.NumberPassword,
-                    // If onboarding, pressing enter moves down. If login, pressing enter submits.
-                    imeAction = if (isAlreadyConfigured) ImeAction.Done else ImeAction.Next
-                ),
-                keyboardActions = KeyboardActions(
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) }, // Auto-focus transition
-                    onDone = {
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Button(
+                    onClick = {
                         if (isAlreadyConfigured) {
                             val success = viewModel.verifyPin(pin)
                             if (!success) {
                                 Toast.makeText(context, "Incorrect PIN. Access Denied.", Toast.LENGTH_SHORT).show()
                                 pin = ""
                             }
-                        }
-                    }
-                ),
-                singleLine = true,
-                maxLines = 1,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            // 2. CONFIRM PIN INPUT FIELD (Only visible during first-launch onboarding setup)
-            if (!isAlreadyConfigured) {
-                Spacer(modifier = Modifier.height(16.dp))
-
-                val pinMismatch = confirmPin.isNotEmpty() && pin != confirmPin
-
-                OutlinedTextField(
-                    value = confirmPin,
-                    onValueChange = { input ->
-                        val sanitized = input.filter { it.isDigit() }
-                        if (sanitized.length <= 6) {
-                            confirmPin = sanitized
-                        }
-                    },
-                    label = { Text("Confirm Master PIN") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.NumberPassword,
-                        imeAction = ImeAction.Done
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onDone = {
+                        } else {
                             if (pin == confirmPin) {
                                 val success = viewModel.saveRecoveryPin(pin)
                                 if (success) {
@@ -205,72 +261,24 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
                                 Toast.makeText(context, "PINs do not match. Please verify.", Toast.LENGTH_SHORT).show()
                             }
                         }
-                    ),
-                    singleLine = true,
-                    maxLines = 1,
-                    isError = pinMismatch,
-                    // Render custom error borders if inputs do not match
-                    colors = OutlinedTextFieldDefaults.colors(
-                        errorBorderColor = Color(0xFFB3261E),
-                        errorLabelColor = Color(0xFFB3261E)
-                    ),
-                    supportingText = {
-                        if (pinMismatch) {
-                            Text("PINs do not match", color = Color(0xFFB3261E))
-                        }
                     },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            // BIOMETRIC SHORTCUT FINGERPRINT BUTTON
-            if (isAlreadyConfigured && isBiometricsAvailable) {
-                Spacer(modifier = Modifier.height(16.dp))
-                IconButton(
-                    onClick = { launchBiometricPrompt() },
-                    modifier = Modifier.size(56.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4)),
+                    shape = RoundedCornerShape(20.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Fingerprint,
-                        contentDescription = "Authenticate with Fingerprint",
-                        tint = Color(0xFF6750A4),
-                        modifier = Modifier.size(48.dp)
+                    Text(
+                        text = if (isAlreadyConfigured) "Unlock Directory" else "Confirm and Save",
+                        color = Color.White
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // 3. MAIN SUBMIT ACTION BUTTON
-            Button(
-                onClick = {
-                    if (isAlreadyConfigured) {
-                        val success = viewModel.verifyPin(pin)
-                        if (!success) {
-                            Toast.makeText(context, "Incorrect PIN. Access Denied.", Toast.LENGTH_SHORT).show()
-                            pin = ""
-                        }
-                    } else {
-                        if (pin == confirmPin) {
-                            val success = viewModel.saveRecoveryPin(pin)
-                            if (success) {
-                                Toast.makeText(context, "Recovery PIN Saved Successfully!", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, "PIN must be 4 to 6 digits.", Toast.LENGTH_SHORT).show()
-                            }
-                        } else {
-                            Toast.makeText(context, "PINs do not match. Please verify.", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4)),
-                shape = RoundedCornerShape(20.dp)
+        } else {
+            // Render a standard material loading indicator during instant background transitions [1]
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = if (isAlreadyConfigured) "Unlock Directory" else "Confirm and Save",
-                    color = Color.White
-                )
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             }
         }
     }

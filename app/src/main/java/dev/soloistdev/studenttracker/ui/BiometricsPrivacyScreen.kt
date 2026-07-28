@@ -31,6 +31,7 @@ fun BiometricsPrivacyScreen(
 ) {
     val context = LocalContext.current
     val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
+    val isSecurityGateEnabled by viewModel.isSecurityGateEnabled.collectAsState() // Collected gate state [1]
 
     var showResetPinDialog by remember { mutableStateOf(false) }
     var oldPin by remember { mutableStateOf("") }
@@ -69,6 +70,28 @@ fun BiometricsPrivacyScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+                    // Security Gate Enable Switch [1]
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Security Gate Lock", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Require passcode or biometrics on startup", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                        }
+                        Switch(
+                            checked = isSecurityGateEnabled,
+                            onCheckedChange = { enabled ->
+                                viewModel.setSecurityGateEnabled(enabled)
+                                Toast.makeText(context, if (enabled) "Security Gate Enabled" else "Security Gate Disabled. PIN verification bypassed.", Toast.LENGTH_LONG).show()
+                            }
+                        )
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
                     // Biometric Authentication switch
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -81,6 +104,7 @@ fun BiometricsPrivacyScreen(
                         }
                         Switch(
                             checked = isBiometricEnabled,
+                            enabled = isSecurityGateEnabled, // Only active if security gate is enabled [1]
                             onCheckedChange = { enabled ->
                                 viewModel.setBiometricEnabled(enabled)
                                 Toast.makeText(context, if (enabled) "Biometrics Enabled" else "Biometrics Disabled", Toast.LENGTH_SHORT).show()

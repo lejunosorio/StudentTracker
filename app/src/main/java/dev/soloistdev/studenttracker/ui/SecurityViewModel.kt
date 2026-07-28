@@ -24,11 +24,22 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
 
     val isConfigured: Boolean = sharedPreferences.getBoolean("recovery_pin_configured", false)
 
-    private val _isUnlocked = MutableStateFlow(false)
+    // Resolved: Instantly unlock on boot if security gate is disabled, unless onboarding is pending [1]
+    private val _isUnlocked = MutableStateFlow(
+        if (isConfigured) {
+            !sharedPreferences.getBoolean("security_gate_enabled", true)
+        } else {
+            false
+        }
+    )
     val isUnlocked: StateFlow<Boolean> = _isUnlocked
 
     private val _isBiometricEnabled = MutableStateFlow(sharedPreferences.getBoolean("biometric_enabled", true))
     val isBiometricEnabled: StateFlow<Boolean> = _isBiometricEnabled
+
+    // Resolved: Expose security gate state [1]
+    private val _isSecurityGateEnabled = MutableStateFlow(sharedPreferences.getBoolean("security_gate_enabled", true))
+    val isSecurityGateEnabled: StateFlow<Boolean> = _isSecurityGateEnabled
 
     fun saveRecoveryPin(pin: String): Boolean {
         if (pin.length !in 4..6) return false
@@ -36,7 +47,9 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
         sharedPreferences.edit {
             putString("recovery_pin_hash", pin.hashCode().toString())
             putBoolean("recovery_pin_configured", true)
+            putBoolean("security_gate_enabled", true) // Default enabled on setup
         }
+        _isSecurityGateEnabled.value = true
         _isUnlocked.value = true
         return true
     }
@@ -55,6 +68,17 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
             putBoolean("biometric_enabled", enabled)
         }
         _isBiometricEnabled.value = enabled
+    }
+
+    // Resolved: Dynamic security gate toggle action [1]
+    fun setSecurityGateEnabled(enabled: Boolean) {
+        sharedPreferences.edit {
+            putBoolean("security_gate_enabled", enabled)
+        }
+        _isSecurityGateEnabled.value = enabled
+        if (!enabled) {
+            _isUnlocked.value = true // Instantly authorize current active session [1]
+        }
     }
 
     fun resetPin(oldPin: String, newPin: String): Boolean {

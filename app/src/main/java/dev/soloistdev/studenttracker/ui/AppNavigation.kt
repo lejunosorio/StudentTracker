@@ -22,22 +22,24 @@ fun AppNavigation() {
     val context = LocalContext.current
     val repository = remember { StudentRepository(context) }
 
-    // Share a single Security ViewModel instance globally across the navigation tree [1]
     val securityViewModel: SecurityViewModel = viewModel()
     val isUnlocked by securityViewModel.isUnlocked.collectAsState()
 
-    // Central Security Gatekeeper intercepting session state [1]
+    // Resolved: Standardizes bi-directional routing boundaries without flashes [1]
     LaunchedEffect(isUnlocked) {
-        if (!isUnlocked) {
+        if (isUnlocked) {
+            navController.navigate("view_all") {
+                popUpTo("security_gate") { inclusive = true }
+            }
+        } else {
             navController.navigate("security_gate") {
-                popUpTo(0) { inclusive = true } // Wipe the entire backstack to prevent back-button bypasses
+                popUpTo(0) { inclusive = true }
             }
         }
     }
 
     NavHost(navController = navController, startDestination = "security_gate") {
 
-        // 1. Security Gate / Unlock (Onboarding setup or Verify PIN)
         composable("security_gate") {
             SecurityGateScreen(
                 onUnlockSuccess = {
@@ -49,7 +51,6 @@ fun AppNavigation() {
             )
         }
 
-        // 2. View All Student Directory
         composable("view_all") {
             ViewAllScreen(
                 onAddStudent = { id ->
@@ -105,7 +106,6 @@ fun AppNavigation() {
             )
         }
 
-        // 3. Student Profile Screen (Read-Only)
         composable(
             route = "profile/{studentId}",
             arguments = listOf(navArgument("studentId") { type = NavType.IntType })
@@ -139,7 +139,6 @@ fun AppNavigation() {
             )
         }
 
-        // 4. Add / Edit Student Form Screen
         composable(
             route = "add_edit/{studentId}",
             arguments = listOf(navArgument("studentId") { type = NavType.IntType })
@@ -155,7 +154,6 @@ fun AppNavigation() {
             )
         }
 
-        // 5. Template Manager Screen
         composable("templates") {
             TemplateManagerScreen(
                 onBack = {
@@ -166,7 +164,6 @@ fun AppNavigation() {
             )
         }
 
-        // 7. Recycle Bin (Soft Deleted) Screen
         composable("recycle_bin") {
             RecycleBinScreen(
                 onBack = {
@@ -177,7 +174,6 @@ fun AppNavigation() {
             )
         }
 
-        // 8. Saved Filters Screen
         composable("saved_filters") {
             SavedFiltersScreen(
                 onBack = {
@@ -191,7 +187,6 @@ fun AppNavigation() {
             )
         }
 
-        // 9. Biometrics & Privacy Screen
         composable("biometrics_privacy") {
             BiometricsPrivacyScreen(
                 onBack = {
@@ -202,7 +197,6 @@ fun AppNavigation() {
             )
         }
 
-        // 10. Backup & Sync Screen
         composable("sync") {
             SyncScreen(
                 onBack = {
@@ -213,7 +207,6 @@ fun AppNavigation() {
             )
         }
 
-        // 11. Attendance System Screen
         composable(
             route = "attendance?recordId={recordId}&dateMillis={dateMillis}",
             arguments = listOf(
@@ -239,7 +232,6 @@ fun AppNavigation() {
             )
         }
 
-        // 12. App Settings Screen
         composable("app_settings") {
             AppSettingsScreen(
                 onBack = {
