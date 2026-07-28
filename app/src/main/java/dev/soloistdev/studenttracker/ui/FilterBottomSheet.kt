@@ -33,7 +33,12 @@ fun FilterBottomSheet(
     var tempField by remember { mutableStateOf(activeFilter?.field ?: "Age") }
     var tempComparison by remember { mutableStateOf(activeFilter?.comparison ?: "In between") }
 
-    var tempVal1 by remember { mutableStateOf(activeFilter?.value1 ?: "Female") }
+    // Resolved: Defaults to empty string unless Gender is selected to prevent "Female" pre-population in numeric fields [1]
+    var tempVal1 by remember {
+        mutableStateOf(
+            activeFilter?.value1 ?: if (activeFilter?.field == "Gender") "Female" else ""
+        )
+    }
     var tempVal2 by remember { mutableStateOf(activeFilter?.value2 ?: "") }
     var tempIsPinned by remember { mutableStateOf(activeFilter?.isPinned ?: false) }
 
