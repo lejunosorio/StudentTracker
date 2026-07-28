@@ -1,8 +1,12 @@
 package dev.soloistdev.studenttracker.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -18,6 +22,19 @@ fun AppNavigation() {
     val context = LocalContext.current
     val repository = remember { StudentRepository(context) }
 
+    // Share a single Security ViewModel instance globally across the navigation tree [1]
+    val securityViewModel: SecurityViewModel = viewModel()
+    val isUnlocked by securityViewModel.isUnlocked.collectAsState()
+
+    // Central Security Gatekeeper intercepting session state [1]
+    LaunchedEffect(isUnlocked) {
+        if (!isUnlocked) {
+            navController.navigate("security_gate") {
+                popUpTo(0) { inclusive = true } // Wipe the entire backstack to prevent back-button bypasses
+            }
+        }
+    }
+
     NavHost(navController = navController, startDestination = "security_gate") {
 
         // 1. Security Gate / Unlock (Onboarding setup or Verify PIN)
@@ -27,7 +44,8 @@ fun AppNavigation() {
                     navController.navigate("view_all") {
                         popUpTo("security_gate") { inclusive = true }
                     }
-                }
+                },
+                viewModel = securityViewModel
             )
         }
 
@@ -195,7 +213,7 @@ fun AppNavigation() {
             )
         }
 
-        // 11. Attendance System Screen (Supporting optional deep-link redirection parameters)
+        // 11. Attendance System Screen
         composable(
             route = "attendance?recordId={recordId}&dateMillis={dateMillis}",
             arguments = listOf(

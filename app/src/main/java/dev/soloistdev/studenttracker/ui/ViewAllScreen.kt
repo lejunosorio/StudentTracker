@@ -3,52 +3,50 @@ package dev.soloistdev.studenttracker.ui
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Sort // AutoMirrored Sort [2.1]
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.StudentEntity
-import kotlinx.coroutines.launch
+import dev.soloistdev.studenttracker.ui.StudentUiState
 import org.json.JSONObject
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
-
-import androidx.compose.foundation.background
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
-import androidx.compose.material3.rememberSwipeToDismissBoxState
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Bookmarks
-import androidx.compose.ui.zIndex
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -83,7 +81,6 @@ fun ViewAllScreen(
     var showSortSheet by remember { mutableStateOf(false) }
     var showBulkDeleteConfirmDialog by remember { mutableStateOf(false) }
 
-    // Dialog controllers with dual date-range state tracking
     var showCreateAttendanceDialog by remember { mutableStateOf(false) }
     var attendanceRecordName by remember { mutableStateOf("") }
     var startDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -92,21 +89,6 @@ fun ViewAllScreen(
     var showEndPicker by remember { mutableStateOf(false) }
 
     val isDateRangeInvalid = startDateMillis > endDateMillis
-
-    val coreFields = listOf("First Name", "Last Name", "Gender", "Birthday", "Address", "Age", "Guardian Name", "Guardian Contact")
-
-    fun getFieldType(field: String, templates: List<FormTemplateEntity>): String {
-        return when (field) {
-            "First Name", "Last Name", "Home Address", "Guardian Name", "Guardian Contact" -> "TEXT"
-            "Gender" -> "GENDER"
-            "Age" -> "NUMBER"
-            "Birthday" -> "DATE"
-            else -> {
-                val template = templates.find { it.fieldName == field }
-                template?.fieldType ?: "TEXT"
-            }
-        }
-    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -160,7 +142,6 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
-                    // Restored: Drawer item for the Attendance System [1]
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.EventAvailable, contentDescription = null) },
                         label = { Text("Attendance System") },
@@ -176,7 +157,8 @@ fun ViewAllScreen(
                     )
 
                     NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.Bookmarks, contentDescription = null) },label = { Text("Saved Filters") },
+                        icon = { Icon(Icons.Default.Bookmarks, contentDescription = null) },
+                        label = { Text("Saved Filters") },
                         selected = false,
                         onClick = {
                             scope.launch {
@@ -333,21 +315,6 @@ fun ViewAllScreen(
                 }
             }
         ) { paddingValues ->
-            val sharedPrefs = remember { context.getSharedPreferences("app_settings", Context.MODE_PRIVATE) }
-            var activeBadgeField by remember { mutableStateOf(sharedPrefs.getString("card_banner_field", "") ?: "") }
-
-            DisposableEffect(sharedPrefs) {
-                val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-                    if (key == "card_banner_field") {
-                        activeBadgeField = sharedPrefs.getString("card_banner_field", "") ?: ""
-                    }
-                }
-                sharedPrefs.registerOnSharedPreferenceChangeListener(listener)
-                onDispose {
-                    sharedPrefs.unregisterOnSharedPreferenceChangeListener(listener)
-                }
-            }
-
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -431,21 +398,10 @@ fun ViewAllScreen(
                     )
 
                     pinnedFilters.forEach { pinnedFilter ->
-                        val sdfLabel = SimpleDateFormat("MMM dd, yyyy", Locale.US)
-                        val isDate = getFieldType(pinnedFilter.field, availableTemplates) == "DATE"
-
-                        val formattedVal1 = if (isDate) {
-                            pinnedFilter.value1.toLongOrNull()?.let { sdfLabel.format(Date(it)) } ?: pinnedFilter.value1
-                        } else pinnedFilter.value1
-
-                        val formattedVal2 = if (isDate) {
-                            pinnedFilter.value2.toLongOrNull()?.let { sdfLabel.format(Date(it)) } ?: pinnedFilter.value2
-                        } else pinnedFilter.value2
-
                         val labelText = if (pinnedFilter.comparison == "In between") {
-                            "${pinnedFilter.field.replace("_", " ")}: $formattedVal1 - $formattedVal2"
+                            "${pinnedFilter.field.replace("_", " ")}: ${pinnedFilter.value1} - ${pinnedFilter.value2}"
                         } else {
-                            "${pinnedFilter.field.replace("_", " ")} ${pinnedFilter.comparison} $formattedVal1"
+                            "${pinnedFilter.field.replace("_", " ")} ${pinnedFilter.comparison} ${pinnedFilter.value1}"
                         }
 
                         InputChip(
@@ -470,7 +426,7 @@ fun ViewAllScreen(
                     }
                 }
 
-                // Empty state trigger
+                // Empty state triggers
                 if (students.isEmpty() && searchQuery.isEmpty() && activeFilter == null) {
                     Box(
                         modifier = Modifier
@@ -496,11 +452,11 @@ fun ViewAllScreen(
                     ) {
                         items(
                             items = students,
-                            key = { it.id }
-                        ) { student ->
+                            key = { studentState -> studentState.student.id }
+                        ) { studentState ->
                             val currentOnStudentClick = rememberUpdatedState(onStudentClick)
                             val currentOnAddStudent = rememberUpdatedState(onAddStudent)
-                            val isStudentSelected = selectedStudentIds.contains(student.id)
+                            val isStudentSelected = selectedStudentIds.contains(studentState.student.id)
 
                             var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
@@ -509,7 +465,7 @@ fun ViewAllScreen(
                                 confirmValueChange = { dismissValue ->
                                     when (dismissValue) {
                                         SwipeToDismissBoxValue.StartToEnd -> {
-                                            currentOnAddStudent.value(student.id)
+                                            currentOnAddStudent.value(studentState.student.id)
                                             false
                                         }
                                         SwipeToDismissBoxValue.EndToStart -> {
@@ -566,18 +522,17 @@ fun ViewAllScreen(
                                 },
                                 content = {
                                     StudentCard(
-                                        student = student,
+                                        uiState = studentState,
                                         isSelected = isStudentSelected,
-                                        activeBadgeField = activeBadgeField,
                                         onClick = {
                                             if (isSelectionMode) {
-                                                viewModel.toggleStudentSelection(student.id)
+                                                viewModel.toggleStudentSelection(studentState.student.id)
                                             } else {
-                                                currentOnStudentClick.value(student.id)
+                                                currentOnStudentClick.value(studentState.student.id)
                                             }
                                         },
                                         onLongClick = {
-                                            viewModel.toggleStudentSelection(student.id)
+                                            viewModel.toggleStudentSelection(studentState.student.id)
                                         }
                                     )
                                 }
@@ -587,13 +542,13 @@ fun ViewAllScreen(
                                 AlertDialog(
                                     onDismissRequest = { showDeleteConfirmDialog = false },
                                     title = { Text("Delete Member?", fontWeight = FontWeight.Bold) },
-                                    text = { Text("Are you sure you want to move ${student.firstName} ${student.lastName} to the Recycle Bin?") },
+                                    text = { Text("Are you sure you want to move ${studentState.student.firstName} ${studentState.student.lastName} to the Recycle Bin?") },
                                     confirmButton = {
                                         Button(
                                             onClick = {
                                                 showDeleteConfirmDialog = false
-                                                viewModel.softDeleteStudent(student.id)
-                                                Toast.makeText(context, "${student.firstName} moved to Recycle Bin.", Toast.LENGTH_SHORT).show()
+                                                viewModel.softDeleteStudent(studentState.student.id)
+                                                Toast.makeText(context, "${studentState.student.firstName} moved to Recycle Bin.", Toast.LENGTH_SHORT).show()
                                             },
                                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                                         ) {
@@ -640,482 +595,25 @@ fun ViewAllScreen(
             )
         }
 
+        // Decoupled Bottom Sheet Overlays
         if (showFilterSheet) {
-            var tempField by remember { mutableStateOf(activeFilter?.field ?: "Age") }
-            var tempComparison by remember { mutableStateOf(activeFilter?.comparison ?: "In between") }
-
-            var tempVal1 by remember { mutableStateOf(activeFilter?.value1 ?: "Female") }
-            var tempVal2 by remember { mutableStateOf(activeFilter?.value2 ?: "") }
-            var tempIsPinned by remember { mutableStateOf(activeFilter?.isPinned ?: false) }
-
-            var showDatePicker1 by remember { mutableStateOf(false) }
-            var showDatePicker2 by remember { mutableStateOf(false) }
-
-            val fieldsList = remember {
-                val list = coreFields.toMutableList()
-                availableTemplates.forEach { list.add(it.fieldName) }
-                list
-            }
-
-            val currentSelectedType = getFieldType(tempField, availableTemplates)
-
-            val isRangeMode = tempComparison == "In between"
-            val isGenderMode = currentSelectedType == "GENDER"
-            val isBirthdayMode = tempField == "Birthday"
-
-            val val1Num = tempVal1.toDoubleOrNull()
-            val val2Num = tempVal2.toDoubleOrNull()
-
-            val currentSystemYear = Calendar.getInstance().get(Calendar.YEAR)
-            val isFutureYear1 = tempComparison == "birth_year" && (tempVal1.toIntOrNull() ?: 0) > currentSystemYear
-            val isFutureYear2 = tempComparison == "birth_month_year" && (tempVal2.toIntOrNull() ?: 0) > currentSystemYear
-
-            val isRangeError = isRangeMode && val1Num != null && val2Num != null && val1Num >= val2Num
-            val isValidationError = isRangeError || isFutureYear1 || isFutureYear2
-
-            val monthNames = remember {
-                listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
-            }
-
-            val chipColors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                containerColor = Color.Transparent,
-                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+            FilterBottomSheet(
+                activeFilter = activeFilter,
+                availableTemplates = availableTemplates,
+                onApplyFilter = { viewModel.applyFilter(it) },
+                onResetFilter = { viewModel.clearFilter() },
+                onDismiss = { showFilterSheet = false }
             )
-
-            ModalBottomSheet(
-                onDismissRequest = { showFilterSheet = false },
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text("Filter Directory", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-
-                    var fieldExpanded by remember { mutableStateOf(false) }
-                    ExposedDropdownMenuBox(
-                        expanded = fieldExpanded,
-                        onExpandedChange = { fieldExpanded = it }
-                    ) {
-                        OutlinedTextField(
-                            value = tempField.replace("_", " "),
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Select Field") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = fieldExpanded) },
-                            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
-                        )
-                        ExposedDropdownMenu(
-                            expanded = fieldExpanded,
-                            onDismissRequest = { fieldExpanded = false }
-                        ) {
-                            fieldsList.forEach { option ->
-                                DropdownMenuItem(
-                                    text = { Text(option.replace("_", " ")) },
-                                    onClick = {
-                                        tempField = option
-                                        fieldExpanded = false
-                                        val newType = getFieldType(option, availableTemplates)
-                                        tempComparison = when {
-                                            option == "Birthday" -> "exact_birthday"
-                                            newType == "NUMBER" -> "In between"
-                                            newType == "GENDER" -> "equal"
-                                            else -> "contains"
-                                        }
-                                        tempVal1 = if (newType == "GENDER") "Female" else ""
-                                        tempVal2 = ""
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    if (!isGenderMode && !isBirthdayMode) {
-                        var compExpanded by remember { mutableStateOf(false) }
-                        ExposedDropdownMenuBox(
-                            expanded = compExpanded,
-                            onExpandedChange = { compExpanded = it }
-                        ) {
-                            OutlinedTextField(
-                                value = tempComparison,
-                                onValueChange = {},
-                                readOnly = true,
-                                label = { Text("Select Comparison") },
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = compExpanded) },
-                                modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
-                            )
-                            ExposedDropdownMenu(
-                                expanded = compExpanded,
-                                onDismissRequest = { compExpanded = false }
-                            ) {
-                                val operatorsList = if (currentSelectedType == "NUMBER") {
-                                    listOf("equal", "greater than", "less than", "In between")
-                                } else {
-                                    listOf("contains", "does not contain", "equal", "not equal")
-                                }
-
-                                operatorsList.forEach { option ->
-                                    DropdownMenuItem(
-                                        text = { Text(option) },
-                                        onClick = {
-                                            tempComparison = option
-                                            compExpanded = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    if (isBirthdayMode) {
-                        var typeExpanded by remember { mutableStateOf(false) }
-                        val birthdayTypes = listOf(
-                            "Birth year (YYYY)" to "birth_year",
-                            "Birth month (MM)" to "birth_month",
-                            "Birth month and Year (MM - YY)" to "birth_month_year",
-                            "Exact Birthday (MM/DD/YYYY)" to "exact_birthday"
-                        )
-                        val selectedTypeName = birthdayTypes.find { it.second == tempComparison }?.first ?: "Exact Birthday (MM/DD/YYYY)"
-
-                        ExposedDropdownMenuBox(
-                            expanded = typeExpanded,
-                            onExpandedChange = { typeExpanded = it }
-                        ) {
-                            OutlinedTextField(
-                                value = selectedTypeName,
-                                onValueChange = {},
-                                readOnly = true,
-                                label = { Text("Select Birthday Filter Type") },
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeExpanded) },
-                                modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
-                            )
-                            ExposedDropdownMenu(
-                                expanded = typeExpanded,
-                                onDismissRequest = { typeExpanded = false }
-                            ) {
-                                birthdayTypes.forEach { (label, value) ->
-                                    DropdownMenuItem(
-                                        text = { Text(label) },
-                                        onClick = {
-                                            tempComparison = value
-                                            typeExpanded = false
-                                            tempVal1 = if (value == "birth_month" || value == "birth_month_year") "1" else ""
-                                            tempVal2 = ""
-                                        }
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        when (tempComparison) {
-                            "birth_year" -> {
-                                OutlinedTextField(
-                                    value = tempVal1,
-                                    onValueChange = { if (it.length <= 4) tempVal1 = it.filter { c -> c.isDigit() } },
-                                    label = { Text("Birth Year (YYYY) *") },
-                                    isError = isFutureYear1,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                if (isFutureYear1) {
-                                    Text("Year cannot be in the future.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                                }
-                            }
-                            "birth_month" -> {
-                                var monthExpanded by remember { mutableStateOf(false) }
-                                val monthIdx = (tempVal1.toIntOrNull() ?: 1) - 1
-                                val selectedMonthName = monthNames.getOrElse(monthIdx) { "January" }
-
-                                ExposedDropdownMenuBox(
-                                    expanded = monthExpanded,
-                                    onExpandedChange = { monthExpanded = it }
-                                ) {
-                                    OutlinedTextField(
-                                        value = selectedMonthName,
-                                        onValueChange = {},
-                                        readOnly = true,
-                                        label = { Text("Select Birth Month *") },
-                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = monthExpanded) },
-                                        modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
-                                    )
-                                    ExposedDropdownMenu(
-                                        expanded = monthExpanded,
-                                        onDismissRequest = { monthExpanded = false }
-                                    ) {
-                                        monthNames.forEachIndexed { idx, name ->
-                                            DropdownMenuItem(
-                                                text = { Text(name) },
-                                                onClick = {
-                                                    tempVal1 = (idx + 1).toString()
-                                                    monthExpanded = false
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            "birth_month_year" -> {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    var monthExpanded by remember { mutableStateOf(false) }
-                                    val monthIdx = (tempVal1.toIntOrNull() ?: 1) - 1
-                                    val selectedMonthName = monthNames.getOrElse(monthIdx) { "January" }
-
-                                    Box(modifier = Modifier.weight(1f)) {
-                                        ExposedDropdownMenuBox(
-                                            expanded = monthExpanded,
-                                            onExpandedChange = { monthExpanded = it }
-                                        ) {
-                                            OutlinedTextField(
-                                                value = selectedMonthName,
-                                                onValueChange = {},
-                                                readOnly = true,
-                                                label = { Text("Month *") },
-                                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = monthExpanded) },
-                                                modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
-                                            )
-                                            ExposedDropdownMenu(
-                                                expanded = monthExpanded,
-                                                onDismissRequest = { monthExpanded = false }
-                                            ) {
-                                                monthNames.forEachIndexed { idx, name ->
-                                                    DropdownMenuItem(
-                                                        text = { Text(name) },
-                                                        onClick = {
-                                                            tempVal1 = (idx + 1).toString()
-                                                            monthExpanded = false
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    OutlinedTextField(
-                                        value = tempVal2,
-                                        onValueChange = { if (it.length <= 4) tempVal2 = it.filter { c -> c.isDigit() } },
-                                        label = { Text("Year (YYYY) *") },
-                                        isError = isFutureYear2,
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                                if (isFutureYear2) {
-                                    Text("Year cannot be in the future.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                                }
-                            }
-                            "exact_birthday" -> {
-                                val sdfPicker = SimpleDateFormat("MMM dd, yyyy", Locale.US)
-                                val birthday1Formatted = tempVal1.toLongOrNull()?.let { sdfPicker.format(Date(it)) } ?: "Select Birthday Date *"
-
-                                OutlinedButton(
-                                    onClick = { showDatePicker1 = true },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(birthday1Formatted, color = MaterialTheme.colorScheme.onSurface)
-                                        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                    }
-                                }
-                            }
-                        }
-                    } else if (isGenderMode) {
-                        Text("Select Gender *", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            FilterChip(
-                                selected = tempVal1 == "Female",
-                                onClick = { tempVal1 = "Female" },
-                                label = { Text("Female") },
-                                colors = chipColors
-                            )
-                            FilterChip(
-                                selected = tempVal1 == "Male",
-                                onClick = { tempVal1 = "Male" },
-                                label = { Text("Male") },
-                                colors = chipColors
-                            )
-                        }
-                    } else {
-                        if (isRangeMode) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = tempVal1,
-                                    onValueChange = { tempVal1 = it },
-                                    label = { Text("Value 1 (Min) *") },
-                                    isError = isValidationError,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f)
-                                )
-                                OutlinedTextField(
-                                    value = tempVal2,
-                                    onValueChange = { tempVal2 = it },
-                                    label = { Text("Value 2 (Max) *") },
-                                    isError = isValidationError,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-
-                            if (isValidationError) {
-                                Text(
-                                    text = "Value 2 (Max) must be strictly greater than Value 1",
-                                    color = MaterialTheme.colorScheme.error,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.padding(start = 4.dp)
-                                )
-                            }
-                        } else {
-                            val isNumeric = currentSelectedType == "NUMBER"
-                            OutlinedTextField(
-                                value = tempVal1,
-                                onValueChange = { tempVal1 = it },
-                                label = { Text("Value *") },
-                                keyboardOptions = KeyboardOptions(keyboardType = if (isNumeric) KeyboardType.Number else KeyboardType.Text),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Pin filter to dashboard", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-                        Switch(
-                            checked = tempIsPinned,
-                            onCheckedChange = { tempIsPinned = it }
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(onClick = { viewModel.clearFilter(); showFilterSheet = false }) {
-                            Text("Reset")
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                if (!isValidationError) {
-                                    viewModel.applyFilter(
-                                        FilterState(
-                                            field = tempField,
-                                            comparison = tempComparison,
-                                            value1 = tempVal1,
-                                            value2 = tempVal2,
-                                            isPinned = tempIsPinned
-                                        )
-                                    )
-                                    showFilterSheet = false
-                                }
-                            },
-                            enabled = !isValidationError,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isValidationError) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary,
-                                contentColor = if (isValidationError) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onPrimary
-                            ),
-                            shape = RoundedCornerShape(100.dp)
-                        ) {
-                            Text("Apply Filter")
-                        }
-                    }
-                }
-            }
-
-            if (showDatePicker1) {
-                WheelDatePickerDialog(
-                    initialDateMillis = tempVal1.toLongOrNull() ?: System.currentTimeMillis(),
-                    onDismiss = { showDatePicker1 = false },
-                    onConfirm = { selectedMillis ->
-                        tempVal1 = selectedMillis.toString()
-                        showDatePicker1 = false
-                    }
-                )
-            }
-
-
-            if (showDatePicker2) {
-                WheelDatePickerDialog(
-                    initialDateMillis = tempVal2.toLongOrNull() ?: System.currentTimeMillis(),
-                    onDismiss = { showDatePicker2 = false },
-                    onConfirm = { selectedMillis ->
-                        tempVal2 = selectedMillis.toString()
-                        showDatePicker2 = false
-                    }
-                )
-            }
         }
 
-        // ================= SPRINT 9 SORT SHEET (Screen 13) =================
         if (showSortSheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showSortSheet = false },
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text("Sort List By", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        SortOptionItem(
-                            label = "Last Name (A - Z)",
-                            isSelected = sortOrder == "lastNameAsc",
-                            onClick = { viewModel.updateSortOrder("lastNameAsc"); showSortSheet = false }
-                        )
-                        SortOptionItem(
-                            label = "Last Name (Z - A)",
-                            isSelected = sortOrder == "lastNameDesc",
-                            onClick = { viewModel.updateSortOrder("lastNameDesc"); showSortSheet = false }
-                        )
-                        SortOptionItem(
-                            label = "Age (Youngest First)",
-                            isSelected = sortOrder == "ageYoungest",
-                            onClick = { viewModel.updateSortOrder("ageYoungest"); showSortSheet = false }
-                        )
-                        SortOptionItem(
-                            label = "Recently Added",
-                            isSelected = sortOrder == "recentlyAdded",
-                            onClick = { viewModel.updateSortOrder("recentlyAdded"); showSortSheet = false }
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
-            }
+            SortBottomSheet(
+                sortOrder = sortOrder,
+                onSortSelected = { viewModel.updateSortOrder(it) },
+                onDismiss = { showSortSheet = false }
+            )
         }
 
-        // NEW: M3 Naming & Date Range Dialog for Manual Attendance Records [1]
         if (showCreateAttendanceDialog) {
             val m3TextFieldColors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -1149,7 +647,6 @@ fun ViewAllScreen(
 
                         val sdf = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
 
-                        // Clickable Start Date Button with standard M3 DatePickerDialog calendar grid [1]
                         OutlinedButton(
                             onClick = { showStartPicker = true },
                             modifier = Modifier.fillMaxWidth(),
@@ -1166,7 +663,6 @@ fun ViewAllScreen(
                             }
                         }
 
-                        // Clickable End Date Button with standard M3 DatePickerDialog calendar grid [1]
                         OutlinedButton(
                             onClick = { showEndPicker = true },
                             modifier = Modifier.fillMaxWidth(),
@@ -1234,7 +730,6 @@ fun ViewAllScreen(
             )
         }
 
-        // CORRECTED: Restored with standard M3 DatePickerDialog calendar grid (Wheel picker removed) [1]
         if (showStartPicker) {
             val pickerState = rememberDatePickerState(
                 initialSelectedDateMillis = startDateMillis
@@ -1250,7 +745,6 @@ fun ViewAllScreen(
             ) { DatePicker(state = pickerState, showModeToggle = false) }
         }
 
-        // CORRECTED: Restored with standard M3 DatePickerDialog calendar grid (Wheel picker removed) [1]
         if (showEndPicker) {
             val pickerState = rememberDatePickerState(
                 initialSelectedDateMillis = endDateMillis
@@ -1264,151 +758,6 @@ fun ViewAllScreen(
                     }) { Text("OK") }
                 }
             ) { DatePicker(state = pickerState, showModeToggle = false) }
-        }
-    }
-}
-
-
-
-@Composable
-fun SortOptionItem(label: String, isSelected: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(text = label, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface)
-        RadioButton(
-            selected = isSelected,
-            onClick = onClick,
-            colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
-        )
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun StudentCard(
-    student: StudentEntity,
-    isSelected: Boolean,
-    activeBadgeField: String,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit
-) {
-    ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            ),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-            contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-        )
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape),
-                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer
-            ) {
-                if (isSelected) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = "Selected",
-                            tint = MaterialTheme.colorScheme.onPrimary
-                        )
-                    }
-                } else {
-                    LocalImageLoader(
-                        imagePath = student.picturePath,
-                        contentDescription = "Student Photo",
-                        fallback = {
-                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                val initials = if (student.firstName.isNotEmpty() && student.lastName.isNotEmpty()) {
-                                    "${student.lastName.take(1)}${student.firstName.take(1)}".uppercase()
-                                } else {
-                                    "ST"
-                                }
-                                Text(
-                                    text = initials,
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 18.sp
-                                )
-                            }
-                        }
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "${student.lastName}, ${student.firstName}",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-
-                    val dynamicBadgeValue = remember(student.customDataJson, activeBadgeField) {
-                        if (activeBadgeField.isNotEmpty()) {
-                            try {
-                                val json = JSONObject(student.customDataJson)
-                                json.optString(activeBadgeField, "").trim().ifEmpty { null }
-                            } catch (e: Exception) {
-                                null
-                            }
-                        } else null
-                    }
-
-                    if (dynamicBadgeValue != null) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Surface(
-                            color = MaterialTheme.colorScheme.secondaryContainer,
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text(
-                                text = dynamicBadgeValue,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-                }
-
-                val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.US)
-                val formattedDate = sdf.format(Date(student.birthday))
-                val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
-                val genderStr = if (student.gender == "F") "Female" else "Male"
-
-                Text(
-                    text = "$genderStr | Age: $age | $formattedDate\n${student.address}",
-                    fontSize = 14.sp,
-                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = 18.sp,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
         }
     }
 }

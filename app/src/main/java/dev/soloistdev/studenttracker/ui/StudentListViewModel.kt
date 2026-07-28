@@ -1,15 +1,18 @@
 package dev.soloistdev.studenttracker.ui
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.Guardian
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.text.SimpleDateFormat
 import java.util.*
 
 data class FilterState(
@@ -46,8 +49,10 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
     private val _selectedStudentIds = MutableStateFlow<Set<Int>>(emptySet())
     val selectedStudentIds: StateFlow<Set<Int>> = _selectedStudentIds
 
-    // DYNAMIC COMBINED FLOW: Manages live search, sorting, and advanced filtering
-    val students: StateFlow<List<StudentEntity>> = combine(
+    private val sharedPrefs = application.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+
+    // Dynamic background-mapped UI State Flow running on Dispatchers.Default [1]
+    val students: StateFlow<List<StudentUiState>> = combine(
         _rawStudents, _searchQuery, _sortOrder, _activeFilter
     ) { rawList, query, sort, filter ->
 
@@ -95,14 +100,44 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
             }
         }
 
-        when (sort) {
+        val sortedList = when (sort) {
             "lastNameAsc" -> processedList.sortedBy { it.lastName.lowercase() }
             "lastNameDesc" -> processedList.sortedByDescending { it.lastName.lowercase() }
             "ageYoungest" -> processedList.sortedByDescending { it.birthday }
             "recentlyAdded" -> processedList.sortedByDescending { it.id }
             else -> processedList
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+        val activeBadgeField = sharedPrefs.getString("card_banner_field", "") ?: ""
+        val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.US)
+        val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+
+        sortedList.map { student ->
+            val genderStr = if (student.gender == "F") "Female" else "Male"
+            val bdayFormatted = sdf.format(Date(student.birthday))
+            val cal = Calendar.getInstance().apply { timeInMillis = student.birthday }
+            val age = currentYear - cal.get(Calendar.YEAR)
+
+            val dynamicBadgeValue = if (activeBadgeField.isNotEmpty()) {
+                try {
+                    val json = JSONObject(student.customDataJson)
+                    json.optString(activeBadgeField, "").trim().ifEmpty { null }
+                } catch (e: Exception) {
+                    null
+                }
+            } else null
+
+            StudentUiState(
+                student = student,
+                genderString = genderStr,
+                formattedBirthday = bdayFormatted,
+                age = age,
+                customBadgeValue = dynamicBadgeValue
+            )
+        }
+    }
+        .flowOn(Dispatchers.Default) // Map off the Main Thread
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
         loadStudents()
@@ -113,7 +148,6 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
         val value1 = filter.value1.trim()
         val value2 = filter.value2.trim()
 
-        // specialized Birthday comparator logic
         if (filter.field == "Birthday") {
             val studentBirthday = fieldValue.toLongOrNull() ?: return false
             val studentCal = Calendar.getInstance().apply { timeInMillis = studentBirthday }
@@ -141,7 +175,6 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
             }
         }
 
-        // specialized Standard Field comparators
         return when (filter.comparison) {
             "contains" -> fieldValue.contains(value1, ignoreCase = true)
             "does not contain" -> !fieldValue.contains(value1, ignoreCase = true)
@@ -169,7 +202,6 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    // PRODUCTION LOAD: Directly queries the live database (Seeder has been stripped out)
     fun loadStudents() {
         viewModelScope.launch {
             _rawStudents.value = repository.getAllActiveStudents()
@@ -227,12 +259,11 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
     fun createManualAttendanceRecord(
         name: String,
         selectedIds: List<Int>,
-        startDateMillis: Long, // Accept start date range [1]
-        endDateMillis: Long,   // Accept end date range [1]
+        startDateMillis: Long,
+        endDateMillis: Long,
         onCreated: (Int, Long) -> Unit
     ) {
         viewModelScope.launch {
-            // Normalize selected dates to midnight (00:00:00.000) [1]
             val normalizedStart = Calendar.getInstance().apply {
                 timeInMillis = startDateMillis
                 set(Calendar.HOUR_OF_DAY, 0)
@@ -249,16 +280,14 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                 set(Calendar.MILLISECOND, 0)
             }.timeInMillis
 
-            // 1. Insert parent record. Both boundaries are set to the chosen range [1]
             val record = dev.soloistdev.studenttracker.data.AttendanceRecordEntity(
                 name = name.trim(),
-                savedFilterId = 0, // 0 represents manual selection
+                savedFilterId = 0,
                 startDate = normalizedStart,
                 endDate = normalizedEnd
             )
             val recordId = repository.insertAttendanceRecord(record).toInt()
 
-            // 2. Generate and insert unmarked logs for every chosen day in the range [1]
             val daysList = generateDateList(normalizedStart, normalizedEnd)
             daysList.forEach { date ->
                 selectedIds.forEach { studentId ->
@@ -273,12 +302,11 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                 }
             }
 
-            clearSelection() // Reset selection mode
-            onCreated(recordId, normalizedStart) // Redirects directly to the start date workbook! [1]
+            clearSelection()
+            onCreated(recordId, normalizedStart)
         }
     }
 
-    // Helper to generate list of all dates in the selected range [1]
     private fun generateDateList(startDate: Long, endDate: Long): List<Long> {
         val dates = mutableListOf<Long>()
         val startCal = Calendar.getInstance().apply {
@@ -307,11 +335,11 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
         if (currentSet.contains(studentId)) {
             currentSet.remove(studentId)
             if (currentSet.isEmpty()) {
-                _isSelectionMode.value = false // Exit selection if nothing is selected
+                _isSelectionMode.value = false
             }
         } else {
             currentSet.add(studentId)
-            _isSelectionMode.value = true // Activate selection mode automatically
+            _isSelectionMode.value = true
         }
         _selectedStudentIds.value = currentSet
     }
@@ -328,15 +356,15 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
             idsToDelete.forEach { id ->
                 repository.softDeleteStudent(id)
             }
-            clearSelection() // Reset state
-            loadStudents() // Refresh active directory roster
+            clearSelection()
+            loadStudents()
         }
     }
 
     fun softDeleteStudent(studentId: Int) {
         viewModelScope.launch {
             repository.softDeleteStudent(studentId)
-            loadStudents() // Re-queries database to update state automatically
+            loadStudents()
         }
     }
 }
