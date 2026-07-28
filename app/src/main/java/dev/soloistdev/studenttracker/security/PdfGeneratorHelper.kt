@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
+import android.net.Uri
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import dev.soloistdev.studenttracker.data.Guardian
@@ -18,7 +19,26 @@ import java.util.*
 
 object PdfGeneratorHelper {
 
+    // Programmatically clear all old temporary .pdf files under cacheDir/pdf_reports to mitigate local state leaks [1]
+    fun clearPdfCache(context: Context) {
+        try {
+            val cacheDir = File(context.cacheDir, "pdf_reports")
+            if (cacheDir.exists() && cacheDir.isDirectory) {
+                cacheDir.listFiles()?.forEach { file ->
+                    if (file.name.endsWith(".pdf", ignoreCase = true)) {
+                        file.delete()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     fun generateAndShareStudentPdf(context: Context, student: StudentEntity) {
+        // Safe-purge prior PDF reports to eliminate stale plain-text PII [1]
+        clearPdfCache(context)
+
         val pdfDocument = PdfDocument()
         val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
         val page = pdfDocument.startPage(pageInfo)
@@ -55,7 +75,6 @@ object PdfGeneratorHelper {
         canvas.drawText("Home Address: ${student.address}", 40f, yPosition, textPaint)
         yPosition += 25f
 
-        // Renders student contact details on PDF report [1]
         if (student.contactNumber.isNotEmpty()) {
             canvas.drawText("Student Contact: ${student.contactNumber}", 40f, yPosition, textPaint)
             yPosition += 25f
@@ -115,12 +134,13 @@ object PdfGeneratorHelper {
         val pdfFile = File(cacheDir, "report_${student.lastName}_${student.id}.pdf")
 
         try {
-            // SAFE STREAM WRITE PIPELINE: `.use` block ensures the native file descriptor
-            // is closed securely even if writing to the filesystem stutters or fails [1].
             FileOutputStream(pdfFile).use { fos ->
                 pdfDocument.writeTo(fos)
                 fos.flush()
             }
+
+            // Mark file for cleanup on VM exit [1]
+            pdfFile.deleteOnExit()
 
             val fileUri = FileProvider.getUriForFile(
                 context,
@@ -140,8 +160,6 @@ object PdfGeneratorHelper {
             e.printStackTrace()
             Toast.makeText(context, "Error generating PDF report.", Toast.LENGTH_SHORT).show()
         } finally {
-            // CRITICAL NATIVE MEMORY RELEASE:
-            // Native C++ PDF structures are closed inside a finally block to release memory [1].
             pdfDocument.close()
         }
     }

@@ -2,14 +2,15 @@ package dev.soloistdev.studenttracker.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.mutableIntStateOf // Added primitive Int State import [1]
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType // Resolved: Haptic feedback imports
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,32 +33,28 @@ fun WheelDatePickerDialog(
         }
     }
 
-    // CORRECTED: Utilizes primitive mutableIntStateOf to prevent object autoboxing [1]
     var selectedYear by remember { mutableIntStateOf(calendar.get(Calendar.YEAR)) }
     var selectedMonth by remember { mutableIntStateOf(calendar.get(Calendar.MONTH) + 1) }
     var selectedDay by remember { mutableIntStateOf(calendar.get(Calendar.DAY_OF_MONTH)) }
 
-    val yearsList = remember { (1920..currentYear).toList().reversed() } // Limit up to current year
+    val yearsList = remember { (1920..currentYear).toList().reversed() }
 
     val monthsList = remember(selectedYear) {
         val limit = if (selectedYear == currentYear) currentMonth else 12
         (1..limit).toList()
     }
 
-    // Auto-adjust month if it exceeds the limit
     LaunchedEffect(monthsList) {
         if (selectedMonth > monthsList.size) {
             selectedMonth = monthsList.first()
         }
     }
 
-    // Recalculate max days dynamically
     val maxDays = remember(selectedMonth, selectedYear) {
         val cal = Calendar.getInstance()
         cal.set(Calendar.YEAR, selectedYear)
         cal.set(Calendar.MONTH, selectedMonth - 1)
-        val maximumDays = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
-        maximumDays
+        cal.getActualMaximum(Calendar.DAY_OF_MONTH)
     }
 
     val daysList = remember(selectedMonth, selectedYear, maxDays) {
@@ -69,7 +66,6 @@ fun WheelDatePickerDialog(
         (1..limit).toList()
     }
 
-    // Boundary Correction: If day is 31, and we switch to Feb, default back to 1
     LaunchedEffect(daysList) {
         if (selectedDay > daysList.size) {
             selectedDay = 1
@@ -95,7 +91,6 @@ fun WheelDatePickerDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 1. Month Picker (Left)
                     val monthStrList = monthsList.map { monthNames[it - 1] }
                     val initialMonthIdx = monthsList.indexOf(selectedMonth).coerceAtLeast(0)
                     WheelColumnPicker(
@@ -105,7 +100,6 @@ fun WheelDatePickerDialog(
                         modifier = Modifier.weight(1.1f)
                     )
 
-                    // 2. Day Picker (Middle)
                     val dayStrList = daysList.map { it.toString() }
                     val initialDayIdx = daysList.indexOf(selectedDay).coerceAtLeast(0)
                     WheelColumnPicker(
@@ -115,7 +109,6 @@ fun WheelDatePickerDialog(
                         modifier = Modifier.weight(0.9f)
                     )
 
-                    // 3. Year Picker (Right)
                     val yearStrList = yearsList.map { it.toString() }
                     val initialYearIdx = yearsList.indexOf(selectedYear).coerceAtLeast(0)
                     WheelColumnPicker(
@@ -172,22 +165,29 @@ fun WheelColumnPicker(
     onValueChange: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
     val paddedItems = remember(items) { listOf("") + items + listOf("") }
     val lazyListState = rememberLazyListState(initialFirstVisibleItemIndex = selectedIndex)
 
-    // Sync state changes on scroll interaction
+    var programmaticUpdate by remember { mutableStateOf(false) }
+
     LaunchedEffect(lazyListState) {
         snapshotFlow { lazyListState.firstVisibleItemIndex }.collect { index ->
-            if (index in items.indices) {
+            if (index in items.indices && !programmaticUpdate) {
                 onValueChange(index)
+                // Trigger a mild haptic click only during active user-initiated scrolls to prevent startup vibrations [1]
+                if (lazyListState.isScrollInProgress) {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                }
             }
         }
     }
 
-    // Sync programmatic index adjustments
     LaunchedEffect(selectedIndex) {
         if (lazyListState.firstVisibleItemIndex != selectedIndex && selectedIndex in items.indices) {
+            programmaticUpdate = true
             lazyListState.scrollToItem(selectedIndex)
+            programmaticUpdate = false
         }
     }
 
@@ -199,8 +199,6 @@ fun WheelColumnPicker(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         itemsIndexed(paddedItems) { idx, item ->
-            // CORRECTED: Compares directly to the stable selectedIndex parameter instead
-            // of the frequently changing firstVisibleItemIndex to avoid recomposition loops [1].
             val isCenter = idx == selectedIndex + 1
             Box(
                 modifier = Modifier

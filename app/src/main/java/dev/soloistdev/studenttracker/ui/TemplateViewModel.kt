@@ -16,7 +16,6 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
     private val _templates = MutableStateFlow<List<FormTemplateEntity>>(emptyList())
     val templates: StateFlow<List<FormTemplateEntity>> = _templates
 
-    // Missing unconfigured keys scanner [1]
     private val _unconfiguredCustomFields = MutableStateFlow<List<String>>(emptyList())
     val unconfiguredCustomFields: StateFlow<List<String>> = _unconfiguredCustomFields
 
@@ -24,12 +23,19 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
         loadTemplates()
     }
 
+    // Centralized strict sanitization block [1]
+    private fun sanitizeFieldName(name: String): String {
+        return name.trim()
+            .replace(" ", "_")
+            // Strictly retains only letters, digits, and underscores, stripping out any SQL command characters [1]
+            .filter { it.isLetterOrDigit() || it == '_' }
+    }
+
     fun loadTemplates() {
         viewModelScope.launch {
             val list = repository.getAllFormTemplates()
             _templates.value = list
 
-            // Scan unconfigured fields inside active student payloads safely [1]
             val activeStudents = repository.getAllActiveStudents()
             val studentKeys = mutableSetOf<String>()
             activeStudents.forEach { student ->
@@ -45,7 +51,7 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun addTemplate(name: String, type: String, isRequired: Boolean): Boolean {
-        val sanitized = name.trim().replace(" ", "_")
+        val sanitized = sanitizeFieldName(name) // Applies strict sanitization [1]
         val regex = Regex("^[a-zA-Z0-9_]+$")
         if (!regex.matches(sanitized) || sanitized.isBlank()) return false
 
@@ -61,17 +67,19 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
         return true
     }
 
-    // Bulk creation support for the discovered field dialogs [1]
+    // Resolved: Strict sanitization applied to bulk imports [1]
     fun addTemplatesBulk(fields: List<String>) {
         viewModelScope.launch {
             fields.forEach { field ->
-                val sanitized = field.trim().replace(" ", "_")
-                val newTemplate = FormTemplateEntity(
-                    fieldName = sanitized,
-                    fieldType = "TEXT", // Defaults to standard Text type on quick-create
-                    isRequired = false
-                )
-                repository.insertFormTemplate(newTemplate)
+                val sanitized = sanitizeFieldName(field) // Strips malicious SQL strings during JSON ingestion [1]
+                if (sanitized.isNotBlank()) {
+                    val newTemplate = FormTemplateEntity(
+                        fieldName = sanitized,
+                        fieldType = "TEXT",
+                        isRequired = false
+                    )
+                    repository.insertFormTemplate(newTemplate)
+                }
             }
             loadTemplates()
         }

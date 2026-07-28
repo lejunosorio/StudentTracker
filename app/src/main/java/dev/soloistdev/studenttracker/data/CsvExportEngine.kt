@@ -12,12 +12,32 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 object CsvExportEngine {
+
+    // Programmatically clear all old temporary .csv files under cacheDir/csv_exports to mitigate local state leaks [1]
+    fun clearCsvCache(context: Context) {
+        try {
+            val cacheDir = File(context.cacheDir, "csv_exports")
+            if (cacheDir.exists() && cacheDir.isDirectory) {
+                cacheDir.listFiles()?.forEach { file ->
+                    if (file.name.endsWith(".csv", ignoreCase = true)) {
+                        file.delete()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     suspend fun exportRosterToCsv(context: Context, students: List<StudentEntity>) = withContext(Dispatchers.IO) {
+        // Safe-purge prior spreadsheets to eliminate stale plain-text PII [1]
+        clearCsvCache(context)
+
         val db = AppDatabase.getDatabase(context)
-        val templates = db.studentDao().getAllFormTemplates() // Safely fetch custom fields
+        val templates = db.studentDao().getAllFormTemplates()
 
         // 1. Build Header: Core attributes + custom templates
-        val coreHeader = "Last Name,First Name,Gender,Birthday,Address,Student Contact,Guardian Name,Guardian Contact" // Added Student Contact [1]
+        val coreHeader = "Last Name,First Name,Gender,Birthday,Address,Student Contact,Guardian Name,Guardian Contact"
         val dynamicHeader = if (templates.isNotEmpty()) {
             "," + templates.joinToString(",") { it.fieldName.replace("_", " ") }
         } else ""
@@ -40,11 +60,10 @@ object CsvExportEngine {
 
             val coreRow = "${student.lastName},${student.firstName},${student.gender},$birthdayStr,$cleanAddress,${student.contactNumber},$cleanGuardian,$primaryContact"
 
-            // Extract and format all custom attributes generically
             val dynamicRow = if (templates.isNotEmpty()) {
                 "," + templates.joinToString(",") { template ->
                     val rawValue = customJson.optString(template.fieldName, "")
-                    rawValue.replace(",", " ") // Prevent CSV delimiter breakage
+                    rawValue.replace(",", " ")
                 }
             } else ""
 
@@ -53,11 +72,14 @@ object CsvExportEngine {
 
         val cacheDir = File(context.cacheDir, "csv_exports").apply { mkdirs() }
         val csvFile = File(cacheDir, "choir_roster_export.csv")
-        if (csvFile.exists()) csvFile.delete()
 
-        val fos = FileOutputStream(csvFile)
-        fos.write(csvContent.toString().toByteArray(Charsets.UTF_8))
-        fos.close()
+        FileOutputStream(csvFile).use { fos ->
+            fos.write(csvContent.toString().toByteArray(Charsets.UTF_8))
+            fos.flush()
+        }
+
+        // Mark file for cleanup on VM exit [1]
+        csvFile.deleteOnExit()
 
         val fileUri = FileProvider.getUriForFile(
             context,
