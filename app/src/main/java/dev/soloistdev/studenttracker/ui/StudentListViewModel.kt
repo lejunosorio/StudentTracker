@@ -51,7 +51,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
 
     private val sharedPrefs = application.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
 
-    // Dynamic background-mapped UI State Flow running on Dispatchers.Default [1]
+    // Dynamic background-mapped UI State Flow running on Dispatchers.Default
     val students: StateFlow<List<StudentUiState>> = combine(
         _rawStudents, _searchQuery, _sortOrder, _activeFilter
     ) { rawList, query, sort, filter ->
@@ -62,7 +62,9 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
             rawList.filter { student ->
                 student.firstName.contains(query, ignoreCase = true) ||
                         student.lastName.contains(query, ignoreCase = true) ||
-                        student.address.contains(query, ignoreCase = true)
+                        student.address.contains(query, ignoreCase = true) ||
+                        // Integrated: Allows searching directly by student phone numbers [1]
+                        student.contactNumber.contains(query, ignoreCase = true)
             }
         }
 
@@ -73,6 +75,8 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                     "Last Name" -> student.lastName
                     "Gender" -> if (student.gender == "F") "Female" else "Male"
                     "Home Address" -> student.address
+                    // Integrated: Allows saving filters based on student contact numbers [1]
+                    "Student Contact" -> student.contactNumber
                     "Age" -> {
                         val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
                         age.toString()
@@ -114,7 +118,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
 
         sortedList.map { student ->
             val genderStr = if (student.gender == "F") "Female" else "Male"
-            val bdayFormatted = sdf.format(Date(student.birthday))
+            val birthdayFormatted = sdf.format(Date(student.birthday))
             val cal = Calendar.getInstance().apply { timeInMillis = student.birthday }
             val age = currentYear - cal.get(Calendar.YEAR)
 
@@ -122,7 +126,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                 try {
                     val json = JSONObject(student.customDataJson)
                     json.optString(activeBadgeField, "").trim().ifEmpty { null }
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     null
                 }
             } else null
@@ -130,7 +134,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
             StudentUiState(
                 student = student,
                 genderString = genderStr,
-                formattedBirthday = bdayFormatted,
+                formattedBirthday = birthdayFormatted,
                 age = age,
                 customBadgeValue = dynamicBadgeValue
             )

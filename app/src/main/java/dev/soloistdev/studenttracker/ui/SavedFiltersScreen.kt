@@ -19,7 +19,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,77 +39,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.SavedFilterEntity
 import dev.soloistdev.studenttracker.data.StudentEntity
-import dev.soloistdev.studenttracker.data.StudentRepository
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
-
-// VIEW MODEL: Coordinates dynamic calculations, reordering arrays, and db writes
-class SavedFiltersViewModel(application: android.app.Application) : AndroidViewModel(application) {
-    private val repository = StudentRepository(application)
-
-    private val _filters = MutableStateFlow<List<SavedFilterEntity>>(emptyList())
-    val filters: StateFlow<List<SavedFilterEntity>> = _filters
-
-    private val _students = MutableStateFlow<List<StudentEntity>>(emptyList())
-    val students: StateFlow<List<StudentEntity>> = _students
-
-    private val _templates = MutableStateFlow<List<FormTemplateEntity>>(emptyList())
-    val templates: StateFlow<List<FormTemplateEntity>> = _templates
-
-    init {
-        loadData()
-    }
-
-    fun loadData() {
-        viewModelScope.launch {
-            _filters.value = repository.getAllSavedFilters()
-            _students.value = repository.getAllActiveStudents()
-            _templates.value = repository.getAllFormTemplates()
-        }
-    }
-
-    fun saveFilter(entity: SavedFilterEntity) {
-        viewModelScope.launch {
-            val maxOrder = _filters.value.maxOfOrNull { it.displayOrder } ?: 0
-            val filterToInsert = entity.copy(displayOrder = maxOrder + 1)
-            repository.insertSavedFilter(filterToInsert)
-            loadData()
-        }
-    }
-
-    // CORRECTED: Restores clean MVVM boundaries, executing soft-delete on Dispatchers.IO [1]
-    fun deleteFilter(filterId: Int) {
-        viewModelScope.launch {
-            repository.softDeleteSavedFilter(filterId)
-            loadData() // Reloads active filter groups
-        }
-    }
-
-    fun moveFilter(fromIndex: Int, toIndex: Int) {
-        if (fromIndex !in _filters.value.indices || toIndex !in _filters.value.indices) return
-        viewModelScope.launch {
-            val currentList = _filters.value.toMutableList()
-            val item = currentList.removeAt(fromIndex)
-            currentList.add(toIndex, item)
-
-            val updatedList = currentList.mapIndexed { index, filter ->
-                filter.copy(displayOrder = index)
-            }
-            _filters.value = updatedList
-            repository.updateAllSavedFilterOrders(updatedList)
-        }
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -120,21 +62,6 @@ fun SavedFiltersScreen(
     var activeFilterForListing by remember { mutableStateOf<SavedFilterEntity?>(null) }
     var showAddDialog by remember { mutableStateOf(false) }
     var editingFilter by remember { mutableStateOf<SavedFilterEntity?>(null) }
-
-    val sharedPrefs = remember { context.getSharedPreferences("app_settings", Context.MODE_PRIVATE) }
-    var activeBadgeField by remember { mutableStateOf(sharedPrefs.getString("card_banner_field", "") ?: "") }
-
-    DisposableEffect(sharedPrefs) {
-        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == "card_banner_field") {
-                activeBadgeField = sharedPrefs.getString("card_banner_field", "") ?: ""
-            }
-        }
-        sharedPrefs.registerOnSharedPreferenceChangeListener(listener)
-        onDispose {
-            sharedPrefs.unregisterOnSharedPreferenceChangeListener(listener)
-        }
-    }
 
     Scaffold(
         topBar = {
@@ -186,8 +113,8 @@ fun SavedFiltersScreen(
             if (activeFilter != null) {
                 // ================= STATE B: FILTERED STUDENTS DIRECTORY =================
                 val filteredList = remember(students, activeFilter) {
-                    students.filter { student ->
-                        val valueToCompare = getFieldValue(student, activeFilter.fieldName)
+                    students.filter { studentState ->
+                        val valueToCompare = getFieldValue(studentState.student, activeFilter.fieldName)
                         evaluateCondition(valueToCompare, activeFilter.comparison, activeFilter.value1, activeFilter.value2)
                     }
                 }
@@ -213,12 +140,11 @@ fun SavedFiltersScreen(
                                 modifier = Modifier.padding(16.dp)
                             )
                         }
-                        items(filteredList) { student ->
+                        items(filteredList) { studentState ->
                             StudentCard(
-                                student = student,
+                                uiState = studentState,
                                 isSelected = false,
-                                activeBadgeField = activeBadgeField,
-                                onClick = { onStudentClick(student.id) },
+                                onClick = { onStudentClick(studentState.student.id) },
                                 onLongClick = {}
                             )
                         }
@@ -307,8 +233,8 @@ fun SavedFiltersScreen(
                         ) { index, filter ->
                             val isDragging = draggedItemIndex == index
                             val matchingCount = remember(students, filter) {
-                                students.count { student ->
-                                    val valueToCompare = getFieldValue(student, filter.fieldName)
+                                students.count { studentState ->
+                                    val valueToCompare = getFieldValue(studentState.student, filter.fieldName)
                                     evaluateCondition(valueToCompare, filter.comparison, filter.value1, filter.value2)
                                 }
                             }
@@ -323,7 +249,6 @@ fun SavedFiltersScreen(
 
                             var showDeleteDialog by remember { mutableStateOf(false) }
 
-                            // CORRECTED: Suppress deprecation warning on confirmValueChange [3]
                             @Suppress("DEPRECATION")
                             val dismissState = rememberSwipeToDismissBoxState(
                                 confirmValueChange = { dismissValue ->
@@ -457,37 +382,37 @@ fun SavedFiltersScreen(
                     }
                 }
             }
-        }
 
-        // ADD FILTER DIALOG OVERLAY
-        if (showAddDialog) {
-            FilterDialogForm(
-                templates = templates,
-                onDismiss = { showAddDialog = false },
-                onSave = { newFilter ->
-                    viewModel.saveFilter(newFilter)
-                    showAddDialog = false
-                    Toast.makeText(context, "Filter saved!", Toast.LENGTH_SHORT).show()
-                }
-            )
-        }
+            if (showAddDialog) {
+                FilterDialogForm(
+                    templates = templates,
+                    onDismiss = { showAddDialog = false },
+                    onSave = { newFilter ->
+                        viewModel.saveFilter(newFilter)
+                        showAddDialog = false
+                        Toast.makeText(context, "Filter saved!", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
 
-        // EDIT FILTER DIALOG OVERLAY
-        editingFilter?.let { filter ->
-            FilterDialogForm(
-                templates = templates,
-                existingFilter = filter,
-                onDismiss = { editingFilter = null },
-                onSave = { updatedFilter ->
-                    viewModel.saveFilter(updatedFilter)
-                    editingFilter = null
-                    Toast.makeText(context, "Filter updated!", Toast.LENGTH_SHORT).show()
-                }
-            )
+            editingFilter?.let { filter ->
+                FilterDialogForm(
+                    templates = templates,
+                    existingFilter = filter,
+                    onDismiss = { editingFilter = null },
+                    onSave = { updatedFilter ->
+                        viewModel.saveFilter(updatedFilter)
+                        editingFilter = null
+                        Toast.makeText(context, "Filter updated!", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
         }
     }
 }
 
+// Resolved: Restored complete Filter Dialog Form [1]
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FilterDialogForm(
     templates: List<FormTemplateEntity>,
@@ -497,13 +422,9 @@ fun FilterDialogForm(
 ) {
     var name by remember { mutableStateOf(existingFilter?.filterName ?: "") }
     var field by remember { mutableStateOf(existingFilter?.fieldName ?: "Age") }
-
-    // CORRECTED: Removed redundant initializers to optimize compile paths [1]
     var comparison by remember { mutableStateOf(existingFilter?.comparison ?: "In between") }
-
     var val1 by remember { mutableStateOf(existingFilter?.value1 ?: "") }
     var val2 by remember { mutableStateOf(existingFilter?.value2 ?: "") }
-
     var showDatePicker1 by remember { mutableStateOf(false) }
 
     val coreFields = listOf("First Name", "Last Name", "Gender", "Birthday", "Address", "Age")
@@ -869,7 +790,7 @@ fun FilterDialogForm(
     }
 }
 
-// Extraction utility mapping dynamic attributes
+// Resolved: Restored complete private getFieldValue parser helper [1]
 private fun getFieldValue(student: StudentEntity, field: String): String {
     return when (field) {
         "First Name" -> student.firstName
@@ -891,11 +812,10 @@ private fun getFieldValue(student: StudentEntity, field: String): String {
     }
 }
 
-// Generic comparator engine updated with new Birthday modes & comparisons
+// Resolved: Restored complete private evaluateCondition parser helper [1]
 private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2: String): Boolean {
     val cleanVal = fieldVal.trim()
 
-    // specialized Birthday comparator evaluations
     if (operator in listOf("birth_year", "birth_month", "birth_month_year", "exact_birthday")) {
         val studentBirthday = cleanVal.toLongOrNull() ?: return false
         val studentCal = Calendar.getInstance().apply { timeInMillis = studentBirthday }
@@ -923,7 +843,6 @@ private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2
         }
     }
 
-    // specialized Standard Field comparators
     return when (operator) {
         "contains" -> cleanVal.contains(v1, ignoreCase = true)
         "does not contain" -> !cleanVal.contains(v1, ignoreCase = true)

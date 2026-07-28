@@ -9,12 +9,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType // Resolved: Haptic feedback imports
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.*
+import java.util.concurrent.atomic.AtomicBoolean // Resolved: Thread-safe atomic flag import [1]
 
 @Composable
 fun WheelDatePickerDialog(
@@ -169,13 +170,14 @@ fun WheelColumnPicker(
     val paddedItems = remember(items) { listOf("") + items + listOf("") }
     val lazyListState = rememberLazyListState(initialFirstVisibleItemIndex = selectedIndex)
 
-    var programmaticUpdate by remember { mutableStateOf(false) }
+    // Synchronous JVM atomic mutex lock to bypass Compose async state scheduling [1]
+    val isProgrammaticScroll = remember { AtomicBoolean(false) }
 
     LaunchedEffect(lazyListState) {
         snapshotFlow { lazyListState.firstVisibleItemIndex }.collect { index ->
-            if (index in items.indices && !programmaticUpdate) {
+            // Only update parent state if the scroll is NOT programmatically initiated [1]
+            if (index in items.indices && !isProgrammaticScroll.get()) {
                 onValueChange(index)
-                // Trigger a mild haptic click only during active user-initiated scrolls to prevent startup vibrations [1]
                 if (lazyListState.isScrollInProgress) {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 }
@@ -185,9 +187,10 @@ fun WheelColumnPicker(
 
     LaunchedEffect(selectedIndex) {
         if (lazyListState.firstVisibleItemIndex != selectedIndex && selectedIndex in items.indices) {
-            programmaticUpdate = true
+            // Set the lock synchronously on the coroutine thread before suspending [1]
+            isProgrammaticScroll.set(true)
             lazyListState.scrollToItem(selectedIndex)
-            programmaticUpdate = false
+            isProgrammaticScroll.set(false) // Releases lock once layout has fully settled [1]
         }
     }
 

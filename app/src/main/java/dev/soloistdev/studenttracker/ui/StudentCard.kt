@@ -9,17 +9,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight // Resolved: Explicit FontWeight import
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.soloistdev.studenttracker.data.StudentEntity
-import org.json.JSONObject
-import java.text.SimpleDateFormat
-import java.util.*
 
 // Private, high-performance base layout [1]
 @OptIn(ExperimentalFoundationApi::class)
@@ -133,7 +129,7 @@ private fun BaseStudentCard(
     }
 }
 
-// Public entry A: Used by ViewAllScreen (Background pre-computed) [1]
+// Public entry: Used by all list screens natively with zero runtime overhead [1]
 @Composable
 fun StudentCard(
     uiState: StudentUiState,
@@ -148,46 +144,6 @@ fun StudentCard(
         age = uiState.age,
         formattedBirthday = uiState.formattedBirthday,
         customBadgeValue = uiState.customBadgeValue,
-        onClick = onClick,
-        onLongClick = onLongClick
-    )
-}
-
-// Public entry B: Legacy compatibility for SavedFiltersScreen (Runtime computed) [1]
-@Composable
-fun StudentCard(
-    student: StudentEntity,
-    isSelected: Boolean,
-    activeBadgeField: String,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit
-) {
-    val sdf = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
-    val formattedDate = remember(student.birthday) { sdf.format(Date(student.birthday)) }
-    val age = remember(student.birthday) {
-        Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
-    }
-    val genderStr = if (student.gender == "F") "Female" else "Male"
-
-    val dynamicBadgeValue = remember(student.customDataJson, activeBadgeField) {
-        if (activeBadgeField.isNotEmpty()) {
-            try {
-                val json = JSONObject(student.customDataJson)
-                json.optString(activeBadgeField, "").trim().ifEmpty { null }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                null
-            }
-        } else null
-    }
-
-    BaseStudentCard(
-        student = student,
-        isSelected = isSelected,
-        genderString = genderStr,
-        age = age,
-        formattedBirthday = formattedDate,
-        customBadgeValue = dynamicBadgeValue,
         onClick = onClick,
         onLongClick = onLongClick
     )
