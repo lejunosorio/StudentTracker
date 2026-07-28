@@ -221,6 +221,19 @@ fun AddEditStudentScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            // STUDENT CONTACT NUMBER [1]
+            OutlinedTextField(
+                value = viewModel.contactNumber,
+                onValueChange = { viewModel.contactNumber = it },
+                label = { Text("Student Contact Number") },
+                colors = m3TextFieldColors,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Phone,
+                    imeAction = ImeAction.Next
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
             Text("Guardians *", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
             viewModel.guardiansStateList.forEachIndexed { index, guardian ->

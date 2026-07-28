@@ -8,7 +8,6 @@ import dev.soloistdev.studenttracker.MemoryHelper
 import dev.soloistdev.studenttracker.security.SecurityHelper
 import net.sqlcipher.database.SupportFactory
 
-// Increment version to 6 and append new attendance entities
 @Database(
     entities = [
         StudentEntity::class,
@@ -17,7 +16,7 @@ import net.sqlcipher.database.SupportFactory
         AttendanceRecordEntity::class,
         AttendanceLogEntity::class
     ],
-    version = 6,
+    version = 7, // Incremented database version to 7 to handle the schema update [1]
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -41,11 +40,9 @@ abstract class AppDatabase : RoomDatabase() {
                         .openHelperFactory(factory)
                         .fallbackToDestructiveMigration()
                         .build().also {
-                            // Trigger a quick database write connection to verify key decryption is successful [1]
                             it.openHelper.writableDatabase
                         }
                 } catch (_: Exception) {
-                    // SELF-HEALING RECOVERY: Delete the corrupted database file on disk and rebuild cleanly [1]
                     context.deleteDatabase("student_tracker_secure_db")
                     Room.databaseBuilder(
                         context.applicationContext,

@@ -25,7 +25,8 @@ object JsonSyncEngine {
                 put("gender", student.gender)
                 put("birthday", student.birthday)
                 put("address", student.address)
-                put("picturePath", student.picturePath) // Preserves images on export
+                put("contactNumber", student.contactNumber) // Preserves Student Contact in secure backup [1]
+                put("picturePath", student.picturePath)
                 put("guardiansJson", student.guardiansJson)
                 put("customDataJson", student.customDataJson)
             }
@@ -102,7 +103,8 @@ object JsonSyncEngine {
                 gender = jsonObj.optString("gender", ""),
                 birthday = jsonObj.optLong("birthday", 0L),
                 address = jsonObj.optString("address", ""),
-                picturePath = jsonObj.optString("picturePath", ""), // Safely maps picture path to prevent sync loss
+                contactNumber = jsonObj.optString("contactNumber", ""), // Imports Student Contact from backup [1]
+                picturePath = jsonObj.optString("picturePath", ""),
                 guardiansJson = resolvedGuardiansJson,
                 customDataJson = resolvedCustomDataJson,
                 isDeleted = false

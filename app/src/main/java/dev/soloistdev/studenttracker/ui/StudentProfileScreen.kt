@@ -168,11 +168,35 @@ fun StudentProfileScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // CORRECTED: Home Address restored to standard read-only styling (clicking on the text block itself is removed) [1]
                 ProfileInfoCard(
                     label = "Home Address",
                     value = currentStudent.address
                 )
+
+                // STUDENT CONTACT NUMBER [1]
+                if (currentStudent.contactNumber.isNotBlank()) {
+                    ProfileInfoCard(
+                        label = "Student Contact Number",
+                        value = currentStudent.contactNumber,
+                        trailingIcon = {
+                            IconButton(
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${currentStudent.contactNumber}"))
+                                    context.startActivity(intent)
+                                },
+                                colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Call,
+                                    contentDescription = "Call Student",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    )
+                }
 
                 // 100% Dynamic custom fields iteration
                 val customJson = remember(currentStudent.customDataJson) {

@@ -17,7 +17,7 @@ object CsvExportEngine {
         val templates = db.studentDao().getAllFormTemplates() // Safely fetch custom fields
 
         // 1. Build Header: Core attributes + custom templates
-        val coreHeader = "Last Name,First Name,Gender,Birthday,Address,Guardian Name,Guardian Contact"
+        val coreHeader = "Last Name,First Name,Gender,Birthday,Address,Student Contact,Guardian Name,Guardian Contact" // Added Student Contact [1]
         val dynamicHeader = if (templates.isNotEmpty()) {
             "," + templates.joinToString(",") { it.fieldName.replace("_", " ") }
         } else ""
@@ -38,7 +38,7 @@ object CsvExportEngine {
             val cleanAddress = student.address.replace(",", " ")
             val cleanGuardian = primaryName.replace(",", " ")
 
-            val coreRow = "${student.lastName},${student.firstName},${student.gender},$birthdayStr,$cleanAddress,$cleanGuardian,$primaryContact"
+            val coreRow = "${student.lastName},${student.firstName},${student.gender},$birthdayStr,$cleanAddress,${student.contactNumber},$cleanGuardian,$primaryContact"
 
             // Extract and format all custom attributes generically
             val dynamicRow = if (templates.isNotEmpty()) {

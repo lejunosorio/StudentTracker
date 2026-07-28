@@ -11,8 +11,9 @@ data class StudentEntity(
     val gender: String,
     val birthday: Long,
     val address: String = "",
-    val picturePath: String = "", // Local file URI path
-    val guardiansJson: String = "[]", // Serialized JSON array of multiple Guardians
-    val customDataJson: String = "{}", // Dynamic templates
-    val isDeleted: Boolean = false // Soft delete flag
+    val contactNumber: String = "",
+    val picturePath: String = "",
+    val guardiansJson: String = "[]",
+    val customDataJson: String = "{}",
+    val isDeleted: Boolean = false
 )

@@ -24,6 +24,7 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
     var gender by mutableStateOf("F")
     var birthday by mutableStateOf<Long?>(null)
     var address by mutableStateOf("")
+    var contactNumber by mutableStateOf("") // Added contact number state variable [1]
     var picturePath by mutableStateOf("")
 
     val guardiansStateList = mutableStateListOf<Guardian>()
@@ -57,6 +58,7 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                 gender = student.gender
                 birthday = student.birthday
                 address = student.address
+                contactNumber = student.contactNumber // Load contact number [1]
                 picturePath = student.picturePath
 
                 val list = Guardian.listFromJsonString(student.guardiansJson)
@@ -108,6 +110,7 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                 gender = gender,
                 birthday = birthday!!,
                 address = address.trim(),
+                contactNumber = contactNumber.trim(), // Save contact number [1]
                 picturePath = picturePath,
                 guardiansJson = Guardian.listToJsonString(guardiansStateList.toList()),
                 customDataJson = jsonObject.toString()

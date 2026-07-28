@@ -53,7 +53,14 @@ object PdfGeneratorHelper {
         canvas.drawText("Gender: $genderFull | Age: $age | Birthday: $birthdayFormatted", 40f, yPosition, textPaint)
         yPosition += 25f
         canvas.drawText("Home Address: ${student.address}", 40f, yPosition, textPaint)
-        yPosition += 40f
+        yPosition += 25f
+
+        // Renders student contact details on PDF report [1]
+        if (student.contactNumber.isNotEmpty()) {
+            canvas.drawText("Student Contact: ${student.contactNumber}", 40f, yPosition, textPaint)
+            yPosition += 25f
+        }
+        yPosition += 15f
 
         canvas.drawText("CUSTOM METADATA", 40f, yPosition, Paint(textPaint).apply { isFakeBoldText = true })
         yPosition += 10f
