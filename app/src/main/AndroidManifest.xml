@@ -18,11 +18,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.StudentTracker">
 
-        <!-- RESTORED: Required metadata configuration for Google Maps initialization inside AddEditStudentScreen -->
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="${MAPS_API_KEY}" />
-
         <!-- Secure File Provider for Ephemeral Sharing -->
         <provider
             android:name="androidx.core.content.FileProvider"
