@@ -1,0 +1,20 @@
+# App Startup & MainActivity
+HSPLdev/soloistdev/studenttracker/MainActivity;->onCreate(Landroid/os/Bundle;)V
+HSPLdev/soloistdev/studenttracker/StudentTrackerApplication;->onCreate()V
+
+# App Navigation
+HSPLdev/soloistdev/studenttracker/ui/AppNavigationKt;->AppNavigation()V
+HSPLdev/soloistdev/studenttracker/ui/SecurityGateScreenKt;->SecurityGateScreen(Lkotlin/jvm/functions/Function0;Ldev/soloistdev/studenttracker/ui/SecurityViewModel;)V
+
+# Directory Screen & Scrolling List
+HSPLdev/soloistdev/studenttracker/ui/ViewAllScreenKt;->ViewAllScreen(Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;Ldev/soloistdev/studenttracker/ui/StudentListViewModel;)V
+HSPLdev/soloistdev/studenttracker/ui/StudentCardKt;->StudentCard(Ldev/soloistdev/studenttracker/ui/StudentUiState;ZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;)V
+
+# Compose Runtime & Lazy List Optimization
+HSPLandroidx/compose/runtime/Composer;->startRestartGroup(I)Landroidx/compose/runtime/Composer;
+HSPLandroidx/compose/runtime/Composer;->endRestartGroup()Landroidx/compose/runtime/ScopeUpdateScope;
+HSPLandroidx/compose/foundation/lazy/LazyColumnKt;->LazyColumn(Landroidx/compose/ui/Modifier;Landroidx/compose/foundation/lazy/LazyListState;)V
+
+# Room Database Optimization
+HSPLdev/soloistdev/studenttracker/data/AppDatabase;->getDatabase(Landroid/content/Context;)Ldev/soloistdev/studenttracker/data/AppDatabase;
+HSPLdev/soloistdev/studenttracker/data/StudentRepository;-><init>(Landroid/content/Context;)V
