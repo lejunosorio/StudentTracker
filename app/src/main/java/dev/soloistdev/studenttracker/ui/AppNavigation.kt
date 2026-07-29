@@ -4,8 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -13,19 +11,15 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import dev.soloistdev.studenttracker.data.StudentRepository
 import dev.soloistdev.studenttracker.security.PdfGeneratorHelper
-import kotlinx.coroutines.launch
 
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
     val context = LocalContext.current
-    val repository = remember { StudentRepository(context) }
 
     val securityViewModel: SecurityViewModel = viewModel()
     val isUnlocked by securityViewModel.isUnlocked.collectAsState()
-    val scope = rememberCoroutineScope() // Compose-managed lifecycle coroutine scope [1]
 
     LaunchedEffect(isUnlocked) {
         if (isUnlocked) {
@@ -60,7 +54,7 @@ fun AppNavigation() {
                     }
                 },
                 onStudentClick = { id ->
-                    if (navController.currentDestination?.route == "view_all") {
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
                         navController.navigate("profile/$id")
                     }
                 },
@@ -112,6 +106,10 @@ fun AppNavigation() {
             arguments = listOf(navArgument("studentId") { type = NavType.IntType })
         ) { backStackEntry ->
             val studentId = backStackEntry.arguments?.getInt("studentId") ?: -1
+
+            // Retrieve directory ViewModel inside the graph node to safely utilize its viewModelScope [1]
+            val listViewModel: StudentListViewModel = viewModel()
+
             StudentProfileScreen(
                 studentId = studentId,
                 onBack = {
@@ -130,12 +128,10 @@ fun AppNavigation() {
                     PdfGeneratorHelper.generateAndShareStudentPdf(context, studentEntity)
                 },
                 onDeleteStudent = { id ->
-                    // Resolved: Uses the Compose-managed lifecycle coroutine scope to eliminate unmanaged memory leaks [1]
-                    scope.launch {
-                        repository.softDeleteStudent(id)
-                        navController.navigate(ScreenRoute.VIEW_ALL) {
-                            popUpTo(ScreenRoute.VIEW_ALL) { inclusive = true }
-                        }
+                    // Resolved: Delegate deletion safely to listViewModel's lifecycle-bound scope [1]
+                    listViewModel.softDeleteStudent(id)
+                    navController.navigate(ScreenRoute.VIEW_ALL) {
+                        popUpTo(ScreenRoute.VIEW_ALL) { inclusive = true }
                     }
                 }
             )
@@ -250,7 +246,6 @@ fun AppNavigation() {
     }
 }
 
-// Resolved: Centralized, compile-safe route registry [1]
 object ScreenRoute {
     const val SECURITY_GATE = "security_gate"
     const val VIEW_ALL = "view_all"

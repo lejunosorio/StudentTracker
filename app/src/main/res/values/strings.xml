@@ -246,8 +246,6 @@
     <string name="sort_recently_added">Recently Added</string>
 
     <!-- Backup & Sync Screen [1] -->
-    <string name="sync_password_encryption_title">AES-GCM Password Encryption</string>
-    <string name="sync_export_password_label">Export Password</string>
     <string name="sync_export_backup_title">Export Encrypted Backup</string>
     <string name="sync_export_backup_desc">Outputs secure .enc JSON payload</string>
     <string name="sync_export_csv_title">Export CSV Spreadsheet</string>
@@ -315,4 +313,5 @@
         <item>Nov</item>
         <item>Dec</item>
     </string-array>
+
 </resources>

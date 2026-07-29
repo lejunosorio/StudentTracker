@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import dev.soloistdev.studenttracker.MemoryHelper
 import dev.soloistdev.studenttracker.security.SecurityHelper
 import net.sqlcipher.database.SupportFactory
+import java.io.IOException
 
 @Database(
     entities = [
@@ -16,7 +17,7 @@ import net.sqlcipher.database.SupportFactory
         AttendanceRecordEntity::class,
         AttendanceLogEntity::class
     ],
-    version = 7, // Incremented database version to 7 to handle the schema update [1]
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -40,22 +41,19 @@ abstract class AppDatabase : RoomDatabase() {
                         .openHelperFactory(factory)
                         .fallbackToDestructiveMigration()
                         .build().also {
+                            // Trigger a quick database connection write to verify key decryption is successful [1]
                             it.openHelper.writableDatabase
                         }
-                } catch (_: Exception) {
-                    context.deleteDatabase("student_tracker_secure_db")
-                    Room.databaseBuilder(
-                        context.applicationContext,
-                        AppDatabase::class.java,
-                        "student_tracker_secure_db"
+                } catch (e: Exception) {
+                    MemoryHelper.zeroMemory(passphrase)
+                    // Resolved: Bubble up an IOException to protect local user data instead of silently auto-deleting [1]
+                    throw IOException(
+                        "Local database decryption failed. This can happen due to transient Android KeyStore errors. Please reboot your device or verify lock screen settings.",
+                        e
                     )
-                        .openHelperFactory(factory)
-                        .fallbackToDestructiveMigration()
-                        .build()
                 }
 
                 MemoryHelper.zeroMemory(passphrase)
-
                 INSTANCE = instance
                 instance
             }

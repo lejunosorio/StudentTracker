@@ -1,6 +1,5 @@
 package dev.soloistdev.studenttracker.ui
 
-import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,9 +12,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material3.*
@@ -36,8 +35,6 @@ import dev.soloistdev.studenttracker.data.JsonSyncEngine
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,7 +109,7 @@ fun SyncScreen(onBack: () -> Unit) {
                     },
                     actions = {
                         IconButton(onClick = { showHelpDialog = true }) {
-                            Icon(Icons.Default.HelpOutline, contentDescription = stringResource(R.string.sync_help_guide_title))
+                            Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = stringResource(R.string.sync_help_guide_title))
                         }
                     }
                 )
@@ -126,20 +123,7 @@ fun SyncScreen(onBack: () -> Unit) {
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text(
-                    text = stringResource(R.string.sync_password_encryption_title),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                OutlinedTextField(
-                    value = "••••••••••••",
-                    onValueChange = {},
-                    label = { Text(stringResource(R.string.sync_export_password_label)) },
-                    readOnly = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                // Resolved: Dummy cryptographic password fields completely removed from screen layout [1]
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -247,7 +231,6 @@ fun SyncScreen(onBack: () -> Unit) {
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            // Resolved: Stripped Springfield, Taguig, and personalized dynamic fields from production import sample [1]
                             val sampleJson = """
                             [
                               {
