@@ -12,8 +12,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CalendarToday // ADDED: Icon import
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -43,7 +44,6 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlinx.coroutines.launch
-import androidx.core.net.toUri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,7 +62,6 @@ fun StudentProfileScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var activeTemplates by remember { mutableStateOf<List<FormTemplateEntity>>(emptyList()) }
 
-    // Behavior Tracking States
     var incidents by remember { mutableStateOf<List<BehaviorIncidentEntity>>(emptyList()) }
     var behaviorExpanded by remember { mutableStateOf(false) }
     var showAddIncidentDialog by remember { mutableStateOf(false) }
@@ -86,7 +85,7 @@ fun StudentProfileScreen(
                 title = { Text("Profile", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
@@ -160,13 +159,11 @@ fun StudentProfileScreen(
                     Button(
                         onClick = {
                             if (currentStudent.address.isNotBlank()) {
-                                val intentUri =
-                                    "geo:0,0?q=${Uri.encode(currentStudent.address)}".toUri()
+                                val intentUri = Uri.parse("geo:0,0?q=${Uri.encode(currentStudent.address)}")
                                 val mapIntent = Intent(Intent.ACTION_VIEW, intentUri)
                                 try {
                                     context.startActivity(mapIntent)
                                 } catch (e: Exception) {
-                                    e.printStackTrace()
                                     Toast.makeText(context, "No maps application installed.", Toast.LENGTH_SHORT).show()
                                 }
                             } else {
@@ -211,8 +208,7 @@ fun StudentProfileScreen(
                         trailingIcon = {
                             IconButton(
                                 onClick = {
-                                    val intent = Intent(Intent.ACTION_DIAL,
-                                        "tel:${currentStudent.contactNumber}".toUri())
+                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${currentStudent.contactNumber}"))
                                     context.startActivity(intent)
                                 },
                                 colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
@@ -389,7 +385,7 @@ fun StudentProfileScreen(
                                     modifier = Modifier.padding(vertical = 8.dp)
                                 )
                             } else {
-                                val logSdf = remember { SimpleDateFormat("MMM dd, yyyy - hh:mm a", Locale.US) }
+                                val logSdf = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
                                 incidents.forEach { incident ->
                                     val badgeColor = when (incident.category) {
                                         "Positive" -> Color(0xFF4CAF50)
@@ -440,7 +436,7 @@ fun StudentProfileScreen(
                                                 }
                                                 Spacer(modifier = Modifier.height(4.dp))
                                                 Text(
-                                                    text = logSdf.format(Date(incident.timestamp)),
+                                                    text = "Incident Date: " + logSdf.format(Date(incident.incidentDate)), // UPDATED: Formats user-selected date
                                                     fontSize = 11.sp,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                                                 )
@@ -489,7 +485,6 @@ fun StudentProfileScreen(
                     }
                 }
 
-                // Dynamic custom fields iteration restricted by template manager configuration
                 val customJson = remember(currentStudent.customDataJson) {
                     try { JSONObject(currentStudent.customDataJson) } catch (_: Exception) { JSONObject() }
                 }
@@ -554,8 +549,7 @@ fun StudentProfileScreen(
                                         Text(phone, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         IconButton(
                                             onClick = {
-                                                val intent = Intent(Intent.ACTION_DIAL,
-                                                    "tel:$phone".toUri())
+                                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
                                                 context.startActivity(intent)
                                             },
                                             colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
@@ -584,6 +578,10 @@ fun StudentProfileScreen(
             var incidentTitle by remember { mutableStateOf("") }
             var selectedCategory by remember { mutableStateOf("Positive") }
             var incidentDescription by remember { mutableStateOf("") }
+
+            // ADDED: Local state to track incident date selection
+            var incidentDate by remember { mutableLongStateOf(System.currentTimeMillis()) }
+            var showIncidentDatePicker by remember { mutableStateOf(false) }
 
             val categories = listOf("Positive", "Negative", "Neutral")
             val chipColors = FilterChipDefaults.filterChipColors(
@@ -672,6 +670,33 @@ fun StudentProfileScreen(
                             }
                         }
 
+                        // ADDED: Date selection interaction layout
+                        Text(
+                            text = "Incident Date *",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        val selectionSdf = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
+                        OutlinedButton(
+                            onClick = { showIncidentDatePicker = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(selectionSdf.format(Date(incidentDate)), color = MaterialTheme.colorScheme.onSurface)
+                                Icon(
+                                    imageVector = Icons.Default.CalendarToday,
+                                    contentDescription = "Select Incident Date",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
                         OutlinedTextField(
                             value = incidentDescription,
                             onValueChange = { incidentDescription = it },
@@ -692,7 +717,8 @@ fun StudentProfileScreen(
                                         studentId = studentId,
                                         title = incidentTitle.trim(),
                                         category = selectedCategory,
-                                        description = incidentDescription.trim()
+                                        description = incidentDescription.trim(),
+                                        incidentDate = incidentDate // SAVED: Direct mapping of custom date
                                     )
                                     repository.insertIncident(newIncident)
                                     refreshIncidents()
@@ -712,6 +738,18 @@ fun StudentProfileScreen(
                 },
                 shape = RoundedCornerShape(28.dp)
             )
+
+            // Dynamic date picker binder hook
+            if (showIncidentDatePicker) {
+                WheelDatePickerDialog(
+                    initialDateMillis = incidentDate,
+                    onDismiss = { showIncidentDatePicker = false },
+                    onConfirm = { selectedMillis ->
+                        incidentDate = selectedMillis
+                        showIncidentDatePicker = false
+                    }
+                )
+            }
         }
 
         if (showDeleteDialog && student != null) {

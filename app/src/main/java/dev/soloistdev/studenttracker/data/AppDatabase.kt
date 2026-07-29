@@ -16,11 +16,12 @@ import java.io.IOException
         SavedFilterEntity::class,
         AttendanceRecordEntity::class,
         AttendanceLogEntity::class,
-        BehaviorIncidentEntity::class // ADDED: Behavior incident logs sub-table
+        BehaviorIncidentEntity::class
     ],
-    version = 8, // INCREMENTED: Version updated from 7 to 8
+    version = 9,
     exportSchema = false
 )
+
 abstract class AppDatabase : RoomDatabase() {
     abstract fun studentDao(): StudentDao
 

@@ -20,8 +20,9 @@ import androidx.room.PrimaryKey
 data class BehaviorIncidentEntity(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val studentId: Int,
-    val title: String,          // e.g., "Late Arrival", "Excellent Work"
+    val title: String,
     val category: String,       // "Positive", "Negative", or "Neutral"
-    val description: String,    // Notes about the behavior
-    val timestamp: Long = System.currentTimeMillis()
+    val description: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val incidentDate: Long = System.currentTimeMillis()
 )
