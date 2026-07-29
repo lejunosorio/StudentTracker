@@ -349,4 +349,10 @@
     <string name="toast_student_imported">Student successfully saved to local directory!</string>
 
     <string name="action_edit">Edit</string>
+
+    <!-- Labeled QR Export and Share Strings [1] -->
+    <string name="action_share_qr">Share QR Code</string>
+    <string name="action_download_qr">Save to Gallery</string>
+    <string name="toast_qr_saved_success">QR Code saved to Pictures/StudentTracker directory!</string>
+    <string name="toast_qr_saved_error">Failed to save QR Code image.</string>
 </resources>

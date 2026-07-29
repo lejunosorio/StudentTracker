@@ -3,7 +3,7 @@ package dev.soloistdev.studenttracker.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import androidx.compose.foundation.Image // Resolved: Explicit Image import [1]
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -16,25 +16,25 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.ExpandLess // Resolved: Explicit ExpandLess import [1]
-import androidx.compose.material.icons.filled.ExpandMore // Resolved: Explicit ExpandMore import [1]
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap // Resolved: Explicit asImageBitmap import [1]
+import androidx.compose.ui.graphics.asImageBitmap // Resolved: Explicit extension import [1]
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource // Resolved: Explicit stringResource import [1]
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.soloistdev.studenttracker.R // Resolved: Explicit R file import [1]
+import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.Guardian
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
-import dev.soloistdev.studenttracker.security.QrCodeGenerator // Resolved: Explicit QrCodeGenerator import [1]
+import dev.soloistdev.studenttracker.security.QrCodeGenerator
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
@@ -260,13 +260,69 @@ fun StudentProfileScreen(
 
                         if (qrExpanded) {
                             Spacer(modifier = Modifier.height(16.dp))
-                            val qrBitmap = remember(qrPayload) { QrCodeGenerator.generateQrCode(qrPayload, size = 200) }
-                            if (qrBitmap != null) {
+
+                            val qrBitmapWithLabel = remember(qrPayload, currentStudent) {
+                                QrCodeGenerator.generateQrCodeWithLabel(
+                                    studentName = "${currentStudent.lastName}, ${currentStudent.firstName}",
+                                    qrPayload = qrPayload,
+                                    size = 512
+                                )
+                            }
+
+                            if (qrBitmapWithLabel != null) {
+                                // Resolved: Invokes extension function as a member of the Bitmap instance [1]
                                 Image(
-                                    bitmap = qrBitmap.asImageBitmap(),
-                                    contentDescription = "Profile QR Code",
+                                    bitmap = qrBitmapWithLabel.asImageBitmap(), // Corrected dot-notation [1]
+                                    contentDescription = "Profile QR Code with Label",
                                     modifier = Modifier.size(200.dp)
                                 )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val savedSuccessMsg = stringResource(R.string.toast_qr_saved_success)
+                                    val savedErrorMsg = stringResource(R.string.toast_qr_saved_error)
+
+                                    // Local Download Button [1]
+                                    Button(
+                                        onClick = {
+                                            val success = QrCodeGenerator.saveQrToGallery(
+                                                context,
+                                                qrBitmapWithLabel,
+                                                "${currentStudent.lastName}_${currentStudent.firstName}"
+                                            )
+                                            if (success) {
+                                                Toast.makeText(context, savedSuccessMsg, Toast.LENGTH_LONG).show()
+                                            } else {
+                                                Toast.makeText(context, savedErrorMsg, Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(20.dp)
+                                    ) {
+                                        Text(stringResource(R.string.action_download_qr), fontSize = 11.sp, maxLines = 1)
+                                    }
+
+                                    // External Share Button [1]
+                                    OutlinedButton(
+                                        onClick = {
+                                            QrCodeGenerator.shareQrCode(
+                                                context,
+                                                qrBitmapWithLabel,
+                                                "${currentStudent.lastName}_${currentStudent.firstName}"
+                                            )
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(20.dp)
+                                    ) {
+                                        Text(stringResource(R.string.action_share_qr), fontSize = 11.sp, maxLines = 1)
+                                    }
+                                }
                             }
                         }
                     }
