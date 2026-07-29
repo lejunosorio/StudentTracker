@@ -355,4 +355,7 @@
     <string name="action_download_qr">Save to Gallery</string>
     <string name="toast_qr_saved_success">QR Code saved to Pictures/StudentTracker directory!</string>
     <string name="toast_qr_saved_error">Failed to save QR Code image.</string>
+
+    <string name="sync_dialog_smart_merge_desc">Discovered: %1$d new student profiles, %2$d student updates, %3$d attendance updates, and %4$d skipped. Proceed to merge?</string>
+
 </resources>

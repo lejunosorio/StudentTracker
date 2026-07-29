@@ -15,5 +15,6 @@ data class StudentEntity(
     val picturePath: String = "",
     val guardiansJson: String = "[]",
     val customDataJson: String = "{}",
-    val isDeleted: Boolean = false
+    val isDeleted: Boolean = false,
+    val lastModified: Long = System.currentTimeMillis()
 )

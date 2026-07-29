@@ -15,7 +15,7 @@ class StudentRepository(private val context: Context) {
         studentDao.getAllActiveStudents()
     }
 
-    suspend fun insertStudent(student: StudentEntity) = withContext(Dispatchers.IO) {
+    suspend fun insertStudent(student: StudentEntity): Long = withContext(Dispatchers.IO) {
         studentDao.insertStudent(student)
     }
 
@@ -28,7 +28,7 @@ class StudentRepository(private val context: Context) {
         studentDao.getAllFormTemplates()
     }
 
-    suspend fun insertFormTemplate(template: FormTemplateEntity) = withContext(Dispatchers.IO) {
+    suspend fun insertFormTemplate(template: FormTemplateEntity): Long = withContext(Dispatchers.IO) {
         studentDao.insertFormTemplate(template)
     }
 
@@ -81,7 +81,7 @@ class StudentRepository(private val context: Context) {
         studentDao.getAllSavedFilters()
     }
 
-    suspend fun insertSavedFilter(filter: SavedFilterEntity) = withContext(Dispatchers.IO) {
+    suspend fun insertSavedFilter(filter: SavedFilterEntity): Long = withContext(Dispatchers.IO) {
         studentDao.insertSavedFilter(filter)
     }
 
@@ -134,15 +134,21 @@ class StudentRepository(private val context: Context) {
         studentDao.getLogsForDate(recordId, dateMillis)
     }
 
-    suspend fun insertAttendanceLog(log: AttendanceLogEntity) = withContext(Dispatchers.IO) {
+    suspend fun insertAttendanceLog(log: AttendanceLogEntity): Long = withContext(Dispatchers.IO) {
         studentDao.insertAttendanceLog(log)
     }
 
+    // Resolved: Update status with active system timestamp [1]
     suspend fun updateAttendanceStatus(recordId: Int, dateMillis: Long, studentId: Int, status: String) = withContext(Dispatchers.IO) {
-        studentDao.updateAttendanceStatus(recordId, dateMillis, studentId, status)
+        studentDao.updateAttendanceStatus(recordId, dateMillis, studentId, status, System.currentTimeMillis())
     }
 
     suspend fun getLogsForRecord(recordId: Int): List<AttendanceLogEntity> = withContext(Dispatchers.IO) {
         studentDao.getLogsForRecord(recordId)
+    }
+
+    // Resolved: Query all logs across records [1]
+    suspend fun getAllAttendanceLogs(): List<AttendanceLogEntity> = withContext(Dispatchers.IO) {
+        studentDao.getAllAttendanceLogs()
     }
 }

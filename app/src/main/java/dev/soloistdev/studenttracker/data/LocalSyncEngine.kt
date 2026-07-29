@@ -4,16 +4,15 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
-import com.android.identity.util.UUID
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.io.IOException
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.UUID
 
 class LocalSyncEngine(private val context: Context) {
     private val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
@@ -26,12 +25,12 @@ class LocalSyncEngine(private val context: Context) {
     private val _discoveredPeers = MutableStateFlow<List<NsdServiceInfo>>(emptyList())
     val discoveredPeers: StateFlow<List<NsdServiceInfo>> = _discoveredPeers
 
-    private val _syncState = MutableStateFlow<String>("Idle")
+    private val _syncState = MutableStateFlow("Idle")
     val syncState: StateFlow<String> = _syncState
 
     private var onBackupReceivedCallback: ((File) -> Unit)? = null
 
-    // 1. Starts a secure localized TCP Socket Server on an anonymous free port [1]
+    // Starts a secure localized TCP Socket Server on an anonymous free port [1]
     fun startLocalServer(onBackupReceived: (File) -> Unit) {
         stopActiveSession()
         _syncState.value = "Listening"
@@ -54,7 +53,7 @@ class LocalSyncEngine(private val context: Context) {
         }
     }
 
-    // 2. Scans for other active local peer servers using mDNS Network Service Discovery [1]
+    // Scans for other active local peer servers using mDNS Network Service Discovery [1]
     fun startScanningPeers() {
         stopActiveSession()
         _syncState.value = "Scanning"
@@ -75,7 +74,6 @@ class LocalSyncEngine(private val context: Context) {
             }
 
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
-                // Evaluates sequential service matching safely across custom profiles
                 if (serviceInfo.serviceType.contains("_studenttracker")) {
                     nsdManager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
                         override fun onResolveFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {}
@@ -100,12 +98,11 @@ class LocalSyncEngine(private val context: Context) {
         nsdManager.discoverServices("_studenttracker._tcp.", NsdManager.PROTOCOL_DNS_SD, discoveryListener)
     }
 
-    // 3. Securely transmits the encrypted database backup over the local network socket [1]
+    // Transmits the standard JSON database payload directly over the local network socket [1]
     fun transmitBackupToPeer(peer: NsdServiceInfo, backupFile: File, onComplete: (Boolean) -> Unit) {
         _syncState.value = "Connecting"
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // Direct connection to resolved peer IP and port
                 val clientSocket = Socket(peer.host, peer.port)
                 _syncState.value = "Syncing"
 
@@ -125,7 +122,7 @@ class LocalSyncEngine(private val context: Context) {
         }
     }
 
-    // Gracefully releases sockets and listeners
+    // Gracefully unregisters listeners and releases active socket connections [1]
     fun stopActiveSession() {
         _syncState.value = "Idle"
         serverJob?.cancel()

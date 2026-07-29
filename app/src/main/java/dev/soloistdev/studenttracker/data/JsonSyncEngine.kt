@@ -3,7 +3,7 @@ package dev.soloistdev.studenttracker.data
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.provider.OpenableColumns // Resolved: Explicit OpenableColumns import
+import android.provider.OpenableColumns
 import androidx.core.content.FileProvider
 import androidx.security.crypto.EncryptedFile
 import androidx.security.crypto.MasterKeys
@@ -20,8 +20,25 @@ object JsonSyncEngine {
 
     private const val MAX_IMPORT_SIZE_BYTES = 10 * 1024 * 1024 // Safety threshold boundary: 10MB limit
 
-    // Parses a backup in memory without inserting it to the database [1]
-    suspend fun parseBackup(context: Context, uri: Uri): Pair<List<StudentEntity>, List<String>> = withContext(Dispatchers.IO) {
+    // Dynamic database merge summary representation [1]
+    data class MergeSummary(
+        val newStudentsCount: Int,
+        val updatedStudentsCount: Int,
+        val updatedLogsCount: Int,
+        val skippedCount: Int,
+        val studentsToInsert: List<StudentEntity>,
+        val studentsToUpdate: List<StudentEntity>,
+        val logsToMerge: List<AttendanceLogEntity>,
+        // Holds intermediate ID maps to resolve newly created local IDs during execution [1]
+        val incomingIdToIdentityMap: Map<Int, String>
+    )
+
+    // Evaluates the chronological delta merge in-memory before writing [1]
+    suspend fun evaluateMerge(
+        context: Context,
+        uri: Uri,
+        repository: StudentRepository
+    ): MergeSummary = withContext(Dispatchers.IO) {
         verifyFileSizeLimit(context, uri)
         val fileName = getFileName(context, uri)
         val mimeType = context.contentResolver.getType(uri)
@@ -53,58 +70,164 @@ object JsonSyncEngine {
         }
 
         val jsonString = String(decryptedContent, Charsets.UTF_8).trim()
-        val array = if (jsonString.startsWith("[")) {
-            JSONArray(jsonString)
-        } else {
-            JSONArray().apply { put(JSONObject(jsonString)) }
+        val payloadObj = try { JSONObject(jsonString) } catch (_: Exception) { null }
+
+        // Standardizes flat array imports and rich P2P payload schemas
+        val incomingStudentsArr = payloadObj?.optJSONArray("students") ?: JSONArray(jsonString)
+        val incomingLogsArr = payloadObj?.optJSONArray("attendanceLogs") ?: JSONArray()
+
+        val localStudents = repository.getAllActiveStudents()
+        val localLogs = repository.getAllAttendanceLogs()
+
+        val studentsToInsert = mutableListOf<StudentEntity>()
+        val studentsToUpdate = mutableListOf<StudentEntity>()
+        val logsToMerge = mutableListOf<AttendanceLogEntity>()
+
+        var newStudents = 0
+        var updatedStudents = 0
+        var updatedLogs = 0
+        var skipped = 0
+
+        // Maps incoming student temp ID to their unique identity string [1]
+        val incomingIdToIdentityMap = mutableMapOf<Int, String>()
+        val identityToLocalIdMap = mutableMapOf<String, Int>()
+        localStudents.forEach { s ->
+            val identity = "${s.firstName.lowercase()}_${s.lastName.lowercase()}_${s.birthday}"
+            identityToLocalIdMap[identity] = s.id
         }
 
-        val studentList = mutableListOf<StudentEntity>()
-        val customKeys = mutableSetOf<String>()
+        // 1. Process Student Profiles Chronologically
+        for (i in 0 until incomingStudentsArr.length()) {
+            val sObj = incomingStudentsArr.getJSONObject(i)
+            val incomingId = sObj.optInt("id", -1)
+            val first = sObj.optString("firstName", "")
+            val last = sObj.optString("lastName", "")
+            val bday = sObj.optLong("birthday", 0L)
+            val lastMod = sObj.optLong("lastModified", 0L)
 
-        for (i in 0 until array.length()) {
-            val jsonObj = array.getJSONObject(i)
-
-            val rawGuardians = jsonObj.opt("guardiansJson")
-            val resolvedGuardiansJson = when (rawGuardians) {
-                is JSONArray -> rawGuardians.toString()
-                is String -> rawGuardians
-                else -> "[]"
-            }
-
-            val rawCustomData = jsonObj.opt("customDataJson")
-            val resolvedCustomDataJson = when (rawCustomData) {
-                is JSONObject -> {
-                    val obj = rawCustomData
-                    obj.keys().forEach { customKeys.add(it) }
-                    obj.toString()
-                }
-                is String -> {
-                    try {
-                        val obj = JSONObject(rawCustomData)
-                        obj.keys().forEach { customKeys.add(it) }
-                    } catch (_: Exception) {}
-                    rawCustomData
-                }
-                else -> "{}"
+            val identity = "${first.lowercase()}_${last.lowercase()}_$bday"
+            if (incomingId != -1) {
+                incomingIdToIdentityMap[incomingId] = identity
             }
 
             val student = StudentEntity(
-                firstName = jsonObj.optString("firstName", ""),
-                lastName = jsonObj.optString("lastName", ""),
-                gender = jsonObj.optString("gender", ""),
-                birthday = jsonObj.optLong("birthday", 0L),
-                address = jsonObj.optString("address", ""),
-                contactNumber = jsonObj.optString("contactNumber", ""),
-                picturePath = jsonObj.optString("picturePath", ""),
-                guardiansJson = resolvedGuardiansJson,
-                customDataJson = resolvedCustomDataJson,
-                isDeleted = false
+                firstName = first,
+                lastName = last,
+                gender = sObj.optString("gender", ""),
+                birthday = bday,
+                address = sObj.optString("address", ""),
+                contactNumber = sObj.optString("contactNumber", ""),
+                picturePath = sObj.optString("picturePath", ""),
+                guardiansJson = sObj.optString("guardiansJson", "[]"),
+                customDataJson = sObj.optString("customDataJson", "{}"),
+                lastModified = lastMod
             )
-            studentList.add(student)
+
+            val localMatch = localStudents.find {
+                it.firstName.equals(first, ignoreCase = true) &&
+                        it.lastName.equals(last, ignoreCase = true) &&
+                        it.birthday == bday
+            }
+
+            if (localMatch == null) {
+                newStudents++
+                studentsToInsert.add(student)
+            } else {
+                // If incoming profile is newer, overwrite local [1]
+                if (lastMod > localMatch.lastModified) {
+                    updatedStudents++
+                    studentsToUpdate.add(student.copy(id = localMatch.id))
+                } else {
+                    skipped++
+                }
+            }
         }
 
-        Pair(studentList, customKeys.toList())
+        // 2. Process Attendance Registers (Mapping natural ID references) [1]
+        for (i in 0 until incomingLogsArr.length()) {
+            val lObj = incomingLogsArr.getJSONObject(i)
+            val recordId = lObj.optInt("recordId", -1)
+            val dateMillis = lObj.optLong("dateMillis", 0L)
+            val incomingStudentId = lObj.optInt("studentId", -1)
+            val status = lObj.optString("status", "NOT_SET")
+            val lastMod = lObj.optLong("lastModified", 0L)
+
+            if (recordId == -1 || incomingStudentId == -1) continue
+
+            val identity = incomingIdToIdentityMap[incomingStudentId]
+            val localStudentId = identity?.let { identityToLocalIdMap[it] } ?: -1
+
+            val log = AttendanceLogEntity(
+                recordId = recordId,
+                dateMillis = dateMillis,
+                studentId = localStudentId,
+                status = status,
+                lastModified = lastMod
+            )
+
+            val localMatch = localLogs.find {
+                it.recordId == recordId &&
+                        it.dateMillis == dateMillis &&
+                        it.studentId == localStudentId
+            }
+
+            if (localMatch == null) {
+                logsToMerge.add(log)
+            } else {
+                // If incoming attendance log is newer, overwrite local status [1]
+                if (lastMod > localMatch.lastModified) {
+                    updatedLogs++
+                    logsToMerge.add(log.copy(id = localMatch.id))
+                } else {
+                    skipped++
+                }
+            }
+        }
+
+        MergeSummary(
+            newStudentsCount = newStudents,
+            updatedStudentsCount = updatedStudents,
+            updatedLogsCount = updatedLogs,
+            skippedCount = skipped,
+            studentsToInsert = studentsToInsert,
+            studentsToUpdate = studentsToUpdate,
+            logsToMerge = logsToMerge,
+            incomingIdToIdentityMap = incomingIdToIdentityMap
+        )
+    }
+
+    // Resolved: Commit transactional merge safely with ID mappings [1]
+    suspend fun executeMerge(
+        repository: StudentRepository,
+        summary: MergeSummary
+    ) = withContext(Dispatchers.IO) {
+        val newlyCreatedIdsMap = mutableMapOf<String, Int>()
+
+        // 1. Insert new student profiles and capture generated IDs [1]
+        summary.studentsToInsert.forEach { s ->
+            val newId = repository.insertStudent(s).toInt()
+            val identity = "${s.firstName.lowercase()}_${s.lastName.lowercase()}_${s.birthday}"
+            newlyCreatedIdsMap[identity] = newId
+        }
+
+        // 2. Overwrite updated student profiles [1]
+        summary.studentsToUpdate.forEach { s ->
+            repository.insertStudent(s)
+        }
+
+        // 3. Merge attendance logs [1]
+        summary.logsToMerge.forEach { log ->
+            var studentIdToUse = log.studentId
+            if (studentIdToUse == -1) {
+                // Resolve student ID for newly created students via profile parameters matching [1]
+                val key = summary.incomingIdToIdentityMap[log.studentId]
+                studentIdToUse = key?.let { newlyCreatedIdsMap[it] } ?: -1
+            }
+
+            if (studentIdToUse != -1) {
+                repository.insertAttendanceLog(log.copy(studentId = studentIdToUse))
+            }
+        }
     }
 
     suspend fun exportSecureBackup(context: Context, students: List<StudentEntity>) = withContext(Dispatchers.IO) {
@@ -241,7 +364,7 @@ object JsonSyncEngine {
         }
     }
 
-    // Resolved: Restored missing file name parser utility [1]
+    // Direct segment resolution for file-scheme URIs to prevent query-failures [1]
     private fun getFileName(context: Context, uri: Uri): String? {
         if (uri.scheme == "file") {
             return uri.lastPathSegment // Directly returns the file name segment [1]
@@ -259,7 +382,6 @@ object JsonSyncEngine {
         return name
     }
 
-    // Resolved: Restored missing parsing and insertion loops [1]
     private suspend fun parseAndInsertJsonArray(array: JSONArray, repository: StudentRepository) {
         for (i in 0 until array.length()) {
             val jsonObj = array.getJSONObject(i)

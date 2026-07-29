@@ -81,7 +81,6 @@ interface StudentDao {
         }
     }
 
-
     // --- ATTENDANCE SYSTEM QUERIES ---
     @Query("SELECT * FROM attendance_records WHERE isDeleted = 0 ORDER BY id DESC")
     fun getAllAttendanceRecords(): List<AttendanceRecordEntity>
@@ -107,9 +106,14 @@ interface StudentDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertAttendanceLog(log: AttendanceLogEntity): Long
 
-    @Query("UPDATE attendance_logs SET status = :status WHERE recordId = :recordId AND dateMillis = :dateMillis AND studentId = :studentId")
-    fun updateAttendanceStatus(recordId: Int, dateMillis: Long, studentId: Int, status: String): Int
+    // Resolved: Update status alongside lastModified timestamp [1]
+    @Query("UPDATE attendance_logs SET status = :status, lastModified = :lastModified WHERE recordId = :recordId AND dateMillis = :dateMillis AND studentId = :studentId")
+    fun updateAttendanceStatus(recordId: Int, dateMillis: Long, studentId: Int, status: String, lastModified: Long): Int
 
     @Query("SELECT * FROM attendance_logs WHERE recordId = :recordId")
     fun getLogsForRecord(recordId: Int): List<AttendanceLogEntity>
+
+    // Resolved: Query all logs across records for smart P2P syncing [1]
+    @Query("SELECT * FROM attendance_logs")
+    fun getAllAttendanceLogs(): List<AttendanceLogEntity>
 }

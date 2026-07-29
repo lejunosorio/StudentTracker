@@ -13,9 +13,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.Wifi
@@ -28,11 +28,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign // Resolved: Explicit TextAlign import [1]
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.security.crypto.EncryptedFile // Resolved: Explicit EncryptedFile import [1]
-import androidx.security.crypto.MasterKeys // Resolved: Explicit MasterKeys import [1]
 import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.CsvExportEngine
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
@@ -42,13 +40,9 @@ import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
-import java.io.FileInputStream // Resolved: Explicit FileInputStream import [1]
-import java.io.FileOutputStream // Resolved: Explicit FileOutputStream import [1]
-import java.io.IOException
-import java.text.SimpleDateFormat
-import java.util.*
+import java.io.FileOutputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,22 +55,25 @@ fun SyncScreen(onBack: () -> Unit) {
     var showSampleFormat by remember { mutableStateOf(false) }
     val rotationAngle by animateFloatAsState(targetValue = if (showSampleFormat) 180f else 0f)
 
-    // Interactive Wizard States
+    // Interactive Wizard States [1]
     var tempStudents by remember { mutableStateOf<List<StudentEntity>>(emptyList()) }
     var tempDiscoveredFields by remember { mutableStateOf<List<String>>(emptyList()) }
 
-    var showImportConfirmDialog by remember { mutableStateOf(false) }
+    var showSmartMergeDialog by remember { mutableStateOf(false) }
     var showCustomFieldPromptDialog by remember { mutableStateOf(false) }
     var showCustomFieldSelectorScreen by remember { mutableStateOf(false) }
 
-    // P2P State Managers [1]
+    // In-memory merge summary holder [1]
+    var mergeSummary by remember { mutableStateOf<JsonSyncEngine.MergeSummary?>(null) }
+
+    // P2P State Managers
     val localSyncEngine = remember { LocalSyncEngine(context) }
     val syncState by localSyncEngine.syncState.collectAsState()
     val discoveredPeers by localSyncEngine.discoveredPeers.collectAsState()
 
     DisposableEffect(Unit) {
         onDispose {
-            localSyncEngine.stopActiveSession() // Release resources on navigation exit
+            localSyncEngine.stopActiveSession() // Release resource leaks on navigation exit
         }
     }
 
@@ -86,14 +83,23 @@ fun SyncScreen(onBack: () -> Unit) {
         uri?.let { selectedUri ->
             scope.launch {
                 try {
-                    val result = JsonSyncEngine.parseBackup(context, selectedUri)
-                    tempStudents = result.first
-                    val discoveredKeys = result.second
+                    // Safe in-memory parse and merge evaluation [1]
+                    val summary = JsonSyncEngine.evaluateMerge(context, selectedUri, repository)
+                    mergeSummary = summary
+                    tempStudents = summary.studentsToInsert + summary.studentsToUpdate
+
+                    val discoveredKeys = summary.studentsToInsert.flatMap { s ->
+                        try {
+                            val json = JSONObject(s.customDataJson)
+                            json.keys().asSequence().toList()
+                        } catch (_: Exception) { emptyList() }
+                    }.distinct()
 
                     val currentTemplates = repository.getAllFormTemplates().map { it.fieldName }.toSet()
                     tempDiscoveredFields = discoveredKeys.filter { !currentTemplates.contains(it) }
 
-                    showImportConfirmDialog = true
+                    // Trigger Stage 1 Confirmation [1]
+                    showSmartMergeDialog = true
                 } catch (e: Exception) {
                     Toast.makeText(context, "Parsing error: ${e.message}", Toast.LENGTH_LONG).show()
                 }
@@ -107,6 +113,7 @@ fun SyncScreen(onBack: () -> Unit) {
             onDismiss = { showCustomFieldSelectorScreen = false },
             onCreateSelected = { selectedFields ->
                 scope.launch {
+                    // Bulk create selected custom fields
                     selectedFields.forEach { fieldName ->
                         repository.insertFormTemplate(
                             FormTemplateEntity(
@@ -116,9 +123,12 @@ fun SyncScreen(onBack: () -> Unit) {
                             )
                         )
                     }
-                    tempStudents.forEach { repository.insertStudent(it) }
+                    // Perform the final smart merge cleanly [1]
+                    mergeSummary?.let { summary ->
+                        JsonSyncEngine.executeMerge(repository, summary)
+                    }
                     showCustomFieldSelectorScreen = false
-                    Toast.makeText(context, "${tempStudents.size} records imported successfully!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "${tempStudents.size} records merged successfully!", Toast.LENGTH_SHORT).show()
                 }
             }
         )
@@ -134,7 +144,7 @@ fun SyncScreen(onBack: () -> Unit) {
                     },
                     actions = {
                         IconButton(onClick = { showHelpDialog = true }) {
-                            Icon(Icons.Default.HelpOutline, contentDescription = stringResource(R.string.sync_help_guide_title))
+                            Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = stringResource(R.string.sync_help_guide_title))
                         }
                     }
                 )
@@ -149,7 +159,7 @@ fun SyncScreen(onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
 
-                // ================= NEW: SECTION 3 - LAN PEER-TO-PEER OFFLINE SYNC =================
+                // ================= SECTION: LAN PEER-TO-PEER OFFLINE SYNC =================
                 Text(
                     text = stringResource(R.string.sync_local_p2p_title),
                     fontSize = 14.sp,
@@ -198,16 +208,22 @@ fun SyncScreen(onBack: () -> Unit) {
                                     localSyncEngine.startLocalServer { tempBackupFile ->
                                         scope.launch {
                                             try {
-                                                val result = JsonSyncEngine.parseBackup(context, Uri.fromFile(tempBackupFile))
-                                                tempStudents = result.first
-                                                val discoveredKeys = result.second
+                                                val summary = JsonSyncEngine.evaluateMerge(context, Uri.fromFile(tempBackupFile), repository)
+                                                mergeSummary = summary
+                                                tempStudents = summary.studentsToInsert + summary.studentsToUpdate
+
+                                                val discoveredKeys = summary.studentsToInsert.flatMap { s ->
+                                                    try {
+                                                        val json = JSONObject(s.customDataJson)
+                                                        json.keys().asSequence().toList()
+                                                    } catch (_: Exception) { emptyList() }
+                                                }.distinct()
 
                                                 val currentTemplates = repository.getAllFormTemplates().map { it.fieldName }.toSet()
                                                 tempDiscoveredFields = discoveredKeys.filter { !currentTemplates.contains(it) }
 
-                                                showImportConfirmDialog = true
+                                                showSmartMergeDialog = true
                                             } catch (e: Exception) {
-                                                e.printStackTrace()
                                                 Toast.makeText(context, "Payload parsing failed: ${e.message}", Toast.LENGTH_LONG).show()
                                             }
                                         }
@@ -259,35 +275,53 @@ fun SyncScreen(onBack: () -> Unit) {
                                                     try {
                                                         // Package active student DB as standard JSON backup
                                                         val activeRoster = repository.getAllActiveStudents()
+                                                        val activeLogs = repository.getAllAttendanceLogs()
 
                                                         val cacheDir = File(context.cacheDir, "backups").apply { mkdirs() }
                                                         val tempFile = File(cacheDir, "temp_p2p_transmit.json")
-                                                        val jsonArray = org.json.JSONArray()
-                                                        activeRoster.forEach { s ->
-                                                            val obj = org.json.JSONObject().apply {
-                                                                put("firstName", s.firstName)
-                                                                put("lastName", s.lastName)
-                                                                put("gender", s.gender)
-                                                                put("birthday", s.birthday)
-                                                                put("address", s.address)
-                                                                put("contactNumber", s.contactNumber)
-                                                                put("picturePath", s.picturePath)
-                                                                put("guardiansJson", s.guardiansJson)
-                                                                put("customDataJson", s.customDataJson)
+
+                                                        val payloadObj = JSONObject().apply {
+                                                            val studentsArr = org.json.JSONArray()
+                                                            activeRoster.forEach { s ->
+                                                                studentsArr.put(JSONObject().apply {
+                                                                    put("id", s.id)
+                                                                    put("firstName", s.firstName)
+                                                                    put("lastName", s.lastName)
+                                                                    put("gender", s.gender)
+                                                                    put("birthday", s.birthday)
+                                                                    put("address", s.address)
+                                                                    put("contactNumber", s.contactNumber)
+                                                                    put("picturePath", s.picturePath)
+                                                                    put("guardiansJson", s.guardiansJson)
+                                                                    put("customDataJson", s.customDataJson)
+                                                                    put("lastModified", s.lastModified)
+                                                                })
                                                             }
-                                                            jsonArray.put(obj)
+                                                            put("students", studentsArr)
+
+                                                            val logsArr = org.json.JSONArray()
+                                                            activeLogs.forEach { l ->
+                                                                logsArr.put(JSONObject().apply {
+                                                                    put("recordId", l.recordId)
+                                                                    put("dateMillis", l.dateMillis)
+                                                                    put("studentId", l.studentId)
+                                                                    put("status", l.status)
+                                                                    put("lastModified", l.lastModified)
+                                                                })
+                                                            }
+                                                            put("attendanceLogs", logsArr)
                                                         }
+
                                                         FileOutputStream(tempFile).use { fos ->
-                                                            fos.write(jsonArray.toString().toByteArray())
+                                                            fos.write(payloadObj.toString().toByteArray())
                                                             fos.flush()
                                                         }
 
-                                                        // Resolved: Pipe the raw JSON file directly to avoid hardware KeyStore mismatches [1]
                                                         localSyncEngine.transmitBackupToPeer(peer, tempFile) { success ->
                                                             if (success) {
                                                                 Toast.makeText(context, peerToastSuccess, Toast.LENGTH_SHORT).show()
                                                             }
-                                                            tempFile.delete() // Clear local transmission cache
+                                                            tempFile.delete()
                                                         }
                                                     } catch (e: Exception) {
                                                         e.printStackTrace()
@@ -452,22 +486,33 @@ fun SyncScreen(onBack: () -> Unit) {
                 }
             }
 
-            // STAGE 1: Accept Records Dialog [1]
-            if (showImportConfirmDialog) {
+            // STAGE 1: Smart Delta Merge Dialogue [1]
+            if (showSmartMergeDialog && mergeSummary != null) {
+                val summary = mergeSummary!!
                 AlertDialog(
-                    onDismissRequest = { showImportConfirmDialog = false },
+                    onDismissRequest = { showSmartMergeDialog = false },
                     title = { Text(stringResource(R.string.sync_dialog_accept_import_title)) },
-                    text = { Text(stringResource(R.string.sync_dialog_accept_import_desc, tempStudents.size)) },
+                    text = {
+                        Text(
+                            stringResource(
+                                R.string.sync_dialog_smart_merge_desc,
+                                summary.newStudentsCount,
+                                summary.updatedStudentsCount,
+                                summary.updatedLogsCount,
+                                summary.skippedCount
+                            )
+                        )
+                    },
                     confirmButton = {
                         Button(
                             onClick = {
-                                showImportConfirmDialog = false
+                                showSmartMergeDialog = false
                                 if (tempDiscoveredFields.isNotEmpty()) {
                                     showCustomFieldPromptDialog = true
                                 } else {
                                     scope.launch {
-                                        tempStudents.forEach { repository.insertStudent(it) }
-                                        Toast.makeText(context, "${tempStudents.size} records imported successfully!", Toast.LENGTH_SHORT).show()
+                                        JsonSyncEngine.executeMerge(repository, summary)
+                                        Toast.makeText(context, "Import successful!", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             }
@@ -476,7 +521,7 @@ fun SyncScreen(onBack: () -> Unit) {
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showImportConfirmDialog = false }) {
+                        TextButton(onClick = { showSmartMergeDialog = false }) {
                             Text(stringResource(R.string.action_no))
                         }
                     },
@@ -505,8 +550,10 @@ fun SyncScreen(onBack: () -> Unit) {
                             onClick = {
                                 showCustomFieldPromptDialog = false
                                 scope.launch {
-                                    tempStudents.forEach { repository.insertStudent(it) }
-                                    Toast.makeText(context, "${tempStudents.size} records imported successfully!", Toast.LENGTH_SHORT).show()
+                                    mergeSummary?.let { summary ->
+                                        JsonSyncEngine.executeMerge(repository, summary)
+                                    }
+                                    Toast.makeText(context, "Import successful!", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         ) {
