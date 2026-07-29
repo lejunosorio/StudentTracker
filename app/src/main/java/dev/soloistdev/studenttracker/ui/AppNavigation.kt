@@ -136,7 +136,10 @@ fun AppNavigation() {
                     }
                 },
                 onSharePdf = { studentEntity ->
-                    PdfGeneratorHelper.generateAndShareStudentPdf(context, studentEntity)
+                    // Resolved: Launch the suspending PDF compilation inside the Compose-managed lifecycle scope [1]
+                    scope.launch {
+                        PdfGeneratorHelper.generateAndShareStudentPdf(context, studentEntity)
+                    }
                 },
                 onDeleteStudent = { id ->
                     scope.launch {
