@@ -87,6 +87,8 @@ fun ViewAllScreen(
     val bulkDeleteConfirmMsg = stringResource(R.string.delete_members_bulk_confirmation, selectedStudentIds.size)
     val bulkDeleteSuccessMsg = stringResource(R.string.toast_moved_to_recycle_bin, stringResource(R.string.menu_students))
 
+    var showBulkEditSheet by remember { mutableStateOf(false) }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -234,6 +236,42 @@ fun ViewAllScreen(
         Scaffold(
             topBar = {
                 if (isSelectionMode) {
+                    TopAppBar(
+                        title = { Text(stringResource(R.string.label_selected_count, selectedStudentIds.size), fontWeight = FontWeight.Bold) },
+                        navigationIcon = {
+                            IconButton(onClick = { viewModel.clearSelection() }) {
+                                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_cancel))
+                            }
+                        },
+                        actions = {
+                            // Integrated: Bulk Custom Fields Edit Trigger [1]
+                            IconButton(onClick = { showBulkEditSheet = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.EditNote, // Native bulk edit icon
+                                    contentDescription = stringResource(R.string.bulk_edit_title),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            IconButton(onClick = { showCreateAttendanceDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.EventAvailable,
+                                    contentDescription = stringResource(R.string.attendance_new_record_title),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            IconButton(onClick = { showBulkDeleteConfirmDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = stringResource(R.string.action_delete),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                        )
+                    )
+
                     TopAppBar(
                         title = { Text(stringResource(R.string.label_selected_count, selectedStudentIds.size), fontWeight = FontWeight.Bold) },
                         navigationIcon = {
@@ -609,6 +647,18 @@ fun ViewAllScreen(
                 sortOrder = sortOrder,
                 onSortSelected = { viewModel.updateSortOrder(it) },
                 onDismiss = { showSortSheet = false }
+            )
+        }
+
+        if (showBulkEditSheet) {
+            BulkEditBottomSheet(
+                selectedCount = selectedStudentIds.size,
+                availableTemplates = availableTemplates,
+                onApplyChanges = { fieldName, newValue ->
+                    viewModel.updateCustomFieldForSelected(fieldName, newValue)
+                    Toast.makeText(context, R.string.toast_bulk_edit_success, Toast.LENGTH_SHORT).show()
+                },
+                onDismiss = { showBulkEditSheet = false }
             )
         }
 

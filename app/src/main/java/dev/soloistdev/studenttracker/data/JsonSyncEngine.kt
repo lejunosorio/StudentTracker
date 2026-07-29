@@ -243,6 +243,9 @@ object JsonSyncEngine {
 
     // Resolved: Restored missing file name parser utility [1]
     private fun getFileName(context: Context, uri: Uri): String? {
+        if (uri.scheme == "file") {
+            return uri.lastPathSegment // Directly returns the file name segment [1]
+        }
         var name: String? = null
         val cursor = context.contentResolver.query(uri, null, null, null, null)
         cursor?.use {

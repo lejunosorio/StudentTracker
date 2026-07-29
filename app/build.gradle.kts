@@ -75,6 +75,7 @@ dependencies {
 
     // Dependency Injection (Hilt)
     implementation(libs.hilt.android)
+    implementation(libs.identity.jvm)
     annotationProcessor(libs.hilt.compiler)
 
     // Security (RootBeer - Free Root Detection)

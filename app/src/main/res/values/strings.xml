@@ -314,4 +314,29 @@
         <item>Dec</item>
     </string-array>
 
+    <!-- Bulk Custom Fields Editing Strings [1] -->
+    <string name="bulk_edit_title">Bulk Edit Custom Fields</string>
+    <string name="bulk_edit_select_field_label">Select Custom Field</string>
+    <string name="bulk_edit_value_label">New Field Value</string>
+    <string name="bulk_edit_apply_button">Apply Changes to %1$d Members</string>
+    <string name="bulk_edit_validation_error">Please select a custom field first.</string>
+    <string name="bulk_edit_confirm_title">Apply Bulk Edit?</string>
+    <string name="bulk_edit_confirm_desc">Are you sure you want to update the custom field \u0027%1$s\u0027 with the value \u0027%2$s\u0027 for all %3$d selected members?</string>
+
+    <string name="toast_bulk_edit_success">Selected members updated successfully!</string>
+
+    <!-- Local Sync Strings [1] -->
+    <string name="sync_local_p2p_title">Local Offline Synchronization (LAN P2P)</string>
+    <string name="sync_p2p_receive_btn">Receive Backup (Start Server)</string>
+    <string name="sync_p2p_send_btn">Send Backup (Scan Peers)</string>
+    <string name="sync_p2p_stop_btn">Stop Local Sync Session</string>
+    <string name="sync_p2p_peers_header">Discovered Local Peers (Click to Send)</string>
+    <string name="sync_p2p_no_peers">No active local peers discovered yet.</string>
+    <string name="sync_p2p_state_idle">Idle</string>
+    <string name="sync_p2p_state_listening">Waiting for local peer connections (NSD Active)...</string>
+    <string name="sync_p2p_state_connecting">Connecting to peer...</string>
+    <string name="sync_p2p_state_syncing">Synchronizing database payload over local socket...</string>
+    <string name="sync_p2p_state_success">Local database synchronization completed successfully!</string>
+    <string name="sync_p2p_state_error">Local sync error: %1$s</string>
+    <string name="toast_p2p_transmission_success">Database successfully sent to peer!</string>
 </resources>

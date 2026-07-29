@@ -371,4 +371,31 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
             loadStudents()
         }
     }
+
+    fun updateCustomFieldForSelected(fieldName: String, newValue: String) {
+        val selectedIds = _selectedStudentIds.value
+        if (selectedIds.isEmpty()) return
+
+        viewModelScope.launch {
+            val activeStudents = repository.getAllActiveStudents()
+            selectedIds.forEach { studentId ->
+                val targetStudent = activeStudents.find { it.id == studentId }
+                targetStudent?.let { currentStudent ->
+                    try {
+                        val json = JSONObject(currentStudent.customDataJson)
+                        json.put(fieldName, newValue.trim())
+
+                        val updatedStudent = currentStudent.copy(
+                            customDataJson = json.toString()
+                        )
+                        repository.insertStudent(updatedStudent)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+            clearSelection() // Exit selection mode automatically
+            loadStudents()   // Refresh directory state automatically
+        }
+    }
 }

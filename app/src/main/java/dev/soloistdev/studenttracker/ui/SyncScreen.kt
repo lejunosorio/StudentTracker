@@ -1,5 +1,6 @@
 package dev.soloistdev.studenttracker.ui
 
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,11 +13,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,15 +28,27 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign // Resolved: Explicit TextAlign import [1]
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.security.crypto.EncryptedFile // Resolved: Explicit EncryptedFile import [1]
+import androidx.security.crypto.MasterKeys // Resolved: Explicit MasterKeys import [1]
 import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.CsvExportEngine
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.JsonSyncEngine
+import dev.soloistdev.studenttracker.data.LocalSyncEngine
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileInputStream // Resolved: Explicit FileInputStream import [1]
+import java.io.FileOutputStream // Resolved: Explicit FileOutputStream import [1]
+import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,6 +68,17 @@ fun SyncScreen(onBack: () -> Unit) {
     var showImportConfirmDialog by remember { mutableStateOf(false) }
     var showCustomFieldPromptDialog by remember { mutableStateOf(false) }
     var showCustomFieldSelectorScreen by remember { mutableStateOf(false) }
+
+    // P2P State Managers [1]
+    val localSyncEngine = remember { LocalSyncEngine(context) }
+    val syncState by localSyncEngine.syncState.collectAsState()
+    val discoveredPeers by localSyncEngine.discoveredPeers.collectAsState()
+
+    DisposableEffect(Unit) {
+        onDispose {
+            localSyncEngine.stopActiveSession() // Release resources on navigation exit
+        }
+    }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -109,7 +134,7 @@ fun SyncScreen(onBack: () -> Unit) {
                     },
                     actions = {
                         IconButton(onClick = { showHelpDialog = true }) {
-                            Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = stringResource(R.string.sync_help_guide_title))
+                            Icon(Icons.Default.HelpOutline, contentDescription = stringResource(R.string.sync_help_guide_title))
                         }
                     }
                 )
@@ -123,7 +148,163 @@ fun SyncScreen(onBack: () -> Unit) {
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Resolved: Dummy cryptographic password fields completely removed from screen layout [1]
+
+                // ================= NEW: SECTION 3 - LAN PEER-TO-PEER OFFLINE SYNC =================
+                Text(
+                    text = stringResource(R.string.sync_local_p2p_title),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+                        // Status Indicator Row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = when {
+                                    syncState == "Listening" -> stringResource(R.string.sync_p2p_state_listening)
+                                    syncState == "Connecting" -> stringResource(R.string.sync_p2p_state_connecting)
+                                    syncState == "Syncing" -> stringResource(R.string.sync_p2p_state_syncing)
+                                    syncState == "Success" -> stringResource(R.string.sync_p2p_state_success)
+                                    syncState.startsWith("Error") -> stringResource(R.string.sync_p2p_state_error, syncState.substringAfter("Error: "))
+                                    else -> stringResource(R.string.sync_p2p_state_idle)
+                                },
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (syncState.startsWith("Error")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(Icons.Default.Wifi, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Receiver Action Button
+                            Button(
+                                onClick = {
+                                    localSyncEngine.startLocalServer { tempBackupFile ->
+                                        scope.launch {
+                                            try {
+                                                val result = JsonSyncEngine.parseBackup(context, Uri.fromFile(tempBackupFile))
+                                                tempStudents = result.first
+                                                val discoveredKeys = result.second
+
+                                                val currentTemplates = repository.getAllFormTemplates().map { it.fieldName }.toSet()
+                                                tempDiscoveredFields = discoveredKeys.filter { !currentTemplates.contains(it) }
+
+                                                showImportConfirmDialog = true
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                                Toast.makeText(context, "Payload parsing failed: ${e.message}", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    }
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                enabled = syncState != "Listening" && syncState != "Scanning" && syncState != "Syncing",
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(stringResource(R.string.sync_p2p_receive_btn), fontSize = 10.sp, textAlign = TextAlign.Center)
+                            }
+
+                            // Sender Action Button
+                            Button(
+                                onClick = { localSyncEngine.startScanningPeers() },
+                                shape = RoundedCornerShape(8.dp),
+                                enabled = syncState != "Listening" && syncState != "Scanning" && syncState != "Syncing",
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(stringResource(R.string.sync_p2p_send_btn), fontSize = 10.sp, textAlign = TextAlign.Center)
+                            }
+                        }
+
+                        if (syncState == "Listening" || syncState == "Scanning") {
+                            OutlinedButton(
+                                onClick = { localSyncEngine.stopActiveSession() },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(stringResource(R.string.sync_p2p_stop_btn), color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+
+                        // Scanning Peers List
+                        if (syncState == "Scanning") {
+                            Text(stringResource(R.string.sync_p2p_peers_header), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+                            if (discoveredPeers.isEmpty()) {
+                                Text(stringResource(R.string.sync_p2p_no_peers), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                            } else {
+                                discoveredPeers.forEach { peer ->
+                                    val peerToastSuccess = stringResource(R.string.toast_p2p_transmission_success)
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                scope.launch(Dispatchers.IO) {
+                                                    try {
+                                                        // Package active student DB as standard JSON backup
+                                                        val activeRoster = repository.getAllActiveStudents()
+
+                                                        val cacheDir = File(context.cacheDir, "backups").apply { mkdirs() }
+                                                        val tempFile = File(cacheDir, "temp_p2p_transmit.json")
+                                                        val jsonArray = org.json.JSONArray()
+                                                        activeRoster.forEach { s ->
+                                                            val obj = org.json.JSONObject().apply {
+                                                                put("firstName", s.firstName)
+                                                                put("lastName", s.lastName)
+                                                                put("gender", s.gender)
+                                                                put("birthday", s.birthday)
+                                                                put("address", s.address)
+                                                                put("contactNumber", s.contactNumber)
+                                                                put("picturePath", s.picturePath)
+                                                                put("guardiansJson", s.guardiansJson)
+                                                                put("customDataJson", s.customDataJson)
+                                                            }
+                                                            jsonArray.put(obj)
+                                                        }
+                                                        FileOutputStream(tempFile).use { fos ->
+                                                            fos.write(jsonArray.toString().toByteArray())
+                                                            fos.flush()
+                                                        }
+
+                                                        // Resolved: Pipe the raw JSON file directly to avoid hardware KeyStore mismatches [1]
+                                                        localSyncEngine.transmitBackupToPeer(peer, tempFile) { success ->
+                                                            if (success) {
+                                                                Toast.makeText(context, peerToastSuccess, Toast.LENGTH_SHORT).show()
+                                                            }
+                                                            tempFile.delete() // Clear local transmission cache
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        e.printStackTrace()
+                                                    }
+                                                }
+                                            }
+                                            .padding(vertical = 2.dp)
+                                    ) {
+                                        Text(peer.serviceName.replace("StudentTracker_", ""), fontSize = 12.sp, modifier = Modifier.padding(12.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
