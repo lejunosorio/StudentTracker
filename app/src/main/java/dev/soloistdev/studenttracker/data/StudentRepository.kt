@@ -162,4 +162,17 @@ class StudentRepository(private val context: Context) {
     suspend fun deleteIncident(incidentId: Int) = withContext(Dispatchers.IO) {
         studentDao.deleteIncident(incidentId)
     }
+
+    // Message Templates Accessors
+    suspend fun getAllMessageTemplates(): List<MessageTemplateEntity> = withContext(Dispatchers.IO) {
+        studentDao.getAllMessageTemplates()
+    }
+
+    suspend fun insertMessageTemplate(template: MessageTemplateEntity): Long = withContext(Dispatchers.IO) {
+        studentDao.insertMessageTemplate(template)
+    }
+
+    suspend fun deleteMessageTemplate(templateId: Int) = withContext(Dispatchers.IO) {
+        studentDao.deleteMessageTemplate(templateId)
+    }
 }

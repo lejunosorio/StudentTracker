@@ -1,100 +1,175 @@
 package dev.soloistdev.studenttracker.ui
 
-import android.content.Context
+import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.EventAvailable // RESOLVED: EventAvailable icon import
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.SettingsCell
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
+import dev.soloistdev.studenttracker.data.Guardian
+import dev.soloistdev.studenttracker.data.MessageTemplateEntity
 import dev.soloistdev.studenttracker.data.SavedFilterEntity
 import dev.soloistdev.studenttracker.data.StudentEntity
+import dev.soloistdev.studenttracker.data.StudentRepository
 import org.json.JSONObject
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import kotlinx.coroutines.launch
+import androidx.core.net.toUri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SavedFiltersScreen(
     onBack: () -> Unit,
     onStudentClick: (Int) -> Unit,
+    onNavigateToTemplates: () -> Unit,
     viewModel: SavedFiltersViewModel = viewModel()
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val repository = remember { StudentRepository(context) }
+
     val filters by viewModel.filters.collectAsState()
     val students by viewModel.students.collectAsState()
+    val messageTemplates by viewModel.messageTemplates.collectAsState()
     val templates by viewModel.templates.collectAsState()
-    val context = LocalContext.current
 
-    var activeFilterForListing by remember { mutableStateOf<SavedFilterEntity?>(null) }
-    var showAddDialog by remember { mutableStateOf(false) }
+    // Screen State Controller: null = State A (Filters List), Non-Null = State B (Filtered Directory)
+    var selectedFilterForView by remember { mutableStateOf<SavedFilterEntity?>(null) }
+
+    // Dialog state controllers
+    var showFilterDialog by remember { mutableStateOf(false) }
     var editingFilter by remember { mutableStateOf<SavedFilterEntity?>(null) }
+    var showBulkSmsDialog by remember { mutableStateOf(false) }
+    var bulkSmsTarget by remember { mutableStateOf("Students") } // "Students" or "Guardians"
+
+    // Attendance Creation dialog states
+    var showCreateAttendanceDialog by remember { mutableStateOf(false) }
+    var attendanceRecordName by remember { mutableStateOf("") }
+    var startDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var endDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var showStartPicker by remember { mutableStateOf(false) }
+    var showEndPicker by remember { mutableStateOf(false) }
+
+    val isDateRangeInvalid = startDateMillis > endDateMillis
+
+    LaunchedEffect(Unit) {
+        viewModel.loadData()
+    }
+
+    val matchingStudents = remember(students, selectedFilterForView) {
+        if (selectedFilterForView == null) {
+            emptyList()
+        } else {
+            val filterState = FilterState(
+                field = selectedFilterForView!!.fieldName,
+                comparison = selectedFilterForView!!.comparison,
+                value1 = selectedFilterForView!!.value1,
+                value2 = selectedFilterForView!!.value2
+            )
+            students.filter { item ->
+                applyComparison(getFieldValue(item.student, filterState.field), filterState)
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        text = if (activeFilterForListing != null) {
-                            "${activeFilterForListing!!.filterName} List"
+                        text = if (selectedFilterForView != null) {
+                            selectedFilterForView!!.filterName
                         } else {
-                            "Saved Filters"
+                            stringResource(R.string.menu_saved_filters)
                         },
                         fontWeight = FontWeight.Bold
                     )
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            if (activeFilterForListing != null) {
-                                activeFilterForListing = null
-                            } else {
-                                onBack()
-                            }
+                    IconButton(onClick = {
+                        if (selectedFilterForView != null) {
+                            selectedFilterForView = null // Returns back to State A list
+                        } else {
+                            onBack()
                         }
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                    }
+                },
+                actions = {
+                    if (selectedFilterForView == null) {
+                        TextButton(onClick = onNavigateToTemplates) {
+                            Text(
+                                text = "Templates",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    } else {
+                        // Context actions for the filtered student directory
+                        IconButton(onClick = {
+                            bulkSmsTarget = "Students"
+                            showBulkSmsDialog = true
+                        }) {
+                            Icon(Icons.Default.SettingsCell, contentDescription = "SMS Students", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        IconButton(onClick = {
+                            bulkSmsTarget = "Guardians"
+                            showBulkSmsDialog = true
+                        }) {
+                            Icon(Icons.Default.Group, contentDescription = "SMS Guardians", tint = MaterialTheme.colorScheme.secondary)
+                        }
+                        IconButton(onClick = { showCreateAttendanceDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.EventAvailable,
+                                contentDescription = "Create Attendance Record",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
             )
         },
         floatingActionButton = {
-            if (activeFilterForListing == null) {
+            if (selectedFilterForView == null) {
                 FloatingActionButton(
-                    onClick = { showAddDialog = true },
+                    onClick = {
+                        editingFilter = null
+                        showFilterDialog = true
+                    },
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     shape = RoundedCornerShape(16.dp)
@@ -104,43 +179,135 @@ fun SavedFiltersScreen(
             }
         }
     ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            val activeFilter = activeFilterForListing
-            if (activeFilter != null) {
-                // ================= STATE B: FILTERED STUDENTS DIRECTORY =================
-                val filteredList = remember(students, activeFilter) {
-                    students.filter { studentState ->
-                        val valueToCompare = getFieldValue(studentState.student, activeFilter.fieldName)
-                        evaluateCondition(valueToCompare, activeFilter.comparison, activeFilter.value1, activeFilter.value2)
-                    }
-                }
+        if (selectedFilterForView == null) {
+            // ==========================================
+            // STATE A: SAVED FILTERS MASTER DIRECTORY
+            // ==========================================
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                Text(
+                    text = "Saved Filter Groups",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                )
 
-                if (filteredList.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                if (filters.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Text(
-                            text = "No students match this filter.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = stringResource(R.string.error_create_saved_filter),
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         )
                     }
                 } else {
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 16.dp)
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(1f),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        item {
+                        items(filters) { filter ->
+                            val criteriaDesc = if (filter.comparison == "In between") {
+                                "${filter.fieldName}: ${filter.value1} - ${filter.value2}"
+                            } else {
+                                "${filter.fieldName} ${filter.comparison} ${filter.value1}"
+                            }
+
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedFilterForView = filter }, // Enters State B roster
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(filter.filterName, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(criteriaDesc, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(onClick = {
+                                            editingFilter = filter
+                                            showFilterDialog = true
+                                        }) {
+                                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+                                        }
+                                        IconButton(onClick = {
+                                            viewModel.deleteFilter(filter.id)
+                                        }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // ==========================================
+            // STATE B: FILTERED STUDENT LIST DIRECTORY
+            // ==========================================
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
                             Text(
-                                text = "Filtered Members (${filteredList.size})",
-                                fontSize = 14.sp,
+                                text = "Filtered Roster: ${selectedFilterForView!!.filterName}",
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(16.dp)
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Matched Student Count: ${matchingStudents.size} members",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                             )
                         }
-                        items(filteredList) { studentState ->
+                        Icon(Icons.Default.Bookmarks, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+
+                if (matchingStudents.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "No students match this filter criteria.",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(matchingStudents) { studentState ->
                             StudentCard(
                                 uiState = studentState,
                                 isSelected = false,
@@ -150,254 +317,162 @@ fun SavedFiltersScreen(
                         }
                     }
                 }
-            } else {
-                // ================= STATE A: FILTER WORKBENCH CARDS (Default) =================
-                if (filters.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
+            }
+        }
+
+        // DYNAMIC BULK SMS HANDLER DIALOG
+        if (showBulkSmsDialog && selectedFilterForView != null) {
+            var selectedTemplate by remember { mutableStateOf<MessageTemplateEntity?>(null) }
+            var textBody by remember { mutableStateOf("") }
+            var dropdownExpanded by remember { mutableStateOf(false) }
+
+            val recipientsCount = remember(matchingStudents, bulkSmsTarget) {
+                if (bulkSmsTarget == "Students") {
+                    matchingStudents.map { it.student.contactNumber }.filter { it.isNotBlank() }.size
+                } else {
+                    matchingStudents.flatMap { s ->
+                        Guardian.listFromJsonString(s.student.guardiansJson).flatMap { g -> g.phones }
+                    }.filter { it.isNotBlank() }.distinct().size
+                }
+            }
+
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { showBulkSmsDialog = false }
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(28.dp),
+                    tonalElevation = 6.dp,
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp)
+                            .verticalScroll(rememberScrollState())
+                            .imePadding(),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Text(
-                            text = "No saved filters.\nTap '+' to create a workbench group.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 16.sp,
+                            text = "Bulk SMS to $bulkSmsTarget",
                             fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
+                            fontSize = 18.sp,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                    }
-                } else {
-                    val lazyListState = rememberLazyListState()
-                    var draggedItemIndex by remember { mutableStateOf<Int?>(null) }
-                    var draggedOffsetY by remember { mutableFloatStateOf(0f) }
 
-                    LazyColumn(
-                        state = lazyListState,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(filters) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = { offset ->
-                                        val layoutInfo = lazyListState.layoutInfo
-                                        val item = layoutInfo.visibleItemsInfo.firstOrNull { visibleItem ->
-                                            offset.y.toInt() in visibleItem.offset..(visibleItem.offset + visibleItem.size)
-                                        }
-                                        item?.let {
-                                            if (it.index > 0) {
-                                                draggedItemIndex = it.index - 1
-                                                draggedOffsetY = 0f
-                                            }
-                                        }
-                                    },
-                                    onDragEnd = {
-                                        draggedItemIndex = null
-                                        draggedOffsetY = 0f
-                                    },
-                                    onDragCancel = {
-                                        draggedItemIndex = null
-                                        draggedOffsetY = 0f
-                                    },
-                                    onDrag = { change, dragAmount ->
-                                        change.consume()
-                                        val currentIndex = draggedItemIndex ?: return@detectDragGesturesAfterLongPress
-                                        draggedOffsetY += dragAmount.y
+                        Text(
+                            text = "Recipient Pool: $recipientsCount active contacts matching the \"${selectedFilterForView?.filterName}\" directory filter parameters.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
 
-                                        val layoutInfo = lazyListState.layoutInfo
-                                        val itemBelow = layoutInfo.visibleItemsInfo.firstOrNull { visibleItem ->
-                                            change.position.y.toInt() in visibleItem.offset..(visibleItem.offset + visibleItem.size)
-                                        }
-                                        itemBelow?.let { visibleItem ->
-                                            val targetIndex = visibleItem.index - 1
-                                            if (targetIndex in filters.indices && targetIndex != currentIndex) {
-                                                viewModel.moveFilter(currentIndex, targetIndex)
-                                                draggedOffsetY = 0f
-                                                draggedItemIndex = targetIndex
-                                            }
-                                        }
+                        Text(
+                            text = stringResource(R.string.notify_select_template),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        // 1. Template Dropdown Selector
+                        val dropdownLabel = selectedTemplate?.name ?: "Custom (Empty Canvas)"
+                        ExposedDropdownMenuBox(
+                            expanded = dropdownExpanded,
+                            onExpandedChange = { dropdownExpanded = it }
+                        ) {
+                            OutlinedTextField(
+                                value = dropdownLabel,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Choose Pre-fill Template") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownExpanded) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
+                            )
+
+                            ExposedDropdownMenu(
+                                expanded = dropdownExpanded,
+                                onDismissRequest = { dropdownExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Custom (Blank Textarea)") },
+                                    onClick = {
+                                        selectedTemplate = null
+                                        textBody = ""
+                                        dropdownExpanded = false
                                     }
                                 )
+
+                                messageTemplates.forEach { template ->
+                                    DropdownMenuItem(
+                                        text = { Text(template.name) },
+                                        onClick = {
+                                            selectedTemplate = template
+                                            textBody = template.text
+                                            dropdownExpanded = false
+                                        }
+                                    )
+                                }
                             }
-                    ) {
-                        item {
-                            Text(
-                                text = "Filter Groups (Tap to View • Drag to Reorder)",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(16.dp)
-                            )
                         }
 
-                        itemsIndexed(
-                            items = filters,
-                            key = { _, item -> item.id }
-                        ) { index, filter ->
-                            val isDragging = draggedItemIndex == index
-                            val matchingCount = remember(students, filter) {
-                                students.count { studentState ->
-                                    val valueToCompare = getFieldValue(studentState.student, filter.fieldName)
-                                    evaluateCondition(valueToCompare, filter.comparison, filter.value1, filter.value2)
-                                }
+                        // 2. Message Body Textarea
+                        OutlinedTextField(
+                            value = textBody,
+                            onValueChange = { textBody = it },
+                            label = { Text("Message Body") },
+                            placeholder = { Text(stringResource(R.string.notify_custom_placeholder)) },
+                            minLines = 4,
+                            maxLines = 8,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // 3. Side-by-side Horizontal dialog control row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(onClick = { showBulkSmsDialog = false }) {
+                                Text(stringResource(R.string.action_cancel))
                             }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    val targetPhones = if (bulkSmsTarget == "Students") {
+                                        matchingStudents.map { it.student.contactNumber }.filter { it.isNotBlank() }
+                                    } else {
+                                        matchingStudents.flatMap { s ->
+                                            Guardian.listFromJsonString(s.student.guardiansJson).flatMap { g -> g.phones }
+                                        }.filter { it.isNotBlank() }.distinct()
+                                    }
 
-                            val cardElevation = if (isDragging) 16.dp else 1.dp
-                            val cardScale = if (isDragging) 1.05f else 1.0f
-                            val cardAlpha = if (isDragging) 0.92f else 1.0f
-                            val cardTranslationY = if (isDragging) draggedOffsetY else 0f
-                            val cardBorder = if (isDragging) {
-                                BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-                            } else null
-
-                            var showDeleteDialog by remember { mutableStateOf(false) }
-
-                            @Suppress("DEPRECATION")
-                            val dismissState = rememberSwipeToDismissBoxState(
-                                confirmValueChange = { dismissValue ->
-                                    when (dismissValue) {
-                                        SwipeToDismissBoxValue.StartToEnd -> {
-                                            editingFilter = filter
-                                            false
+                                    if (targetPhones.isEmpty()) {
+                                        Toast.makeText(context, R.string.bulk_sms_no_recipients, Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        val separator = if (android.os.Build.MANUFACTURER.equals("Samsung", ignoreCase = true)) ";" else ","
+                                        val numbers = targetPhones.joinToString(separator)
+                                        val smsUri = "smsto:$numbers".toUri()
+                                        val smsIntent = Intent(Intent.ACTION_SENDTO, smsUri).apply {
+                                            putExtra("sms_body", textBody)
                                         }
-                                        SwipeToDismissBoxValue.EndToStart -> {
-                                            showDeleteDialog = true
-                                            false
+                                        try {
+                                            context.startActivity(smsIntent)
+                                            showBulkSmsDialog = false
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                            Toast.makeText(context, R.string.notify_error_intent_failed, Toast.LENGTH_LONG).show()
                                         }
-                                        SwipeToDismissBoxValue.Settled -> false
-                                    }
-                                }
-                            )
-
-                            SwipeToDismissBox(
-                                state = dismissState,
-                                modifier = Modifier
-                                    .animateItem()
-                                    .zIndex(if (isDragging) 10f else 0f),
-                                enableDismissFromStartToEnd = !isDragging,
-                                enableDismissFromEndToStart = !isDragging,
-                                backgroundContent = {
-                                    val color = when (dismissState.dismissDirection) {
-                                        SwipeToDismissBoxValue.StartToEnd -> MaterialTheme.colorScheme.primaryContainer
-                                        SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.errorContainer
-                                        else -> Color.Transparent
-                                    }
-                                    val alignment = when (dismissState.dismissDirection) {
-                                        SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
-                                        SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
-                                        else -> Alignment.Center
-                                    }
-                                    val icon = when (dismissState.dismissDirection) {
-                                        SwipeToDismissBoxValue.StartToEnd -> Icons.Default.Edit
-                                        SwipeToDismissBoxValue.EndToStart -> Icons.Default.Delete
-                                        else -> Icons.Default.Delete
-                                    }
-
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(horizontal = 16.dp, vertical = 6.dp)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(color),
-                                        contentAlignment = alignment
-                                    ) {
-                                        Icon(
-                                            imageVector = icon,
-                                            contentDescription = null,
-                                            modifier = Modifier.padding(horizontal = 24.dp)
-                                        )
                                     }
                                 },
-                                content = {
-                                    Card(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 16.dp, vertical = 6.dp)
-                                            .graphicsLayer {
-                                                scaleX = cardScale
-                                                scaleY = cardScale
-                                                alpha = cardAlpha
-                                                translationY = cardTranslationY
-                                                shadowElevation = if (isDragging) 24f else 0f
-                                            }
-                                            .clickable { activeFilterForListing = filter },
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = if (isDragging) {
-                                                MaterialTheme.colorScheme.surfaceContainerHigh
-                                            } else {
-                                                MaterialTheme.colorScheme.surfaceVariant
-                                            }
-                                        ),
-                                        elevation = CardDefaults.cardElevation(
-                                            defaultElevation = cardElevation
-                                        ),
-                                        border = cardBorder
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(16.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = "${filter.filterName} ($matchingCount)",
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 16.sp
-                                                )
-                                                Text(
-                                                    text = "Field: ${filter.fieldName.replace("_", " ")} | ${filter.comparison} ${filter.value1}",
-                                                    fontSize = 12.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                                )
-                                            }
-
-                                            // Direct layout action buttons [1]
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                IconButton(onClick = { editingFilter = filter }) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Edit,
-                                                        contentDescription = "Edit Filter",
-                                                        tint = MaterialTheme.colorScheme.primary
-                                                    )
-                                                }
-                                                IconButton(onClick = { showDeleteDialog = true }) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Delete,
-                                                        contentDescription = "Delete Filter",
-                                                        tint = MaterialTheme.colorScheme.error
-                                                    )
-                                                }
-                                                Icon(
-                                                    imageVector = Icons.Default.DragHandle,
-                                                    contentDescription = "Drag to reorder",
-                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            )
-
-                            if (showDeleteDialog) {
-                                AlertDialog(
-                                    onDismissRequest = { showDeleteDialog = false },
-                                    title = { Text("Delete Filter?") },
-                                    text = { Text("Are you sure you want to move the '${filter.filterName}' group to the Recycle Bin? It can be restored within 30 days.") },
-                                    confirmButton = {
-                                        Button(
-                                            onClick = {
-                                                showDeleteDialog = false
-                                                viewModel.deleteFilter(filter.id)
-                                                Toast.makeText(context, "Filter moved to Recycle Bin.", Toast.LENGTH_SHORT).show()
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                                        ) { Text("Delete") }
-                                    },
-                                    dismissButton = {
-                                        TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
-                                    },
-                                    shape = RoundedCornerShape(28.dp)
-                                )
+                                enabled = textBody.isNotBlank() && recipientsCount > 0,
+                                shape = RoundedCornerShape(20.dp)
+                            ) {
+                                Text(stringResource(R.string.bulk_sms_action))
                             }
                         }
                     }
@@ -405,27 +480,189 @@ fun SavedFiltersScreen(
             }
         }
 
-        if (showAddDialog) {
-            FilterDialogForm(
-                templates = templates,
-                onDismiss = { showAddDialog = false },
-                onSave = { newFilter ->
-                    viewModel.saveFilter(newFilter)
-                    showAddDialog = false
-                    Toast.makeText(context, "Filter saved!", Toast.LENGTH_SHORT).show()
-                }
+        // CREATE ATTENDANCE RECORD DIALOG
+        if (showCreateAttendanceDialog && selectedFilterForView != null) {
+            val m3TextFieldColors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                focusedLabelColor = MaterialTheme.colorScheme.primary,
+                unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            AlertDialog(
+                onDismissRequest = {
+                    showCreateAttendanceDialog = false
+                    attendanceRecordName = ""
+                },
+                title = { Text(stringResource(R.string.attendance_new_record_title), fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .imePadding(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = attendanceRecordName,
+                            onValueChange = { attendanceRecordName = it },
+                            label = { Text(stringResource(R.string.attendance_record_name_label)) },
+                            colors = m3TextFieldColors,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Text(stringResource(R.string.attendance_select_date_range), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+
+                        val selectionSdf = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
+
+                        OutlinedButton(
+                            onClick = { showStartPicker = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            border = if (isDateRangeInvalid) BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) else ButtonDefaults.outlinedButtonBorder(enabled = true)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val formattedStart = selectionSdf.format(Date(startDateMillis))
+                                Text(stringResource(R.string.attendance_start_date_label, formattedStart), color = MaterialTheme.colorScheme.onSurface)
+                                Icon(Icons.Default.CalendarToday, contentDescription = "Select Start Date", tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = { showEndPicker = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            border = if (isDateRangeInvalid) BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) else ButtonDefaults.outlinedButtonBorder(enabled = true)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val formattedEnd = selectionSdf.format(Date(endDateMillis))
+                                Text(stringResource(R.string.attendance_end_date_label, formattedEnd), color = MaterialTheme.colorScheme.onSurface)
+                                Icon(Icons.Default.CalendarToday, contentDescription = "Select End Date", tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                            }
+                        }
+
+                        if (isDateRangeInvalid) {
+                            Text(
+                                text = stringResource(R.string.attendance_date_range_error),
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(start = 4.dp, top = 2.dp)
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (attendanceRecordName.isNotBlank() && !isDateRangeInvalid) {
+                                scope.launch {
+                                    val normalizedStart = Calendar.getInstance().apply {
+                                        timeInMillis = startDateMillis
+                                        set(Calendar.HOUR_OF_DAY, 0)
+                                        set(Calendar.MINUTE, 0)
+                                        set(Calendar.SECOND, 0)
+                                        set(Calendar.MILLISECOND, 0)
+                                    }.timeInMillis
+
+                                    val normalizedEnd = Calendar.getInstance().apply {
+                                        timeInMillis = endDateMillis
+                                        set(Calendar.HOUR_OF_DAY, 0)
+                                        set(Calendar.MINUTE, 0)
+                                        set(Calendar.SECOND, 0)
+                                        set(Calendar.MILLISECOND, 0)
+                                    }.timeInMillis
+
+                                    // Build attendance record linked to this filter
+                                    val record = dev.soloistdev.studenttracker.data.AttendanceRecordEntity(
+                                        name = attendanceRecordName.trim(),
+                                        savedFilterId = selectedFilterForView!!.id,
+                                        startDate = normalizedStart,
+                                        endDate = normalizedEnd
+                                    )
+                                    val recordId = repository.insertAttendanceRecord(record).toInt()
+
+                                    // Populate log sheets
+                                    val daysList = generateDateList(normalizedStart, normalizedEnd)
+                                    daysList.forEach { date ->
+                                        matchingStudents.forEach { studentState ->
+                                            repository.insertAttendanceLog(
+                                                dev.soloistdev.studenttracker.data.AttendanceLogEntity(
+                                                    recordId = recordId,
+                                                    dateMillis = date,
+                                                    studentId = studentState.student.id,
+                                                    status = "NOT_SET"
+                                                )
+                                            )
+                                        }
+                                    }
+                                    showCreateAttendanceDialog = false
+                                    attendanceRecordName = ""
+                                    Toast.makeText(context, R.string.toast_attendance_created, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        enabled = attendanceRecordName.isNotBlank() && !isDateRangeInvalid
+                    ) {
+                        Text(stringResource(R.string.action_create))
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showCreateAttendanceDialog = false
+                            attendanceRecordName = ""
+                        }
+                    ) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
             )
         }
 
-        editingFilter?.let { filter ->
+        if (showStartPicker) {
+            val pickerState = rememberDatePickerState(initialSelectedDateMillis = startDateMillis)
+            DatePickerDialog(
+                onDismissRequest = { showStartPicker = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        pickerState.selectedDateMillis?.let { startDateMillis = it }
+                        showStartPicker = false
+                    }) { Text(stringResource(R.string.action_ok)) }
+                }
+            ) { DatePicker(state = pickerState, showModeToggle = false) }
+        }
+
+        if (showEndPicker) {
+            val pickerState = rememberDatePickerState(initialSelectedDateMillis = endDateMillis)
+            DatePickerDialog(
+                onDismissRequest = { showEndPicker = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        pickerState.selectedDateMillis?.let { endDateMillis = it }
+                        showEndPicker = false
+                    }) { Text(stringResource(R.string.action_ok)) }
+                }
+            ) { DatePicker(state = pickerState, showModeToggle = false) }
+        }
+
+        if (showFilterDialog) {
             FilterDialogForm(
                 templates = templates,
-                existingFilter = filter,
-                onDismiss = { editingFilter = null },
+                existingFilter = editingFilter,
+                onDismiss = { showFilterDialog = false },
                 onSave = { updatedFilter ->
                     viewModel.saveFilter(updatedFilter)
-                    editingFilter = null
-                    Toast.makeText(context, "Filter updated!", Toast.LENGTH_SHORT).show()
+                    showFilterDialog = false
                 }
             )
         }
@@ -815,12 +1052,23 @@ private fun getFieldValue(student: StudentEntity, field: String): String {
         "First Name" -> student.firstName
         "Last Name" -> student.lastName
         "Gender" -> if (student.gender == "F") "Female" else "Male"
-        "Address" -> student.address
+        "Address", "Home Address" -> student.address
+        "Student Contact" -> student.contactNumber
         "Age" -> {
-            val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
-            age.toString()
+            val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+            val birthCal = Calendar.getInstance().apply { timeInMillis = student.birthday }
+            val birthYear = birthCal.get(Calendar.YEAR)
+            (currentYear - birthYear).toString()
         }
         "Birthday" -> student.birthday.toString()
+        "Guardian Name" -> {
+            val guardians = Guardian.listFromJsonString(student.guardiansJson)
+            if (guardians.isNotEmpty()) guardians[0].name else ""
+        }
+        "Guardian Contact" -> {
+            val guardians = Guardian.listFromJsonString(student.guardiansJson)
+            if (guardians.isNotEmpty()) guardians[0].phones.firstOrNull() ?: "" else ""
+        }
         else -> {
             try {
                 JSONObject(student.customDataJson).optString(field, "")
@@ -829,6 +1077,10 @@ private fun getFieldValue(student: StudentEntity, field: String): String {
             }
         }
     }
+}
+
+private fun applyComparison(fieldValue: String, filter: FilterState): Boolean {
+    return evaluateCondition(fieldValue, filter.comparison, filter.value1, filter.value2)
 }
 
 private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2: String): Boolean {
@@ -866,8 +1118,16 @@ private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2
         "does not contain" -> !cleanVal.contains(v1, ignoreCase = true)
         "equal" -> cleanVal.equals(v1, ignoreCase = true)
         "not equal" -> !cleanVal.equals(v1, ignoreCase = true)
-        "greater than" -> (cleanVal.toDoubleOrNull() ?: 0.0) > (v1.toDoubleOrNull() ?: 0.0)
-        "less than" -> (cleanVal.toDoubleOrNull() ?: 0.0) < (v1.toDoubleOrNull() ?: 0.0)
+        "greater than" -> {
+            val numField = cleanVal.toDoubleOrNull()
+            val numVal = v1.toDoubleOrNull()
+            if (numField != null && numVal != null) numField > numVal else false
+        }
+        "less than" -> {
+            val numField = cleanVal.toDoubleOrNull()
+            val numVal = v1.toDoubleOrNull()
+            if (numField != null && numVal != null) numField < numVal else false
+        }
         "In between" -> {
             val num = cleanVal.toDoubleOrNull() ?: 0.0
             val min = v1.toDoubleOrNull() ?: 0.0
@@ -876,4 +1136,27 @@ private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2
         }
         else -> true
     }
+}
+
+private fun generateDateList(startDate: Long, endDate: Long): List<Long> {
+    val dates = mutableListOf<Long>()
+    val startCal = Calendar.getInstance().apply {
+        timeInMillis = startDate
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val endCal = Calendar.getInstance().apply {
+        timeInMillis = endDate
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    while (!startCal.after(endCal)) {
+        dates.add(startCal.timeInMillis)
+        startCal.add(Calendar.DAY_OF_YEAR, 1)
+    }
+    return dates
 }

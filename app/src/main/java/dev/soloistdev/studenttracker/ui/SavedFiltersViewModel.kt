@@ -7,6 +7,7 @@ import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.SavedFilterEntity
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
+import dev.soloistdev.studenttracker.data.MessageTemplateEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -59,6 +60,10 @@ class SavedFiltersViewModel(application: android.app.Application) : AndroidViewM
     private val _templates = MutableStateFlow<List<FormTemplateEntity>>(emptyList())
     val templates: StateFlow<List<FormTemplateEntity>> = _templates
 
+    // ADDED: StateFlow to observe message templates
+    private val _messageTemplates = MutableStateFlow<List<MessageTemplateEntity>>(emptyList())
+    val messageTemplates: StateFlow<List<MessageTemplateEntity>> = _messageTemplates
+
     init {
         loadData()
     }
@@ -68,17 +73,17 @@ class SavedFiltersViewModel(application: android.app.Application) : AndroidViewM
             _filters.value = repository.getAllSavedFilters()
             _students.value = repository.getAllActiveStudents()
             _templates.value = repository.getAllFormTemplates()
+            _messageTemplates.value = repository.getAllMessageTemplates() // LOADED: Custom templates
         }
     }
 
-    // Resolved: Keeps original displayOrder during filter updates [1]
     fun saveFilter(entity: SavedFilterEntity) {
         viewModelScope.launch {
             val filterToInsert = if (entity.id == 0) {
                 val maxOrder = _filters.value.maxOfOrNull { it.displayOrder } ?: 0
                 entity.copy(displayOrder = maxOrder + 1)
             } else {
-                entity // Retains the original drag-and-drop order on edit [1]
+                entity
             }
             repository.insertSavedFilter(filterToInsert)
             loadData()

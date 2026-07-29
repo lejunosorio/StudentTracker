@@ -200,9 +200,23 @@ fun AppNavigation() {
                 },
                 onStudentClick = { id ->
                     navController.navigate("profile/$id")
+                },
+                onNavigateToTemplates = {
+                    navController.navigate(ScreenRoute.MESSAGE_TEMPLATES)
                 }
             )
         }
+
+        composable(ScreenRoute.MESSAGE_TEMPLATES) {
+            MessageTemplatesScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
+            )
+        }
+
 
         composable(ScreenRoute.BIOMETRICS_PRIVACY) {
             BiometricsPrivacyScreen(
@@ -327,4 +341,7 @@ object ScreenRoute {
     const val ATTENDANCE = "attendance?recordId={recordId}&dateMillis={dateMillis}"
     const val APP_SETTINGS = "app_settings"
     const val IMPORT_STUDENT = "import_student?id={id}&first={first}&last={last}&gender={gender}&birthday={birthday}&address={address}&contact={contact}&guardians={guardians}&custom={custom}"
+
+    const val MESSAGE_TEMPLATES = "message_templates"
+
 }

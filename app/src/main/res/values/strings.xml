@@ -396,4 +396,20 @@
     <string name="sms_template_behavior">Dear %1\$s, we are pleased to share a behavioral milestone update for %2\$s on %3\$s. Event: \"%4\$s\". Notes: %5\$s</string>
     <string name="sms_template_custom">Dear %1\$s, regarding %2\$s: %3\$s</string>
 
+    <!-- Message Templates Screen Strings -->
+    <string name="menu_message_templates">Message Templates</string>
+    <string name="template_label_name">Template Name *</string>
+    <string name="template_label_text">Template Body Text *</string>
+    <string name="template_add_title">New Message Template</string>
+    <string name="template_edit_title">Edit Message Template</string>
+    <string name="toast_template_saved">Template successfully saved.</string>
+    <string name="toast_template_deleted">Template deleted.</string>
+    <string name="error_template_name_required">Template Name is required.</string>
+    <string name="error_template_text_required">Template text is required.</string>
+
+    <!-- Saved Filters Screen Actions -->
+    <string name="saved_filter_sms_students">SMS to Students</string>
+    <string name="saved_filter_sms_guardians">SMS to Guardians</string>
+    <string name="bulk_sms_action">SMS All</string>
+    <string name="bulk_sms_no_recipients">No valid phone numbers found for this roster selection.</string>
 </resources>

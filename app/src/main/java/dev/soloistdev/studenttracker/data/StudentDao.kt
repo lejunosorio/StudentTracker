@@ -124,4 +124,14 @@ interface StudentDao {
 
     @Query("DELETE FROM behavior_incidents WHERE id = :incidentId")
     fun deleteIncident(incidentId: Int)
+
+    // --- MESSAGE TEMPLATES QUERIES ---
+    @Query("SELECT * FROM message_templates ORDER BY name ASC")
+    fun getAllMessageTemplates(): List<MessageTemplateEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertMessageTemplate(template: MessageTemplateEntity): Long
+
+    @Query("DELETE FROM message_templates WHERE id = :templateId")
+    fun deleteMessageTemplate(templateId: Int)
 }
