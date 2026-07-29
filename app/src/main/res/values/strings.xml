@@ -339,4 +339,14 @@
     <string name="sync_p2p_state_success">Local database synchronization completed successfully!</string>
     <string name="sync_p2p_state_error">Local sync error: %1$s</string>
     <string name="toast_p2p_transmission_success">Database successfully sent to peer!</string>
+
+    <!-- Optical QR Onboarding Strings [1] -->
+    <string name="profile_qr_card_title">Digital ID Profile QR</string>
+    <string name="profile_qr_card_desc">Tap to view/scan profile QR code</string>
+    <string name="import_student_title">Import Roster Profile</string>
+    <string name="import_student_existing_desc">This student is already registered in your local directory list.</string>
+    <string name="import_student_new_desc">This is a discovered student profile. Save to import them into your local directory list.</string>
+    <string name="toast_student_imported">Student successfully saved to local directory!</string>
+
+    <string name="action_edit">Edit</string>
 </resources>

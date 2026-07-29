@@ -1,6 +1,7 @@
 package dev.soloistdev.studenttracker
 
 import android.content.Context
+import android.content.Intent // Resolved: Explicit Intent import
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.widget.Toast
@@ -12,11 +13,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.fragment.app.FragmentActivity
-import androidx.lifecycle.lifecycleScope // Required for coroutine scope launches [1]
+import androidx.lifecycle.lifecycleScope
 import dev.soloistdev.studenttracker.security.IntegrityChecker
 import dev.soloistdev.studenttracker.ui.AppNavigation
 import dev.soloistdev.studenttracker.ui.theme.StudentTrackerTheme
-import kotlinx.coroutines.Dispatchers // Required for thread scheduling [1]
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -24,7 +25,6 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 1. Asynchronous Root Check to prevent main-thread ANR stutters [1]
         val integrityChecker = IntegrityChecker(this)
         lifecycleScope.launch(Dispatchers.IO) {
             val isRooted = integrityChecker.isDeviceRooted()
@@ -36,18 +36,15 @@ class MainActivity : FragmentActivity() {
             }
         }
 
-        // 2. Anti-Tapjacking Overlay Protection
         window.decorView.filterTouchesWhenObscured = true
 
         setContent {
             val context = this
             val sharedPrefs = remember { context.getSharedPreferences("app_settings", Context.MODE_PRIVATE) }
 
-            // Reactive states mapped to the unencrypted SharedPreferences XML
             var dynamicColorEnabled by remember { mutableStateOf(sharedPrefs.getBoolean("dynamic_colors", true)) }
             var forceDarkThemeEnabled by remember { mutableStateOf(sharedPrefs.getBoolean("force_dark_theme", true)) }
 
-            // DisposableEffect registers/unregisters the listener cleanly withCompose Lifecycles
             DisposableEffect(sharedPrefs) {
                 val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
                     when (key) {
@@ -65,7 +62,6 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
-            // Fallback rules: Force Dark Mode, or fallback dynamically to the Android system OS setting
             val darkThemeMode = if (forceDarkThemeEnabled) true else isSystemInDarkTheme()
 
             StudentTrackerTheme(
@@ -80,5 +76,11 @@ class MainActivity : FragmentActivity() {
                 }
             }
         }
+    }
+
+    // Resolved: Intercepts and sets incoming background deep-links so the NavHost can read them in real-time [1]
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent) // Re-sets the active activity intent [1]
     }
 }

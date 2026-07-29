@@ -61,6 +61,29 @@ object PdfGeneratorHelper {
         paint.color = Color.DKGRAY
         canvas.drawRect(40f, 80f, 555f, 82f, paint)
 
+        val encodedFirst = android.net.Uri.encode(student.firstName)
+        val encodedLast = android.net.Uri.encode(student.lastName)
+        val encodedAddress = android.net.Uri.encode(student.address)
+        val encodedContact = android.net.Uri.encode(student.contactNumber)
+        val encodedGuardians = android.net.Uri.encode(student.guardiansJson)
+        val encodedCustom = android.net.Uri.encode(student.customDataJson)
+
+        val qrPayload = "studenttracker://student?id=${student.id}" +
+                "&first=$encodedFirst" +
+                "&last=$encodedLast" +
+                "&gender=${student.gender}" +
+                "&birthday=${student.birthday}" +
+                "&address=$encodedAddress" +
+                "&contact=$encodedContact" +
+                "&guardians=$encodedGuardians" +
+                "&custom=$encodedCustom"
+
+        // 2. Render and write QR code Bitmap onto the PDF canvas next to the page header [1]
+        val qrBitmap = QrCodeGenerator.generateQrCode(qrPayload, size = 80)
+        if (qrBitmap != null) {
+            canvas.drawBitmap(qrBitmap, 475f, 15f, null)
+        }
+
         var yPosition = 120f
         canvas.drawText("Name: ${student.lastName}, ${student.firstName}", 40f, yPosition, textPaint)
         yPosition += 25f

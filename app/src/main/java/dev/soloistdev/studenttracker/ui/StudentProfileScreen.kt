@@ -3,6 +3,7 @@ package dev.soloistdev.studenttracker.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.Image // Resolved: Explicit Image import [1]
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -15,19 +16,25 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.ExpandLess // Resolved: Explicit ExpandLess import [1]
+import androidx.compose.material.icons.filled.ExpandMore // Resolved: Explicit ExpandMore import [1]
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap // Resolved: Explicit asImageBitmap import [1]
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource // Resolved: Explicit stringResource import [1]
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.soloistdev.studenttracker.R // Resolved: Explicit R file import [1]
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.Guardian
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
+import dev.soloistdev.studenttracker.security.QrCodeGenerator // Resolved: Explicit QrCodeGenerator import [1]
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
@@ -203,12 +210,74 @@ fun StudentProfileScreen(
                     )
                 }
 
-                // Dynamic custom fields iteration restricted by template manager configuration [1]
+                // EXPANDABLE DIGITAL ID PROFILE QR CODE CARD [1]
+                var qrExpanded by remember { mutableStateOf(false) }
+                val qrPayload = remember(currentStudent) {
+                    val encodedFirst = Uri.encode(currentStudent.firstName)
+                    val encodedLast = Uri.encode(currentStudent.lastName)
+                    val encodedAddress = Uri.encode(currentStudent.address)
+                    val encodedContact = Uri.encode(currentStudent.contactNumber)
+                    val encodedGuardians = Uri.encode(currentStudent.guardiansJson)
+                    val encodedCustom = Uri.encode(currentStudent.customDataJson)
+
+                    "studenttracker://student?id=${currentStudent.id}" +
+                            "&first=$encodedFirst" +
+                            "&last=$encodedLast" +
+                            "&gender=${currentStudent.gender}" +
+                            "&birthday=${currentStudent.birthday}" +
+                            "&address=$encodedAddress" +
+                            "&contact=$encodedContact" +
+                            "&guardians=$encodedGuardians" +
+                            "&custom=$encodedCustom"
+                }
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .clickable { qrExpanded = !qrExpanded },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(text = stringResource(R.string.profile_qr_card_title), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(text = stringResource(R.string.profile_qr_card_desc), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            }
+                            Icon(
+                                imageVector = if (qrExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null
+                            )
+                        }
+
+                        if (qrExpanded) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            val qrBitmap = remember(qrPayload) { QrCodeGenerator.generateQrCode(qrPayload, size = 200) }
+                            if (qrBitmap != null) {
+                                Image(
+                                    bitmap = qrBitmap.asImageBitmap(),
+                                    contentDescription = "Profile QR Code",
+                                    modifier = Modifier.size(200.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Dynamic custom fields iteration restricted by template manager configuration
                 val customJson = remember(currentStudent.customDataJson) {
                     try { JSONObject(currentStudent.customDataJson) } catch (_: Exception) { JSONObject() }
                 }
 
-                // Keep only keys that exist in activeTemplates list [1]
+                // Keep only keys that exist in activeTemplates list
                 val activeTemplateKeys = remember(activeTemplates) { activeTemplates.map { it.fieldName } }
 
                 val keys = customJson.keys()
