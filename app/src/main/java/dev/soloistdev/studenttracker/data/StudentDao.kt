@@ -112,8 +112,16 @@ interface StudentDao {
 
     @Query("SELECT * FROM attendance_logs WHERE recordId = :recordId")
     fun getLogsForRecord(recordId: Int): List<AttendanceLogEntity>
-
-    // Resolved: Query all logs across records for smart P2P syncing [1]
     @Query("SELECT * FROM attendance_logs")
     fun getAllAttendanceLogs(): List<AttendanceLogEntity>
+
+    // --- BEHAVIOR INCIDENTS QUERIES ---
+    @Query("SELECT * FROM behavior_incidents WHERE studentId = :studentId ORDER BY timestamp DESC")
+    fun getIncidentsForStudent(studentId: Int): List<BehaviorIncidentEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertIncident(incident: BehaviorIncidentEntity): Long
+
+    @Query("DELETE FROM behavior_incidents WHERE id = :incidentId")
+    fun deleteIncident(incidentId: Int)
 }

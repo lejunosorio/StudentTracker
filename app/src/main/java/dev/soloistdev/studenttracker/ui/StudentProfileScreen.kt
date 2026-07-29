@@ -3,6 +3,7 @@ package dev.soloistdev.studenttracker.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -11,7 +12,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -23,7 +25,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap // Resolved: Explicit extension import [1]
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -34,10 +37,13 @@ import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.Guardian
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
+import dev.soloistdev.studenttracker.data.BehaviorIncidentEntity
 import dev.soloistdev.studenttracker.security.QrCodeGenerator
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlinx.coroutines.launch
+import androidx.core.net.toUri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,18 +56,28 @@ fun StudentProfileScreen(
     repository: StudentRepository = StudentRepository(LocalContext.current)
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     var student by remember { mutableStateOf<StudentEntity?>(null) }
     var showDeleteDialog by remember { mutableStateOf(false) }
-
-    // Active custom field templates registry [1]
     var activeTemplates by remember { mutableStateOf<List<FormTemplateEntity>>(emptyList()) }
+
+    // Behavior Tracking States
+    var incidents by remember { mutableStateOf<List<BehaviorIncidentEntity>>(emptyList()) }
+    var behaviorExpanded by remember { mutableStateOf(false) }
+    var showAddIncidentDialog by remember { mutableStateOf(false) }
+
+    fun refreshIncidents() {
+        scope.launch {
+            incidents = repository.getIncidentsForStudent(studentId)
+        }
+    }
 
     LaunchedEffect(Unit) {
         val list = repository.getAllActiveStudents()
         student = list.find { studentEntity -> studentEntity.id == studentId }
-
-        // Load active configured field keys [1]
         activeTemplates = repository.getAllFormTemplates()
+        refreshIncidents()
     }
 
     Scaffold(
@@ -70,7 +86,7 @@ fun StudentProfileScreen(
                 title = { Text("Profile", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
@@ -144,11 +160,13 @@ fun StudentProfileScreen(
                     Button(
                         onClick = {
                             if (currentStudent.address.isNotBlank()) {
-                                val intentUri = Uri.parse("geo:0,0?q=${Uri.encode(currentStudent.address)}")
+                                val intentUri =
+                                    "geo:0,0?q=${Uri.encode(currentStudent.address)}".toUri()
                                 val mapIntent = Intent(Intent.ACTION_VIEW, intentUri)
                                 try {
                                     context.startActivity(mapIntent)
                                 } catch (e: Exception) {
+                                    e.printStackTrace()
                                     Toast.makeText(context, "No maps application installed.", Toast.LENGTH_SHORT).show()
                                 }
                             } else {
@@ -193,7 +211,8 @@ fun StudentProfileScreen(
                         trailingIcon = {
                             IconButton(
                                 onClick = {
-                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${currentStudent.contactNumber}"))
+                                    val intent = Intent(Intent.ACTION_DIAL,
+                                        "tel:${currentStudent.contactNumber}".toUri())
                                     context.startActivity(intent)
                                 },
                                 colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
@@ -210,7 +229,7 @@ fun StudentProfileScreen(
                     )
                 }
 
-                // EXPANDABLE DIGITAL ID PROFILE QR CODE CARD [1]
+                // EXPANDABLE DIGITAL ID PROFILE QR CODE CARD
                 var qrExpanded by remember { mutableStateOf(false) }
                 val qrPayload = remember(currentStudent) {
                     val encodedFirst = Uri.encode(currentStudent.firstName)
@@ -270,9 +289,8 @@ fun StudentProfileScreen(
                             }
 
                             if (qrBitmapWithLabel != null) {
-                                // Resolved: Invokes extension function as a member of the Bitmap instance [1]
                                 Image(
-                                    bitmap = qrBitmapWithLabel.asImageBitmap(), // Corrected dot-notation [1]
+                                    bitmap = qrBitmapWithLabel.asImageBitmap(),
                                     contentDescription = "Profile QR Code with Label",
                                     modifier = Modifier.size(200.dp)
                                 )
@@ -287,7 +305,6 @@ fun StudentProfileScreen(
                                     val savedSuccessMsg = stringResource(R.string.toast_qr_saved_success)
                                     val savedErrorMsg = stringResource(R.string.toast_qr_saved_error)
 
-                                    // Local Download Button [1]
                                     Button(
                                         onClick = {
                                             val success = QrCodeGenerator.saveQrToGallery(
@@ -308,7 +325,6 @@ fun StudentProfileScreen(
                                         Text(stringResource(R.string.action_download_qr), fontSize = 11.sp, maxLines = 1)
                                     }
 
-                                    // External Share Button [1]
                                     OutlinedButton(
                                         onClick = {
                                             QrCodeGenerator.shareQrCode(
@@ -328,12 +344,156 @@ fun StudentProfileScreen(
                     }
                 }
 
+                // EXPANDABLE LOCAL BEHAVIOR LOG & MILESTONES CARD
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .clickable { behaviorExpanded = !behaviorExpanded },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.behavior_log_title),
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = stringResource(R.string.behavior_log_desc),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            Icon(
+                                imageVector = if (behaviorExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null
+                            )
+                        }
+
+                        if (behaviorExpanded) {
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            if (incidents.isEmpty()) {
+                                Text(
+                                    text = stringResource(R.string.behavior_log_empty),
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            } else {
+                                val logSdf = remember { SimpleDateFormat("MMM dd, yyyy - hh:mm a", Locale.US) }
+                                incidents.forEach { incident ->
+                                    val badgeColor = when (incident.category) {
+                                        "Positive" -> Color(0xFF4CAF50)
+                                        "Negative" -> Color(0xFFF44336)
+                                        else -> Color(0xFF9E9E9E)
+                                    }
+
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Surface(
+                                                        color = badgeColor,
+                                                        shape = RoundedCornerShape(4.dp),
+                                                        modifier = Modifier.padding(end = 8.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = incident.category.uppercase(),
+                                                            color = Color.White,
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = incident.title,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 14.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                                if (incident.description.isNotBlank()) {
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Text(
+                                                        text = incident.description,
+                                                        fontSize = 13.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = logSdf.format(Date(incident.timestamp)),
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    scope.launch {
+                                                        repository.deleteIncident(incident.id)
+                                                        refreshIncidents()
+                                                        Toast.makeText(context, R.string.toast_incident_deleted, Toast.LENGTH_SHORT).show()
+                                                    }
+                                                },
+                                                modifier = Modifier.size(36.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Delete,
+                                                    contentDescription = "Delete",
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedButton(
+                                onClick = { showAddIncidentDialog = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                                shape = RoundedCornerShape(20.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = stringResource(R.string.behavior_action_add),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Dynamic custom fields iteration restricted by template manager configuration
                 val customJson = remember(currentStudent.customDataJson) {
                     try { JSONObject(currentStudent.customDataJson) } catch (_: Exception) { JSONObject() }
                 }
 
-                // Keep only keys that exist in activeTemplates list
                 val activeTemplateKeys = remember(activeTemplates) { activeTemplates.map { it.fieldName } }
 
                 val keys = customJson.keys()
@@ -394,7 +554,8 @@ fun StudentProfileScreen(
                                         Text(phone, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         IconButton(
                                             onClick = {
-                                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
+                                                val intent = Intent(Intent.ACTION_DIAL,
+                                                    "tel:$phone".toUri())
                                                 context.startActivity(intent)
                                             },
                                             colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
@@ -416,6 +577,141 @@ fun StudentProfileScreen(
             }
         } ?: Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
+        }
+
+        // ADD INCIDENT DIALOG
+        if (showAddIncidentDialog) {
+            var incidentTitle by remember { mutableStateOf("") }
+            var selectedCategory by remember { mutableStateOf("Positive") }
+            var incidentDescription by remember { mutableStateOf("") }
+
+            val categories = listOf("Positive", "Negative", "Neutral")
+            val chipColors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                containerColor = Color.Transparent,
+                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            AlertDialog(
+                onDismissRequest = { showAddIncidentDialog = false },
+                title = { Text(stringResource(R.string.behavior_dialog_title), fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .imePadding(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = incidentTitle,
+                            onValueChange = { incidentTitle = it },
+                            label = { Text(stringResource(R.string.behavior_field_title)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Text(
+                            text = stringResource(R.string.behavior_quick_select),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            val templates = listOf(
+                                stringResource(R.string.behavior_quick_helpful) to "Positive",
+                                stringResource(R.string.behavior_quick_excellent) to "Positive",
+                                stringResource(R.string.behavior_quick_late) to "Negative",
+                                stringResource(R.string.behavior_quick_disrupt) to "Negative"
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                templates.chunked(2).forEach { chunk ->
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        chunk.forEach { (label, cat) ->
+                                            SuggestionChip(
+                                                onClick = {
+                                                    incidentTitle = label
+                                                    selectedCategory = cat
+                                                },
+                                                label = { Text(label, fontSize = 11.sp) }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = stringResource(R.string.behavior_field_category),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            categories.forEach { category ->
+                                val labelRes = when (category) {
+                                    "Positive" -> R.string.behavior_cat_positive
+                                    "Negative" -> R.string.behavior_cat_negative
+                                    else -> R.string.behavior_cat_neutral
+                                }
+                                FilterChip(
+                                    selected = selectedCategory == category,
+                                    onClick = { selectedCategory = category },
+                                    label = { Text(stringResource(labelRes)) },
+                                    colors = chipColors
+                                )
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = incidentDescription,
+                            onValueChange = { incidentDescription = it },
+                            label = { Text(stringResource(R.string.behavior_field_notes)) },
+                            maxLines = 3,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (incidentTitle.isBlank()) {
+                                Toast.makeText(context, R.string.error_behavior_title_required, Toast.LENGTH_SHORT).show()
+                            } else {
+                                scope.launch {
+                                    val newIncident = BehaviorIncidentEntity(
+                                        studentId = studentId,
+                                        title = incidentTitle.trim(),
+                                        category = selectedCategory,
+                                        description = incidentDescription.trim()
+                                    )
+                                    repository.insertIncident(newIncident)
+                                    refreshIncidents()
+                                    showAddIncidentDialog = false
+                                    Toast.makeText(context, R.string.toast_incident_logged, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    ) {
+                        Text(stringResource(R.string.action_save))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAddIncidentDialog = false }) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
         }
 
         if (showDeleteDialog && student != null) {

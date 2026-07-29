@@ -147,8 +147,19 @@ class StudentRepository(private val context: Context) {
         studentDao.getLogsForRecord(recordId)
     }
 
-    // Resolved: Query all logs across records [1]
     suspend fun getAllAttendanceLogs(): List<AttendanceLogEntity> = withContext(Dispatchers.IO) {
         studentDao.getAllAttendanceLogs()
+    }
+    // Behavior Incidents Accessors
+    suspend fun getIncidentsForStudent(studentId: Int): List<BehaviorIncidentEntity> = withContext(Dispatchers.IO) {
+        studentDao.getIncidentsForStudent(studentId)
+    }
+
+    suspend fun insertIncident(incident: BehaviorIncidentEntity): Long = withContext(Dispatchers.IO) {
+        studentDao.insertIncident(incident)
+    }
+
+    suspend fun deleteIncident(incidentId: Int) = withContext(Dispatchers.IO) {
+        studentDao.deleteIncident(incidentId)
     }
 }

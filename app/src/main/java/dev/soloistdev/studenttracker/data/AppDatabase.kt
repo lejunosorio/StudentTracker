@@ -15,9 +15,10 @@ import java.io.IOException
         FormTemplateEntity::class,
         SavedFilterEntity::class,
         AttendanceRecordEntity::class,
-        AttendanceLogEntity::class
+        AttendanceLogEntity::class,
+        BehaviorIncidentEntity::class // ADDED: Behavior incident logs sub-table
     ],
-    version = 7,
+    version = 8, // INCREMENTED: Version updated from 7 to 8
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -41,12 +42,10 @@ abstract class AppDatabase : RoomDatabase() {
                         .openHelperFactory(factory)
                         .fallbackToDestructiveMigration()
                         .build().also {
-                            // Trigger a quick database connection write to verify key decryption is successful [1]
                             it.openHelper.writableDatabase
                         }
                 } catch (e: Exception) {
                     MemoryHelper.zeroMemory(passphrase)
-                    // Resolved: Bubble up an IOException to protect local user data instead of silently auto-deleting [1]
                     throw IOException(
                         "Local database decryption failed. This can happen due to transient Android KeyStore errors. Please reboot your device or verify lock screen settings.",
                         e

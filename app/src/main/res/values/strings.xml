@@ -358,4 +358,26 @@
 
     <string name="sync_dialog_smart_merge_desc">Discovered: %1$d new student profiles, %2$d student updates, %3$d attendance updates, and %4$d skipped. Proceed to merge?</string>
 
+    <!-- Behavior Incident & Milestone Logger Strings -->
+    <string name="behavior_log_title">Behavior Log &amp; Achievements</string>
+    <string name="behavior_log_desc">Tap to view achievements or behavioral incidents</string>
+    <string name="behavior_log_empty">No incident entries recorded yet.</string>
+    <string name="behavior_action_add">Log Incident</string>
+    <string name="behavior_dialog_title">Log Student Behavior</string>
+    <string name="behavior_field_title">Title / Milestone *</string>
+    <string name="behavior_field_category">Category *</string>
+    <string name="behavior_field_notes">Description Notes</string>
+    <string name="behavior_cat_positive">Positive</string>
+    <string name="behavior_cat_negative">Negative</string>
+    <string name="behavior_cat_neutral">Neutral</string>
+    <string name="behavior_quick_helpful">Helpful Attitude</string>
+    <string name="behavior_quick_excellent">Excellent Performance</string>
+    <string name="behavior_quick_late">Late Arrival</string>
+    <string name="behavior_quick_disrupt">Disruptive Action</string>
+    <string name="behavior_quick_select">Quick select templates:</string>
+    <string name="toast_incident_logged">Incident logged successfully.</string>
+    <string name="toast_incident_deleted">Incident entry removed.</string>
+    <string name="error_behavior_title_required">Incident title cannot be blank.</string>
+
+
 </resources>
