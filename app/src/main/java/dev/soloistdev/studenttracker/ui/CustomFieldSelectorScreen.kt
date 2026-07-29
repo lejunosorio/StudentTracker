@@ -11,9 +11,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource // Resolved: Explicit resource accessor import [1]
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.soloistdev.studenttracker.R // Resolved: Explicit R file import [1]
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,10 +34,10 @@ fun CustomFieldSelectorScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("Create Discovered Fields", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.discovered_fields_title), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 }
             )
@@ -58,7 +60,7 @@ fun CustomFieldSelectorScreen(
                         .padding(16.dp)
                         .height(48.dp)
                 ) {
-                    Text("Create Selected (${selectedFields.size})")
+                    Text(stringResource(R.string.action_create_selected, selectedFields.size))
                 }
             }
         }
@@ -89,7 +91,7 @@ fun CustomFieldSelectorScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Select All Discovered Fields", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(stringResource(R.string.label_select_all_discovered), fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Checkbox(
                         checked = allSelected,
                         onCheckedChange = { checked ->
@@ -155,14 +157,14 @@ fun CustomFieldSelectorScreen(
             val unselectedCount = fields.size - selectedCount
 
             val dialogText = if (unselectedCount == 0) {
-                "$selectedCount custom fields selected. Proceed on creation?"
+                stringResource(R.string.dialog_confirm_creation_all_desc, selectedCount)
             } else {
-                "$selectedCount custom fields selected, and $unselectedCount not selected. Proceed on creation?"
+                stringResource(R.string.dialog_confirm_creation_partial_desc, selectedCount, unselectedCount)
             }
 
             AlertDialog(
                 onDismissRequest = { showConfirmDialog = false },
-                title = { Text("Confirm Creation") },
+                title = { Text(stringResource(R.string.dialog_confirm_creation_title)) },
                 text = { Text(dialogText) },
                 confirmButton = {
                     Button(
@@ -171,12 +173,12 @@ fun CustomFieldSelectorScreen(
                             onCreateSelected(selectedFields.toList())
                         }
                     ) {
-                        Text("Yes")
+                        Text(stringResource(R.string.action_yes))
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showConfirmDialog = false }) {
-                        Text("No")
+                        Text(stringResource(R.string.action_no))
                     }
                 },
                 shape = RoundedCornerShape(28.dp)

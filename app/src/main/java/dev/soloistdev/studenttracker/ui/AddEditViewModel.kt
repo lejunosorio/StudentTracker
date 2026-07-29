@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dev.soloistdev.studenttracker.R // Resolved: Explicit R import [1]
 import dev.soloistdev.studenttracker.data.Guardian
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
@@ -24,7 +25,7 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
     var gender by mutableStateOf("F")
     var birthday by mutableStateOf<Long?>(null)
     var address by mutableStateOf("")
-    var contactNumber by mutableStateOf("") // Added contact number state variable [1]
+    var contactNumber by mutableStateOf("")
     var picturePath by mutableStateOf("")
 
     val guardiansStateList = mutableStateListOf<Guardian>()
@@ -58,7 +59,7 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                 gender = student.gender
                 birthday = student.birthday
                 address = student.address
-                contactNumber = student.contactNumber // Load contact number [1]
+                contactNumber = student.contactNumber
                 picturePath = student.picturePath
 
                 val list = Guardian.listFromJsonString(student.guardiansJson)
@@ -78,10 +79,13 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
 
     fun addGuardian(name: String, relationship: String, contact: String) {
         if (name.isNotBlank() && contact.isNotBlank()) {
+            // Resolved: Fetch the fallback string from strings.xml using the AndroidViewModel application context [1]
+            val fallbackRelationship = getApplication<Application>().getString(R.string.guardian_fallback_relationship)
+
             guardiansStateList.add(
                 Guardian(
                     name = name.trim(),
-                    relationship = relationship.trim().ifEmpty { "Guardian" },
+                    relationship = relationship.trim().ifEmpty { fallbackRelationship },
                     phones = listOf(contact.trim())
                 )
             )
@@ -110,7 +114,7 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                 gender = gender,
                 birthday = birthday!!,
                 address = address.trim(),
-                contactNumber = contactNumber.trim(), // Save contact number [1]
+                contactNumber = contactNumber.trim(),
                 picturePath = picturePath,
                 guardiansJson = Guardian.listToJsonString(guardiansStateList.toList()),
                 customDataJson = jsonObject.toString()

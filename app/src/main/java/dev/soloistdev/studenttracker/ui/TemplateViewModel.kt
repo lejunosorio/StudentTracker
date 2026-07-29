@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import androidx.core.content.edit
 
 class TemplateViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = StudentRepository(application)
@@ -94,7 +95,7 @@ class TemplateViewModel(application: Application) : AndroidViewModel(application
                     val sharedPrefs = getApplication<Application>().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
                     val activeBannerField = sharedPrefs.getString("card_banner_field", "")
                     if (activeBannerField == template.fieldName) {
-                        sharedPrefs.edit().remove("card_banner_field").apply()
+                        sharedPrefs.edit { remove("card_banner_field") }
                     }
                 }
 

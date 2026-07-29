@@ -1,26 +1,21 @@
 package dev.soloistdev.studenttracker.ui
 
-import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll // Resolved: Explicit verticalScroll import
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -29,22 +24,19 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
-import dev.soloistdev.studenttracker.data.FormTemplateEntity
-import dev.soloistdev.studenttracker.data.StudentEntity
-import dev.soloistdev.studenttracker.ui.StudentUiState
-import org.json.JSONObject
+import dev.soloistdev.studenttracker.R
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -91,6 +83,10 @@ fun ViewAllScreen(
 
     val isDateRangeInvalid = startDateMillis > endDateMillis
 
+    // Pre-read localized resources inside Composable scope to prevent runtime evaluation stutters [1]
+    val bulkDeleteConfirmMsg = stringResource(R.string.delete_members_bulk_confirmation, selectedStudentIds.size)
+    val bulkDeleteSuccessMsg = stringResource(R.string.toast_moved_to_recycle_bin, stringResource(R.string.menu_students))
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -105,8 +101,8 @@ fun ViewAllScreen(
                             .fillMaxWidth()
                             .padding(start = 24.dp, top = 36.dp, bottom = 16.dp)
                     ) {
-                        Text("Proctor Portal", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                        Text("Springfield High School", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.drawer_proctor_portal), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        Text(stringResource(R.string.drawer_school_name), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
@@ -122,7 +118,7 @@ fun ViewAllScreen(
 
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.People, contentDescription = null) },
-                        label = { Text("Student Directory") },
+                        label = { Text(stringResource(R.string.menu_student_directory)) },
                         selected = true,
                         onClick = { scope.launch { drawerState.close() } },
                         colors = drawerItemColors,
@@ -131,7 +127,7 @@ fun ViewAllScreen(
 
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Build, contentDescription = null) },
-                        label = { Text("Template Manager") },
+                        label = { Text(stringResource(R.string.menu_template_manager)) },
                         selected = false,
                         onClick = {
                             scope.launch {
@@ -145,7 +141,7 @@ fun ViewAllScreen(
 
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.EventAvailable, contentDescription = null) },
-                        label = { Text("Attendance System") },
+                        label = { Text(stringResource(R.string.menu_attendance_system)) },
                         selected = false,
                         onClick = {
                             scope.launch {
@@ -159,7 +155,7 @@ fun ViewAllScreen(
 
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Bookmarks, contentDescription = null) },
-                        label = { Text("Saved Filters") },
+                        label = { Text(stringResource(R.string.menu_saved_filters)) },
                         selected = false,
                         onClick = {
                             scope.launch {
@@ -173,7 +169,7 @@ fun ViewAllScreen(
 
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Refresh, contentDescription = null) },
-                        label = { Text("Backup & Sync (JSON/CSV)") },
+                        label = { Text(stringResource(R.string.menu_backup_sync)) },
                         selected = false,
                         onClick = {
                             scope.launch {
@@ -191,7 +187,7 @@ fun ViewAllScreen(
 
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Delete, contentDescription = null) },
-                        label = { Text("Recycle Bin (Soft Deleted)") },
+                        label = { Text(stringResource(R.string.menu_recycle_bin)) },
                         selected = false,
                         onClick = {
                             scope.launch {
@@ -205,7 +201,7 @@ fun ViewAllScreen(
 
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Security, contentDescription = null) },
-                        label = { Text("Biometrics & Privacy") },
+                        label = { Text(stringResource(R.string.menu_biometrics_privacy)) },
                         selected = false,
                         onClick = {
                             scope.launch {
@@ -219,7 +215,7 @@ fun ViewAllScreen(
 
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                        label = { Text("App Settings") },
+                        label = { Text(stringResource(R.string.menu_app_settings)) },
                         selected = false,
                         onClick = {
                             scope.launch {
@@ -239,24 +235,24 @@ fun ViewAllScreen(
             topBar = {
                 if (isSelectionMode) {
                     TopAppBar(
-                        title = { Text("Selected: ${selectedStudentIds.size}", fontWeight = FontWeight.Bold) },
+                        title = { Text(stringResource(R.string.label_selected_count, selectedStudentIds.size), fontWeight = FontWeight.Bold) },
                         navigationIcon = {
                             IconButton(onClick = { viewModel.clearSelection() }) {
-                                Icon(Icons.Default.Close, contentDescription = "Cancel Selection")
+                                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_cancel))
                             }
                         },
                         actions = {
                             IconButton(onClick = { showCreateAttendanceDialog = true }) {
                                 Icon(
                                     imageVector = Icons.Default.EventAvailable,
-                                    contentDescription = "Create Attendance Record",
+                                    contentDescription = stringResource(R.string.attendance_new_record_title),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
                             IconButton(onClick = { showBulkDeleteConfirmDialog = true }) {
                                 Icon(
                                     imageVector = Icons.Default.Delete,
-                                    contentDescription = "Delete Selected",
+                                    contentDescription = stringResource(R.string.action_delete),
                                     tint = MaterialTheme.colorScheme.error
                                 )
                             }
@@ -267,10 +263,10 @@ fun ViewAllScreen(
                     )
                 } else {
                     CenterAlignedTopAppBar(
-                        title = { Text("Student Directory", fontWeight = FontWeight.Bold) },
+                        title = { Text(stringResource(R.string.menu_student_directory), fontWeight = FontWeight.Bold) },
                         navigationIcon = {
                             IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                Icon(Icons.Default.Menu, contentDescription = "Menu")
+                                Icon(Icons.Default.Menu, contentDescription = stringResource(R.string.drawer_menu))
                             }
                         },
                         actions = {
@@ -289,27 +285,27 @@ fun ViewAllScreen(
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Member")
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.action_add))
                     }
                 }
             },
             bottomBar = {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                     NavigationBarItem(
-                        icon = { Icon(Icons.Default.People, contentDescription = "Students") },
-                        label = { Text("Students") },
+                        icon = { Icon(Icons.Default.People, contentDescription = stringResource(R.string.menu_students)) },
+                        label = { Text(stringResource(R.string.menu_students)) },
                         selected = true,
                         onClick = {}
                     )
                     NavigationBarItem(
-                        icon = { Icon(Icons.Default.Bookmarks, contentDescription = "Filters") },
-                        label = { Text("Filters") },
+                        icon = { Icon(Icons.Default.Bookmarks, contentDescription = stringResource(R.string.menu_filters)) },
+                        label = { Text(stringResource(R.string.menu_filters)) },
                         selected = false,
                         onClick = onOpenMap
                     )
                     NavigationBarItem(
-                        icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-                        label = { Text("Settings") },
+                        icon = { Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.menu_settings)) },
+                        label = { Text(stringResource(R.string.menu_settings)) },
                         selected = false,
                         onClick = onOpenSettings
                     )
@@ -332,8 +328,8 @@ fun ViewAllScreen(
                     TextField(
                         value = searchQuery,
                         onValueChange = { viewModel.onSearchQueryChanged(it) },
-                        placeholder = { Text("Search names...", color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)) },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = MaterialTheme.colorScheme.onSecondaryContainer) },
+                        placeholder = { Text(stringResource(R.string.action_search_placeholder), color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = stringResource(R.string.action_search_placeholder), tint = MaterialTheme.colorScheme.onSecondaryContainer) },
                         trailingIcon = {
                             if (searchQuery.isNotEmpty()) {
                                 IconButton(onClick = { viewModel.onSearchQueryChanged("") }) {
@@ -389,7 +385,7 @@ fun ViewAllScreen(
                     FilterChip(
                         selected = activeFilter == null,
                         onClick = { viewModel.clearActiveFilter() },
-                        label = { Text("All") },
+                        label = { Text(stringResource(R.string.action_all)) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                             selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -436,7 +432,7 @@ fun ViewAllScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "Directory is empty.\nTap '+' to add a member.",
+                            text = stringResource(R.string.directory_empty_state),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
@@ -460,6 +456,7 @@ fun ViewAllScreen(
                             val isStudentSelected = selectedStudentIds.contains(studentState.student.id)
 
                             var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+                            val deleteSuccessMsg = stringResource(R.string.toast_moved_to_recycle_bin, "${studentState.student.firstName} ${studentState.student.lastName}")
 
                             @Suppress("DEPRECATION")
                             val dismissState = rememberSwipeToDismissBoxState(
@@ -542,23 +539,23 @@ fun ViewAllScreen(
                             if (showDeleteConfirmDialog) {
                                 AlertDialog(
                                     onDismissRequest = { showDeleteConfirmDialog = false },
-                                    title = { Text("Delete Member?", fontWeight = FontWeight.Bold) },
-                                    text = { Text("Are you sure you want to move ${studentState.student.firstName} ${studentState.student.lastName} to the Recycle Bin?") },
+                                    title = { Text(stringResource(R.string.delete_member_title), fontWeight = FontWeight.Bold) },
+                                    text = { Text(stringResource(R.string.delete_member_confirmation, "${studentState.student.firstName} ${studentState.student.lastName}")) },
                                     confirmButton = {
                                         Button(
                                             onClick = {
                                                 showDeleteConfirmDialog = false
                                                 viewModel.softDeleteStudent(studentState.student.id)
-                                                Toast.makeText(context, "${studentState.student.firstName} moved to Recycle Bin.", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, deleteSuccessMsg, Toast.LENGTH_SHORT).show()
                                             },
                                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                                         ) {
-                                            Text("Delete")
+                                            Text(stringResource(R.string.action_delete))
                                         }
                                     },
                                     dismissButton = {
                                         TextButton(onClick = { showDeleteConfirmDialog = false }) {
-                                            Text("Cancel")
+                                            Text(stringResource(R.string.action_cancel))
                                         }
                                     },
                                     shape = RoundedCornerShape(28.dp)
@@ -573,23 +570,23 @@ fun ViewAllScreen(
         if (showBulkDeleteConfirmDialog) {
             AlertDialog(
                 onDismissRequest = { showBulkDeleteConfirmDialog = false },
-                title = { Text("Delete Selected Members?", fontWeight = FontWeight.Bold) },
-                text = { Text("Are you sure you want to move these ${selectedStudentIds.size} selected members to the Recycle Bin?") },
+                title = { Text(stringResource(R.string.delete_members_bulk_title), fontWeight = FontWeight.Bold) },
+                text = { Text(bulkDeleteConfirmMsg) },
                 confirmButton = {
                     Button(
                         onClick = {
                             showBulkDeleteConfirmDialog = false
                             viewModel.deleteSelectedStudents()
-                            Toast.makeText(context, "Selected members moved to Recycle Bin.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, bulkDeleteSuccessMsg, Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
-                        Text("Delete")
+                        Text(stringResource(R.string.action_delete))
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showBulkDeleteConfirmDialog = false }) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.action_cancel))
                     }
                 },
                 shape = RoundedCornerShape(28.dp)
@@ -630,7 +627,7 @@ fun ViewAllScreen(
                     startDateMillis = System.currentTimeMillis()
                     endDateMillis = System.currentTimeMillis()
                 },
-                title = { Text("New Attendance Record", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.attendance_new_record_title), fontWeight = FontWeight.Bold) },
                 text = {
                     Column(
                         modifier = Modifier
@@ -642,12 +639,12 @@ fun ViewAllScreen(
                         OutlinedTextField(
                             value = attendanceRecordName,
                             onValueChange = { attendanceRecordName = it },
-                            label = { Text("Record Name *") },
+                            label = { Text(stringResource(R.string.attendance_record_name_label)) },
                             colors = m3TextFieldColors,
                             modifier = Modifier.fillMaxWidth()
                         )
 
-                        Text("Select Date Range *", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.attendance_select_date_range), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
                         val sdf = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
 
@@ -662,7 +659,8 @@ fun ViewAllScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Start: ${sdf.format(Date(startDateMillis))}", color = MaterialTheme.colorScheme.onSurface)
+                                val formattedStart = sdf.format(Date(startDateMillis))
+                                Text(stringResource(R.string.attendance_start_date_label, formattedStart), color = MaterialTheme.colorScheme.onSurface)
                                 Icon(Icons.Default.CalendarToday, contentDescription = "Select Start Date", tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                             }
                         }
@@ -678,14 +676,15 @@ fun ViewAllScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("End: ${sdf.format(Date(endDateMillis))}", color = MaterialTheme.colorScheme.onSurface)
+                                val formattedEnd = sdf.format(Date(endDateMillis))
+                                Text(stringResource(R.string.attendance_end_date_label, formattedEnd), color = MaterialTheme.colorScheme.onSurface)
                                 Icon(Icons.Default.CalendarToday, contentDescription = "Select End Date", tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                             }
                         }
 
                         if (isDateRangeInvalid) {
                             Text(
-                                text = "Start date must be less than or equal to End date",
+                                text = stringResource(R.string.attendance_date_range_error),
                                 color = MaterialTheme.colorScheme.error,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
@@ -715,7 +714,7 @@ fun ViewAllScreen(
                         enabled = attendanceRecordName.isNotBlank() && !isDateRangeInvalid,
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
-                        Text("Create")
+                        Text(stringResource(R.string.action_create))
                     }
                 },
                 dismissButton = {
@@ -727,7 +726,7 @@ fun ViewAllScreen(
                             endDateMillis = System.currentTimeMillis()
                         }
                     ) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.action_cancel))
                     }
                 },
                 shape = RoundedCornerShape(28.dp)
@@ -744,7 +743,7 @@ fun ViewAllScreen(
                     TextButton(onClick = {
                         pickerState.selectedDateMillis?.let { startDateMillis = it }
                         showStartPicker = false
-                    }) { Text("OK") }
+                    }) { Text(stringResource(R.string.action_ok)) }
                 }
             ) { DatePicker(state = pickerState, showModeToggle = false) }
         }
@@ -759,7 +758,7 @@ fun ViewAllScreen(
                     TextButton(onClick = {
                         pickerState.selectedDateMillis?.let { endDateMillis = it }
                         showEndPicker = false
-                    }) { Text("OK") }
+                    }) { Text(stringResource(R.string.action_ok)) }
                 }
             ) { DatePicker(state = pickerState, showModeToggle = false) }
         }

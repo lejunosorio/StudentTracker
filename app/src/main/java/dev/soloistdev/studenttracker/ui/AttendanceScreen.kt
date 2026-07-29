@@ -19,11 +19,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource // Resolved: Explicit resource accessor import [1]
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.soloistdev.studenttracker.R // Resolved: Explicit R file import [1]
 import dev.soloistdev.studenttracker.data.AttendanceRecordEntity
 import dev.soloistdev.studenttracker.data.SavedFilterEntity
 import kotlinx.coroutines.Dispatchers
@@ -44,13 +46,14 @@ fun AttendanceScreen(
     val savedFilters by viewModel.savedFilters.collectAsState()
     val context = LocalContext.current
 
-    // CORRECTED: All state variables must be declared AT THE TOP of the Composable [1]
     var currentSubScreen by remember { mutableIntStateOf(0) }
     var selectedRecord by remember { mutableStateOf<AttendanceRecordEntity?>(null) }
     var selectedDateMillis by remember { mutableLongStateOf(0L) }
     var showCreateDialog by remember { mutableStateOf(false) }
 
-    // CORRECTED: LaunchedEffect is moved below state declarations to resolve symbol reference errors [1]
+    val errorSavedFilterMsg = stringResource(R.string.error_create_saved_filter)
+    val attendanceCreatedMsg = stringResource(R.string.toast_attendance_created)
+
     LaunchedEffect(initialRecordId, initialDateMillis) {
         viewModel.loadRecords()
         if (initialRecordId != -1) {
@@ -65,7 +68,7 @@ fun AttendanceScreen(
                 if (initialDateMillis != -1L) {
                     selectedDateMillis = initialDateMillis
                     viewModel.loadSheetData(record, initialDateMillis)
-                    currentSubScreen = 2 // Redirect directly to the daily workbook sheet
+                    currentSubScreen = 2
                 } else {
                     currentSubScreen = 1
                 }
@@ -75,7 +78,7 @@ fun AttendanceScreen(
 
     val backHandler = {
         when (currentSubScreen) {
-            3 -> currentSubScreen = 1 // Navigates back from Overall Report to Dates List
+            3 -> currentSubScreen = 1
             2 -> currentSubScreen = 1
             1 -> currentSubScreen = 0
             else -> onBack()
@@ -88,20 +91,20 @@ fun AttendanceScreen(
                 title = {
                     Text(
                         text = when (currentSubScreen) {
-                            3 -> "Overall Report"
+                            3 -> stringResource(R.string.attendance_overall_report)
                             2 -> {
                                 val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.US)
                                 sdf.format(Date(selectedDateMillis))
                             }
-                            1 -> selectedRecord?.name ?: "Attendance Sheet"
-                            else -> "Attendance Manager"
+                            1 -> selectedRecord?.name ?: stringResource(R.string.attendance_sheet)
+                            else -> stringResource(R.string.attendance_manager)
                         },
                         fontWeight = FontWeight.Bold
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = backHandler) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 actions = {
@@ -110,13 +113,13 @@ fun AttendanceScreen(
                             selectedRecord?.let { viewModel.loadSheetData(it, it.startDate) }
                             currentSubScreen = 3
                         }) {
-                            Icon(Icons.Default.Assessment, contentDescription = "View Overall Report")
+                            Icon(Icons.Default.Assessment, contentDescription = stringResource(R.string.action_view_overall_report))
                         }
                     } else if (currentSubScreen == 2 && selectedRecord != null) {
                         IconButton(onClick = {
                             viewModel.exportSheetToCsv(context, selectedRecord!!, selectedDateMillis)
                         }) {
-                            Icon(Icons.Default.Share, contentDescription = "Export CSV")
+                            Icon(Icons.Default.Share, contentDescription = stringResource(R.string.action_export_csv))
                         }
                     }
                 }
@@ -127,7 +130,7 @@ fun AttendanceScreen(
                 FloatingActionButton(
                     onClick = {
                         if (savedFilters.isEmpty()) {
-                            Toast.makeText(context, "Please create a Saved Filter first.", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, errorSavedFilterMsg, Toast.LENGTH_LONG).show()
                             onRedirectToFilters()
                         } else {
                             showCreateDialog = true
@@ -137,7 +140,7 @@ fun AttendanceScreen(
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "New Record")
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.action_new_record))
                 }
             }
         }
@@ -153,7 +156,7 @@ fun AttendanceScreen(
                     if (records.isEmpty()) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(
-                                text = "No attendance records.\nTap '+' to create a log.",
+                                text = stringResource(R.string.attendance_empty_state),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center
@@ -162,11 +165,12 @@ fun AttendanceScreen(
                     } else {
                         LazyColumn(modifier = Modifier.fillMaxSize()) {
                             items(records) { record ->
-                                val filterName = savedFilters.find { it.id == record.savedFilterId }?.filterName ?: "Unknown Filter"
+                                val filterName = savedFilters.find { it.id == record.savedFilterId }?.filterName ?: stringResource(R.string.unknown_filter)
                                 val sdf = SimpleDateFormat("MMM dd", Locale.US)
                                 val rangeStr = "${sdf.format(Date(record.startDate))} - ${sdf.format(Date(record.endDate))}"
 
                                 var showDeleteDialog by remember { mutableStateOf(false) }
+                                val deleteSuccessMsg = stringResource(R.string.toast_moved_to_recycle_bin, record.name)
 
                                 Card(
                                     modifier = Modifier
@@ -189,7 +193,7 @@ fun AttendanceScreen(
                                             Text("Filter: $filterName • Date: $rangeStr", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                                         }
                                         IconButton(onClick = { showDeleteDialog = true }) {
-                                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.action_delete), tint = MaterialTheme.colorScheme.error)
                                         }
                                     }
                                 }
@@ -197,20 +201,20 @@ fun AttendanceScreen(
                                 if (showDeleteDialog) {
                                     AlertDialog(
                                         onDismissRequest = { showDeleteDialog = false },
-                                        title = { Text("Delete Attendance Record?") },
-                                        text = { Text("Are you sure you want to move '${record.name}' to the Recycle Bin? It can be restored within 30 days.") },
+                                        title = { Text(stringResource(R.string.dialog_delete_attendance_title)) },
+                                        text = { Text(stringResource(R.string.dialog_delete_attendance_desc, record.name)) },
                                         confirmButton = {
                                             Button(
                                                 onClick = {
                                                     showDeleteDialog = false
                                                     viewModel.deleteRecord(record.id)
-                                                    Toast.makeText(context, "${record.name} moved to Recycle Bin.", Toast.LENGTH_SHORT).show()
+                                                    Toast.makeText(context, deleteSuccessMsg, Toast.LENGTH_SHORT).show()
                                                 },
                                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                                            ) { Text("Delete") }
+                                            ) { Text(stringResource(R.string.action_delete)) }
                                         },
                                         dismissButton = {
-                                            TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+                                            TextButton(onClick = { showDeleteDialog = false }) { Text(stringResource(R.string.action_cancel)) }
                                         },
                                         shape = RoundedCornerShape(28.dp)
                                     )
@@ -260,26 +264,26 @@ fun AttendanceScreen(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Text(
-                                                    text = "Present: $dayPresent",
+                                                    text = stringResource(R.string.label_present_count, dayPresent),
                                                     color = Color(0xFF4CAF50),
                                                     fontSize = 12.sp,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                                 Text(
-                                                    text = "Absent: $dayAbsent",
+                                                    text = stringResource(R.string.label_absent_count, dayAbsent),
                                                     color = Color(0xFFE53935),
                                                     fontSize = 12.sp,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                                 Text(
-                                                    text = "Unmarked: $dayUnmarked",
+                                                    text = stringResource(R.string.label_unmarked_count, dayUnmarked),
                                                     color = Color(0xFFFBC02D),
                                                     fontSize = 12.sp,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                             }
                                         }
-                                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open")
+                                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = stringResource(R.string.action_open))
                                     }
                                 }
                             }
@@ -311,8 +315,8 @@ fun AttendanceScreen(
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
-                                    Text(text = "Roster: ${roster.size} Members", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                    Text(text = "Total Days in Period: ${dates.size}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                                    Text(text = stringResource(R.string.label_roster_members, roster.size), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text(text = stringResource(R.string.label_total_days, dates.size), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                                     Spacer(modifier = Modifier.height(12.dp))
 
                                     Button(
@@ -321,9 +325,9 @@ fun AttendanceScreen(
                                         shape = RoundedCornerShape(20.dp)
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Default.Share, contentDescription = "Export Spreadsheet")
+                                            Icon(Icons.Default.Share, contentDescription = stringResource(R.string.action_generate_spreadsheet))
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Generate Spreadsheet (.csv)")
+                                            Text(stringResource(R.string.action_generate_spreadsheet))
                                         }
                                     }
                                 }
@@ -362,11 +366,11 @@ fun AttendanceScreen(
                                                 horizontalArrangement = Arrangement.SpaceBetween,
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Text("Present: $present", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                                Text("Absent: $absent", color = Color(0xFFE53935), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                                Text("Excused: $excused", color = Color(0xFFFB8C00), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                                Text("Removed: $removed", color = Color(0xFF757575), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                                Text("Unmarked: $unmarked", color = Color(0xFFFBC02D), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                Text(stringResource(R.string.label_present_count, present), color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                Text(stringResource(R.string.label_absent_count, absent), color = Color(0xFFE53935), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                Text(stringResource(R.string.label_excused_count, excused), color = Color(0xFFFB8C00), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                Text(stringResource(R.string.label_removed_count, removed), color = Color(0xFF757575), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                Text(stringResource(R.string.label_unmarked_count, unmarked), color = Color(0xFFFBC02D), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                             }
                                         }
                                     }
@@ -385,7 +389,7 @@ fun AttendanceScreen(
                 onSave = { name, filterId, start, end ->
                     viewModel.createRecord(name, filterId, start, end)
                     showCreateDialog = false
-                    Toast.makeText(context, "Attendance Record Created!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, attendanceCreatedMsg, Toast.LENGTH_SHORT).show()
                 }
             )
         }
@@ -434,22 +438,22 @@ fun DailyRosterSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("Completion Overview", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text(stringResource(R.string.label_completion_overview), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Present: $presentCount | Absent: $absentCount | Unmarked: $unmarkedCount", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.label_completion_summary, presentCount, absentCount, unmarkedCount), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     IconButton(
                         onClick = { viewModel.markAllUnmarkedPresent(record.id, dateMillis) },
                         colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                     ) {
-                        Icon(Icons.Default.DoneAll, contentDescription = "Mark Unmarked Present", tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Icon(Icons.Default.DoneAll, contentDescription = stringResource(R.string.action_mark_unmarked_present), tint = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
                     IconButton(
                         onClick = { viewModel.resetAllMarks(record.id, dateMillis) },
                         colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.errorContainer)
                     ) {
-                        Icon(Icons.Default.SettingsBackupRestore, contentDescription = "Reset All", tint = MaterialTheme.colorScheme.onErrorContainer)
+                        Icon(Icons.Default.SettingsBackupRestore, contentDescription = stringResource(R.string.action_reset_all), tint = MaterialTheme.colorScheme.onErrorContainer)
                     }
                 }
             }
@@ -463,31 +467,31 @@ fun DailyRosterSheet(
             verticalAlignment = Alignment.CenterVertically
         ) {
             TabChip(
-                label = "All ($unmarkedCount)",
+                label = stringResource(R.string.chip_all_count, unmarkedCount),
                 isSelected = activeTab == "ALL",
                 borderColor = Color(0xFFFBC02D),
                 onClick = { activeTab = "ALL" }
             )
             TabChip(
-                label = "Pres ($presentCount)",
+                label = stringResource(R.string.chip_present_count, presentCount),
                 isSelected = activeTab == "PRESENT",
                 borderColor = Color(0xFF4CAF50),
                 onClick = { activeTab = "PRESENT" }
             )
             TabChip(
-                label = "Abs ($absentCount)",
+                label = stringResource(R.string.chip_absent_count, absentCount),
                 isSelected = activeTab == "ABSENT",
                 borderColor = Color(0xFFE53935),
                 onClick = { activeTab = "ABSENT" }
             )
             TabChip(
-                label = "Exc ($excusedCount)",
+                label = stringResource(R.string.chip_excused_count, excusedCount),
                 isSelected = activeTab == "EXCUSED",
                 borderColor = Color(0xFFFB8C00),
                 onClick = { activeTab = "EXCUSED" }
             )
             TabChip(
-                label = "Rem ($removedCount)",
+                label = stringResource(R.string.chip_removed_count, removedCount),
                 isSelected = activeTab == "REMOVED",
                 borderColor = Color(0xFF757575),
                 onClick = { activeTab = "REMOVED" }
@@ -496,7 +500,7 @@ fun DailyRosterSheet(
 
         if (filteredRoster.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No roster members in this selection.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.roster_empty_selection), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(
@@ -545,11 +549,11 @@ fun DailyRosterSheet(
                                 ) {
                                     Text(
                                         text = when (currentStatus) {
-                                            "PRESENT" -> "Present"
-                                            "ABSENT" -> "Absent"
-                                            "EXCUSED" -> "Excused"
-                                            "REMOVED" -> "Removed"
-                                            else -> "Not Set"
+                                            "PRESENT" -> stringResource(R.string.status_present)
+                                            "ABSENT" -> stringResource(R.string.status_absent)
+                                            "EXCUSED" -> stringResource(R.string.status_excused)
+                                            "REMOVED" -> stringResource(R.string.status_removed)
+                                            else -> stringResource(R.string.status_not_set)
                                         },
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold
@@ -557,11 +561,11 @@ fun DailyRosterSheet(
                                 }
                                 DropdownMenu(expanded = statusExpanded, onDismissRequest = { statusExpanded = false }) {
                                     listOf(
-                                        "NOT_SET" to "Not Set",
-                                        "PRESENT" to "Present",
-                                        "ABSENT" to "Absent",
-                                        "EXCUSED" to "Excused",
-                                        "REMOVED" to "Removed"
+                                        "NOT_SET" to stringResource(R.string.status_not_set),
+                                        "PRESENT" to stringResource(R.string.status_present),
+                                        "ABSENT" to stringResource(R.string.status_absent),
+                                        "EXCUSED" to stringResource(R.string.status_excused),
+                                        "REMOVED" to stringResource(R.string.status_removed)
                                     ).forEach { (statusVal, label) ->
                                         DropdownMenuItem(
                                             text = { Text(label) },
@@ -610,8 +614,6 @@ fun RowScope.TabChip(
     )
 }
 
-// ... inside dev/soloistdev/studenttracker/ui/AttendanceScreen.kt [1]
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecordCreateForm(
@@ -651,32 +653,32 @@ fun RecordCreateForm(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New Attendance Record", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+        title = { Text(stringResource(R.string.attendance_new_record_title), fontWeight = FontWeight.Bold, fontSize = 20.sp) },
         text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .imePadding(), // Resolved: Adjust padding dynamically based on system IME/Keyboard [1]
+                    .imePadding(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Record Name *") },
+                    label = { Text(stringResource(R.string.attendance_record_name_label)) },
                     colors = m3TextFieldColors,
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 var filterExpanded by remember { mutableStateOf(false) }
-                val selectedFilterName = savedFilters.find { it.id == selectedFilterId }?.filterName ?: "Select Filter"
+                val selectedFilterName = savedFilters.find { it.id == selectedFilterId }?.filterName ?: stringResource(R.string.attendance_select_filter)
 
                 Box {
                     OutlinedTextField(
                         value = selectedFilterName,
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Roster Filter *") },
+                        label = { Text(stringResource(R.string.attendance_roster_filter_label)) },
                         colors = m3TextFieldColors,
                         trailingIcon = {
                             Icon(
@@ -710,7 +712,7 @@ fun RecordCreateForm(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Event Duration Period *",
+                        text = stringResource(R.string.attendance_event_duration_label),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
@@ -736,8 +738,9 @@ fun RecordCreateForm(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                val formattedStart = sdf.format(Date(startDateMillis))
                                 Text(
-                                    text = "Start: ${sdf.format(Date(startDateMillis))}",
+                                    text = stringResource(R.string.attendance_start_date_label, formattedStart),
                                     color = MaterialTheme.colorScheme.onSurface,
                                     fontSize = 11.sp
                                 )
@@ -765,8 +768,9 @@ fun RecordCreateForm(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                val formattedEnd = sdf.format(Date(endDateMillis))
                                 Text(
-                                    text = "End: ${sdf.format(Date(endDateMillis))}",
+                                    text = stringResource(R.string.attendance_end_date_label, formattedEnd),
                                     color = MaterialTheme.colorScheme.onSurface,
                                     fontSize = 11.sp
                                 )
@@ -793,7 +797,7 @@ fun RecordCreateForm(
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = "Start date must be less than or equal to End date",
+                                text = stringResource(R.string.attendance_date_range_error),
                                 color = MaterialTheme.colorScheme.error,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
@@ -813,10 +817,10 @@ fun RecordCreateForm(
                 enabled = name.isNotBlank() && !isDateRangeInvalid,
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 shape = RoundedCornerShape(20.dp)
-            ) { Text("Create") }
+            ) { Text(stringResource(R.string.action_create)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
         },
         shape = RoundedCornerShape(28.dp)
     )
@@ -831,7 +835,7 @@ fun RecordCreateForm(
                 TextButton(onClick = {
                     pickerState.selectedDateMillis?.let { startDateMillis = it }
                     showStartPicker = false
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.action_ok)) }
             }
         ) { DatePicker(state = pickerState, showModeToggle = false) }
     }
@@ -846,7 +850,7 @@ fun RecordCreateForm(
                 TextButton(onClick = {
                     pickerState.selectedDateMillis?.let { endDateMillis = it }
                     showEndPicker = false
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.action_ok)) }
             }
         ) { DatePicker(state = pickerState, showModeToggle = false) }
     }

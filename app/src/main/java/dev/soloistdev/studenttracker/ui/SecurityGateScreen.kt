@@ -18,6 +18,7 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource // Resolved: Explicit resource accessor import [1]
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.soloistdev.studenttracker.R // Resolved: Explicit R file import [1]
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,6 +42,16 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
     // Dual-PIN Setup State Managers
     var pin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
+
+    // Pre-read resources in Composable scope to prevent context lookup delays during system callbacks [1]
+    val biometricTitle = stringResource(R.string.biometric_unlock_title)
+    val biometricSubtitle = stringResource(R.string.biometric_unlock_subtitle)
+    val biometricNegativeText = stringResource(R.string.action_use_pin_instead)
+
+    val incorrectPinMsg = stringResource(R.string.lock_incorrect_pin)
+    val pinSavedSuccessMsg = stringResource(R.string.toast_pin_saved_success)
+    val pinLengthErrorMsg = stringResource(R.string.error_pin_length)
+    val pinMismatchErrorMsg = stringResource(R.string.error_pins_do_not_match)
 
     // Detect if device supports biometrics
     val biometricManager = remember { BiometricManager.from(context) }
@@ -60,9 +72,9 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
                 })
 
             val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Biometric Unlock")
-                .setSubtitle("Authenticate using your fingerprint or face")
-                .setNegativeButtonText("Use PIN Instead")
+                .setTitle(biometricTitle)
+                .setSubtitle(biometricSubtitle)
+                .setNegativeButtonText(biometricNegativeText)
                 .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
                 .build()
 
@@ -70,11 +82,11 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
         }
     }
 
-    // Observe biometric and security gate status dynamically [1]
+    // Observe biometric and security gate status dynamically
     val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
     val isSecurityGateEnabled by viewModel.isSecurityGateEnabled.collectAsState()
 
-    // Auto-launch biometrics on start ONLY if gate is active and biometrics are configured [1]
+    // Auto-launch biometrics on start ONLY if gate is active and biometrics are configured
     LaunchedEffect(isAlreadyConfigured, isBiometricEnabled, isSecurityGateEnabled) {
         if (isAlreadyConfigured && isBiometricsAvailable && isBiometricEnabled && isSecurityGateEnabled) {
             launchBiometricPrompt()
@@ -89,12 +101,12 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
 
     Scaffold(
         topBar = {
-            // Hide header if security gate is disabled to keep background transition clean [1]
+            // Hide header if security gate is disabled to keep background transition clean
             if (isSecurityGateEnabled) {
                 CenterAlignedTopAppBar(
                     title = {
                         Text(
-                            text = if (isAlreadyConfigured) "App Locked" else "Secure Setup",
+                            text = if (isAlreadyConfigured) stringResource(R.string.lock_app_locked) else stringResource(R.string.lock_secure_setup),
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -122,7 +134,7 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
                 }
 
                 Text(
-                    text = if (isAlreadyConfigured) "Enter PIN to Unlock" else "Configure Recovery PIN",
+                    text = if (isAlreadyConfigured) stringResource(R.string.lock_enter_pin) else stringResource(R.string.lock_configure_pin),
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF1D192B)
@@ -132,9 +144,9 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
 
                 Text(
                     text = if (isAlreadyConfigured) {
-                        "Enter your master PIN or use biometrics to access the student directory."
+                        stringResource(R.string.lock_unlock_description)
                     } else {
-                        "Create a secure database PIN. Ensure both fields match exactly before saving."
+                        stringResource(R.string.lock_setup_description)
                     },
                     fontSize = 14.sp,
                     color = Color(0xFF49454F),
@@ -152,7 +164,7 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
                             pin = sanitized
                         }
                     },
-                    label = { Text(if (isAlreadyConfigured) "Enter PIN" else "Create Master PIN") },
+                    label = { Text(if (isAlreadyConfigured) stringResource(R.string.lock_enter_pin_label) else stringResource(R.string.lock_create_master_pin_label)) },
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.NumberPassword,
@@ -164,7 +176,7 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
                             if (isAlreadyConfigured) {
                                 val success = viewModel.verifyPin(pin)
                                 if (!success) {
-                                    Toast.makeText(context, "Incorrect PIN. Access Denied.", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, incorrectPinMsg, Toast.LENGTH_SHORT).show()
                                     pin = ""
                                 }
                             }
@@ -188,7 +200,7 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
                                 confirmPin = sanitized
                             }
                         },
-                        label = { Text("Confirm Master PIN") },
+                        label = { Text(stringResource(R.string.lock_confirm_master_pin_label)) },
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.NumberPassword,
@@ -199,12 +211,12 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
                                 if (pin == confirmPin) {
                                     val success = viewModel.saveRecoveryPin(pin)
                                     if (success) {
-                                        Toast.makeText(context, "Recovery PIN Saved Successfully!", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, pinSavedSuccessMsg, Toast.LENGTH_SHORT).show()
                                     } else {
-                                        Toast.makeText(context, "PIN must be 4 to 6 digits.", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, pinLengthErrorMsg, Toast.LENGTH_SHORT).show()
                                     }
                                 } else {
-                                    Toast.makeText(context, "PINs do not match. Please verify.", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, pinMismatchErrorMsg, Toast.LENGTH_SHORT).show()
                                 }
                             }
                         ),
@@ -217,7 +229,7 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
                         ),
                         supportingText = {
                             if (pinMismatch) {
-                                Text("PINs do not match", color = Color(0xFFB3261E))
+                                Text(stringResource(R.string.lock_pin_mismatch), color = Color(0xFFB3261E))
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -232,7 +244,7 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
                     ) {
                         Icon(
                             imageVector = Icons.Default.Fingerprint,
-                            contentDescription = "Authenticate with Fingerprint",
+                            contentDescription = stringResource(R.string.content_description_fingerprint),
                             tint = Color(0xFF6750A4),
                             modifier = Modifier.size(48.dp)
                         )
@@ -246,19 +258,19 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
                         if (isAlreadyConfigured) {
                             val success = viewModel.verifyPin(pin)
                             if (!success) {
-                                Toast.makeText(context, "Incorrect PIN. Access Denied.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, incorrectPinMsg, Toast.LENGTH_SHORT).show()
                                 pin = ""
                             }
                         } else {
                             if (pin == confirmPin) {
                                 val success = viewModel.saveRecoveryPin(pin)
                                 if (success) {
-                                    Toast.makeText(context, "Recovery PIN Saved Successfully!", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, pinSavedSuccessMsg, Toast.LENGTH_SHORT).show()
                                 } else {
-                                    Toast.makeText(context, "PIN must be 4 to 6 digits.", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, pinLengthErrorMsg, Toast.LENGTH_SHORT).show()
                                 }
                             } else {
-                                Toast.makeText(context, "PINs do not match. Please verify.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, pinMismatchErrorMsg, Toast.LENGTH_SHORT).show()
                             }
                         }
                     },
@@ -267,7 +279,7 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
                     shape = RoundedCornerShape(20.dp)
                 ) {
                     Text(
-                        text = if (isAlreadyConfigured) "Unlock Directory" else "Confirm and Save",
+                        text = if (isAlreadyConfigured) stringResource(R.string.lock_unlock_directory) else stringResource(R.string.lock_confirm_save),
                         color = Color.White
                     )
                 }

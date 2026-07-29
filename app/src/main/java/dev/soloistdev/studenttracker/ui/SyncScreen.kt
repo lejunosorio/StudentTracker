@@ -1,6 +1,5 @@
 package dev.soloistdev.studenttracker.ui
 
-import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,18 +23,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.CsvExportEngine
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.JsonSyncEngine
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,7 +47,7 @@ fun SyncScreen(onBack: () -> Unit) {
     var showSampleFormat by remember { mutableStateOf(false) }
     val rotationAngle by animateFloatAsState(targetValue = if (showSampleFormat) 180f else 0f)
 
-    // Interactive Wizard States [1]
+    // Interactive Wizard States
     var tempStudents by remember { mutableStateOf<List<StudentEntity>>(emptyList()) }
     var tempDiscoveredFields by remember { mutableStateOf<List<String>>(emptyList()) }
 
@@ -62,16 +61,13 @@ fun SyncScreen(onBack: () -> Unit) {
         uri?.let { selectedUri ->
             scope.launch {
                 try {
-                    // Safe in-memory parse [1]
                     val result = JsonSyncEngine.parseBackup(context, selectedUri)
                     tempStudents = result.first
                     val discoveredKeys = result.second
 
-                    // Cross-reference unconfigured custom fields
                     val currentTemplates = repository.getAllFormTemplates().map { it.fieldName }.toSet()
                     tempDiscoveredFields = discoveredKeys.filter { !currentTemplates.contains(it) }
 
-                    // Trigger Stage 1 Confirmation [1]
                     showImportConfirmDialog = true
                 } catch (e: Exception) {
                     Toast.makeText(context, "Parsing error: ${e.message}", Toast.LENGTH_LONG).show()
@@ -86,7 +82,6 @@ fun SyncScreen(onBack: () -> Unit) {
             onDismiss = { showCustomFieldSelectorScreen = false },
             onCreateSelected = { selectedFields ->
                 scope.launch {
-                    // Bulk create selected custom fields
                     selectedFields.forEach { fieldName ->
                         repository.insertFormTemplate(
                             FormTemplateEntity(
@@ -96,7 +91,6 @@ fun SyncScreen(onBack: () -> Unit) {
                             )
                         )
                     }
-                    // Insert students
                     tempStudents.forEach { repository.insertStudent(it) }
                     showCustomFieldSelectorScreen = false
                     Toast.makeText(context, "${tempStudents.size} records imported successfully!", Toast.LENGTH_SHORT).show()
@@ -107,15 +101,15 @@ fun SyncScreen(onBack: () -> Unit) {
         Scaffold(
             topBar = {
                 CenterAlignedTopAppBar(
-                    title = { Text("Backup & Sync", fontWeight = FontWeight.Bold) },
+                    title = { Text(stringResource(R.string.menu_backup_sync), fontWeight = FontWeight.Bold) },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                         }
                     },
                     actions = {
                         IconButton(onClick = { showHelpDialog = true }) {
-                            Icon(Icons.Default.HelpOutline, contentDescription = "Help")
+                            Icon(Icons.Default.HelpOutline, contentDescription = stringResource(R.string.sync_help_guide_title))
                         }
                     }
                 )
@@ -130,7 +124,7 @@ fun SyncScreen(onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
-                    text = "AES-GCM Password Encryption",
+                    text = stringResource(R.string.sync_password_encryption_title),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -139,7 +133,7 @@ fun SyncScreen(onBack: () -> Unit) {
                 OutlinedTextField(
                     value = "••••••••••••",
                     onValueChange = {},
-                    label = { Text("Export Password") },
+                    label = { Text(stringResource(R.string.sync_export_password_label)) },
                     readOnly = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -154,8 +148,8 @@ fun SyncScreen(onBack: () -> Unit) {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Export Encrypted Backup", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Outputs secure .enc JSON payload", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                            Text(stringResource(R.string.sync_export_backup_title), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.sync_export_backup_desc), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                         }
                         IconButton(
                             onClick = {
@@ -166,7 +160,7 @@ fun SyncScreen(onBack: () -> Unit) {
                             },
                             colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                         ) {
-                            Icon(Icons.Default.Lock, contentDescription = "Export JSON", tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Icon(Icons.Default.Lock, contentDescription = stringResource(R.string.sync_export_backup_title), tint = MaterialTheme.colorScheme.onPrimaryContainer)
                         }
                     }
                 }
@@ -181,8 +175,8 @@ fun SyncScreen(onBack: () -> Unit) {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Export CSV Spreadsheet", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Decrypted rows for spreadsheets", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                            Text(stringResource(R.string.sync_export_csv_title), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.sync_export_csv_desc), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                         }
                         IconButton(
                             onClick = {
@@ -193,13 +187,13 @@ fun SyncScreen(onBack: () -> Unit) {
                             },
                             colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                         ) {
-                            Icon(Icons.Default.TableChart, contentDescription = "Export CSV", tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Icon(Icons.Default.TableChart, contentDescription = stringResource(R.string.sync_export_csv_title), tint = MaterialTheme.colorScheme.onPrimaryContainer)
                         }
                     }
                 }
 
                 Text(
-                    text = "Database Restoration",
+                    text = stringResource(R.string.sync_database_restoration_title),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -216,9 +210,9 @@ fun SyncScreen(onBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        Icon(Icons.Default.Download, contentDescription = "Import", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.Download, contentDescription = stringResource(R.string.sync_import_backup_label), tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Import Backup or JSON File", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.sync_import_backup_label), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     }
                 }
 
@@ -235,8 +229,8 @@ fun SyncScreen(onBack: () -> Unit) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("View Sample JSON Format", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("See the correct schema structure for imports", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                                Text(stringResource(R.string.sync_view_sample_json), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(stringResource(R.string.sync_view_sample_json_desc), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                             }
                             Icon(
                                 imageVector = Icons.Default.ArrowDropDown,
@@ -253,8 +247,8 @@ fun SyncScreen(onBack: () -> Unit) {
                             val sampleJson = """
                             [
                               {
-                                "firstName": "Troy",
-                                "lastName": "Ordinario",
+                                "firstName": "John",
+                                "lastName": "Doe",
                                 "gender": "M",
                                 "birthday": 1378598400000,
                                 "address": "Street Address, Brgy. 3, Taguig",
@@ -265,7 +259,7 @@ fun SyncScreen(onBack: () -> Unit) {
                                     "phones": ["555-0198"]
                                   }
                                 ],
-                                "customDataJson": "{\"Purok\": \"3\", \"Status\": \"Mang-aawit\", \"Bautisado\": \"\"}"
+                                "customDataJson": "{\"Purok\": \"3\", \"Status\": \"Practice\"}"
                               }
                             ]
                             """.trimIndent()
@@ -294,14 +288,13 @@ fun SyncScreen(onBack: () -> Unit) {
             if (showImportConfirmDialog) {
                 AlertDialog(
                     onDismissRequest = { showImportConfirmDialog = false },
-                    title = { Text("Accept Records Import") },
-                    text = { Text("Do you accept importing ${tempStudents.size} records?") },
+                    title = { Text(stringResource(R.string.sync_dialog_accept_import_title)) },
+                    text = { Text(stringResource(R.string.sync_dialog_accept_import_desc, tempStudents.size)) },
                     confirmButton = {
                         Button(
                             onClick = {
                                 showImportConfirmDialog = false
                                 if (tempDiscoveredFields.isNotEmpty()) {
-                                    // Trigger Stage 2 Dialog [1]
                                     showCustomFieldPromptDialog = true
                                 } else {
                                     scope.launch {
@@ -311,12 +304,12 @@ fun SyncScreen(onBack: () -> Unit) {
                                 }
                             }
                         ) {
-                            Text("Yes")
+                            Text(stringResource(R.string.action_yes))
                         }
                     },
                     dismissButton = {
                         TextButton(onClick = { showImportConfirmDialog = false }) {
-                            Text("No")
+                            Text(stringResource(R.string.action_no))
                         }
                     },
                     shape = RoundedCornerShape(28.dp)
@@ -327,17 +320,16 @@ fun SyncScreen(onBack: () -> Unit) {
             if (showCustomFieldPromptDialog) {
                 AlertDialog(
                     onDismissRequest = { showCustomFieldPromptDialog = false },
-                    title = { Text("Discovered Fields") },
-                    text = { Text("Custom Fields found in the JSON. Create them?") },
+                    title = { Text(stringResource(R.string.sync_dialog_discovered_fields_title)) },
+                    text = { Text(stringResource(R.string.sync_dialog_discovered_fields_desc)) },
                     confirmButton = {
                         Button(
                             onClick = {
                                 showCustomFieldPromptDialog = false
-                                // Trigger Stage 3 Screen [1]
                                 showCustomFieldSelectorScreen = true
                             }
                         ) {
-                            Text("Yes")
+                            Text(stringResource(R.string.action_yes))
                         }
                     },
                     dismissButton = {
@@ -345,13 +337,12 @@ fun SyncScreen(onBack: () -> Unit) {
                             onClick = {
                                 showCustomFieldPromptDialog = false
                                 scope.launch {
-                                    // Proceed import without registering templates
                                     tempStudents.forEach { repository.insertStudent(it) }
                                     Toast.makeText(context, "${tempStudents.size} records imported successfully!", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         ) {
-                            Text("No")
+                            Text(stringResource(R.string.action_no))
                         }
                     },
                     shape = RoundedCornerShape(28.dp)
@@ -361,46 +352,46 @@ fun SyncScreen(onBack: () -> Unit) {
             if (showHelpDialog) {
                 AlertDialog(
                     onDismissRequest = { showHelpDialog = false },
-                    title = { Text("Backup & Sync Guide", fontWeight = FontWeight.Bold) },
+                    title = { Text(stringResource(R.string.sync_help_guide_title), fontWeight = FontWeight.Bold) },
                     text = {
                         Column(
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = "Secure Backups (.enc)",
+                                text = stringResource(R.string.sync_help_secure_backups_title),
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontSize = 14.sp
                             )
                             Text(
-                                text = "Backups exported with the lock icon use military-grade AES-GCM encryption. These are tied to your current Master recovery PIN. If you reset or forget this PIN, old backup files cannot be decrypted.",
+                                text = stringResource(R.string.sync_help_secure_backups_desc),
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 lineHeight = 18.sp
                             )
 
                             Text(
-                                text = "Spreadsheets & Plain JSON (.csv / .json)",
+                                text = stringResource(R.string.sync_help_plain_files_title),
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontSize = 14.sp
                             )
                             Text(
-                                text = "CSV and standard JSON imports are unencrypted. You can open them on external computers using spreadsheet software. Use these when migrating rosters across different devices without cryptographic keys.",
+                                text = stringResource(R.string.sync_help_plain_files_desc),
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 lineHeight = 18.sp
                             )
 
                             Text(
-                                text = "Offline Security Warning",
+                                text = stringResource(R.string.sync_help_security_warning_title),
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.error,
                                 fontSize = 14.sp
                             )
                             Text(
-                                text = "This application operates 100% offline. There are no cloud servers. Keep your master passcodes safe as they are the only keys that can open your data.",
+                                text = stringResource(R.string.sync_help_security_warning_desc),
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 lineHeight = 18.sp
@@ -412,7 +403,7 @@ fun SyncScreen(onBack: () -> Unit) {
                             onClick = { showHelpDialog = false },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                         ) {
-                            Text("Got it")
+                            Text(stringResource(R.string.sync_help_button_dismiss))
                         }
                     },
                     shape = RoundedCornerShape(28.dp)

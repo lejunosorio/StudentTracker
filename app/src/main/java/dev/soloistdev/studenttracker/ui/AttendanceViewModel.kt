@@ -3,8 +3,6 @@ package dev.soloistdev.studenttracker.ui
 import android.app.Application
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
-import android.widget.Toast
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope

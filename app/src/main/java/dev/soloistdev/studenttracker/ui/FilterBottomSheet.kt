@@ -13,10 +13,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource // Resolved: Explicit resource accessor import [1]
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.soloistdev.studenttracker.R // Resolved: Explicit R file import [1]
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import java.text.SimpleDateFormat
 import java.util.*
@@ -33,7 +35,6 @@ fun FilterBottomSheet(
     var tempField by remember { mutableStateOf(activeFilter?.field ?: "Age") }
     var tempComparison by remember { mutableStateOf(activeFilter?.comparison ?: "In between") }
 
-    // Resolved: Defaults to empty string unless Gender is selected to prevent "Female" pre-population in numeric fields [1]
     var tempVal1 by remember {
         mutableStateOf(
             activeFilter?.value1 ?: if (activeFilter?.field == "Gender") "Female" else ""
@@ -102,7 +103,7 @@ fun FilterBottomSheet(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Filter Directory", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Text(stringResource(R.string.filter_directory_title), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
 
             var fieldExpanded by remember { mutableStateOf(false) }
             ExposedDropdownMenuBox(
@@ -113,7 +114,7 @@ fun FilterBottomSheet(
                     value = tempField.replace("_", " "),
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("Select Field") },
+                    label = { Text(stringResource(R.string.filter_select_field)) },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = fieldExpanded) },
                     modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                 )
@@ -152,7 +153,7 @@ fun FilterBottomSheet(
                         value = tempComparison,
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Select Comparison") },
+                        label = { Text(stringResource(R.string.filter_comparison_label)) },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = compExpanded) },
                         modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                     )
@@ -181,13 +182,14 @@ fun FilterBottomSheet(
 
             if (isBirthdayMode) {
                 var typeExpanded by remember { mutableStateOf(false) }
+                // Localized display labels mapped securely to database constants [1]
                 val birthdayTypes = listOf(
-                    "Birth year (YYYY)" to "birth_year",
-                    "Birth month (MM)" to "birth_month",
-                    "Birth month and Year (MM - YY)" to "birth_month_year",
-                    "Exact Birthday (MM/DD/YYYY)" to "exact_birthday"
+                    stringResource(R.string.birthday_type_year) to "birth_year",
+                    stringResource(R.string.birthday_type_month) to "birth_month",
+                    stringResource(R.string.birthday_type_month_year) to "birth_month_year",
+                    stringResource(R.string.birthday_type_exact) to "exact_birthday"
                 )
-                val selectedTypeName = birthdayTypes.find { it.second == tempComparison }?.first ?: "Exact Birthday (MM/DD/YYYY)"
+                val selectedTypeName = birthdayTypes.find { it.second == tempComparison }?.first ?: stringResource(R.string.birthday_type_exact)
 
                 ExposedDropdownMenuBox(
                     expanded = typeExpanded,
@@ -197,7 +199,7 @@ fun FilterBottomSheet(
                         value = selectedTypeName,
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Select Birthday Filter Type") },
+                        label = { Text(stringResource(R.string.filter_select_birthday_type)) },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeExpanded) },
                         modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                     )
@@ -226,13 +228,13 @@ fun FilterBottomSheet(
                         OutlinedTextField(
                             value = tempVal1,
                             onValueChange = { if (it.length <= 4) tempVal1 = it.filter { c -> c.isDigit() } },
-                            label = { Text("Birth Year (YYYY) *") },
+                            label = { Text(stringResource(R.string.filter_birth_year_label)) },
                             isError = isFutureYear1,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
                         )
                         if (isFutureYear1) {
-                            Text("Year cannot be in the future.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                            Text(stringResource(R.string.error_future_year), color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                         }
                     }
                     "birth_month" -> {
@@ -248,7 +250,7 @@ fun FilterBottomSheet(
                                 value = selectedMonthName,
                                 onValueChange = {},
                                 readOnly = true,
-                                label = { Text("Select Birth Month *") },
+                                label = { Text(stringResource(R.string.filter_select_birth_month)) },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = monthExpanded) },
                                 modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                             )
@@ -286,7 +288,7 @@ fun FilterBottomSheet(
                                         value = selectedMonthName,
                                         onValueChange = {},
                                         readOnly = true,
-                                        label = { Text("Month *") },
+                                        label = { Text(stringResource(R.string.filter_month_label)) },
                                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = monthExpanded) },
                                         modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                                     )
@@ -310,19 +312,19 @@ fun FilterBottomSheet(
                             OutlinedTextField(
                                 value = tempVal2,
                                 onValueChange = { if (it.length <= 4) tempVal2 = it.filter { c -> c.isDigit() } },
-                                label = { Text("Year (YYYY) *") },
+                                label = { Text(stringResource(R.string.filter_year_label)) },
                                 isError = isFutureYear2,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 modifier = Modifier.weight(1f)
                             )
                         }
                         if (isFutureYear2) {
-                            Text("Year cannot be in the future.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                            Text(stringResource(R.string.error_future_year), color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                         }
                     }
                     "exact_birthday" -> {
                         val sdfPicker = SimpleDateFormat("MMM dd, yyyy", Locale.US)
-                        val birthday1Formatted = tempVal1.toLongOrNull()?.let { sdfPicker.format(Date(it)) } ?: "Select Birthday Date *"
+                        val birthday1Formatted = tempVal1.toLongOrNull()?.let { sdfPicker.format(Date(it)) } ?: stringResource(R.string.filter_select_birthday_date)
 
                         OutlinedButton(
                             onClick = { showDatePicker1 = true },
@@ -341,7 +343,7 @@ fun FilterBottomSheet(
                     }
                 }
             } else if (isGenderMode) {
-                Text("Select Gender *", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.filter_select_gender), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -349,13 +351,13 @@ fun FilterBottomSheet(
                     FilterChip(
                         selected = tempVal1 == "Female",
                         onClick = { tempVal1 = "Female" },
-                        label = { Text("Female") },
+                        label = { Text(stringResource(R.string.gender_female)) },
                         colors = chipColors
                     )
                     FilterChip(
                         selected = tempVal1 == "Male",
                         onClick = { tempVal1 = "Male" },
-                        label = { Text("Male") },
+                        label = { Text(stringResource(R.string.gender_male)) },
                         colors = chipColors
                     )
                 }
@@ -368,7 +370,7 @@ fun FilterBottomSheet(
                         OutlinedTextField(
                             value = tempVal1,
                             onValueChange = { tempVal1 = it },
-                            label = { Text("Value 1 (Min) *") },
+                            label = { Text(stringResource(R.string.filter_value_min)) },
                             isError = isValidationError,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.weight(1f)
@@ -376,7 +378,7 @@ fun FilterBottomSheet(
                         OutlinedTextField(
                             value = tempVal2,
                             onValueChange = { tempVal2 = it },
-                            label = { Text("Value 2 (Max) *") },
+                            label = { Text(stringResource(R.string.filter_value_max)) },
                             isError = isValidationError,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.weight(1f)
@@ -385,7 +387,7 @@ fun FilterBottomSheet(
 
                     if (isValidationError) {
                         Text(
-                            text = "Value 2 (Max) must be strictly greater than Value 1",
+                            text = stringResource(R.string.filter_range_error),
                             color = MaterialTheme.colorScheme.error,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(start = 4.dp)
@@ -396,7 +398,7 @@ fun FilterBottomSheet(
                     OutlinedTextField(
                         value = tempVal1,
                         onValueChange = { tempVal1 = it },
-                        label = { Text("Value *") },
+                        label = { Text(stringResource(R.string.filter_value_singular)) },
                         keyboardOptions = KeyboardOptions(keyboardType = if (isNumeric) KeyboardType.Number else KeyboardType.Text),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -410,7 +412,7 @@ fun FilterBottomSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Pin filter to dashboard", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                Text(stringResource(R.string.filter_pin_to_dashboard), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
                 Switch(
                     checked = tempIsPinned,
                     onCheckedChange = { tempIsPinned = it }
@@ -423,7 +425,7 @@ fun FilterBottomSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(onClick = { onResetFilter(); onDismiss() }) {
-                    Text("Reset")
+                    Text(stringResource(R.string.action_reset))
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(
@@ -448,7 +450,7 @@ fun FilterBottomSheet(
                     ),
                     shape = RoundedCornerShape(100.dp)
                 ) {
-                    Text("Apply Filter")
+                    Text(stringResource(R.string.filter_apply_button))
                 }
             }
         }

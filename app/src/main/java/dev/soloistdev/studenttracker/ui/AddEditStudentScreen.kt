@@ -12,7 +12,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.automirrored.filled.ArrowBack // AutoMirrored back icon [1]
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Delete
@@ -23,12 +23,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource // Resolved: Explicit resource accessor import [1]
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.soloistdev.studenttracker.R // Resolved: Explicit R file import [1]
 import dev.soloistdev.studenttracker.security.ImageCompressor
 import java.text.SimpleDateFormat
 import java.util.*
@@ -59,6 +61,10 @@ fun AddEditStudentScreen(
         unfocusedTextColor = MaterialTheme.colorScheme.onSurface
     )
 
+    // Resource strings collected safely for verification checks
+    val validationErrorMessage = stringResource(R.string.validation_error_fields)
+    val errorSavingImageMessage = stringResource(R.string.error_saving_image)
+
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -67,7 +73,7 @@ fun AddEditStudentScreen(
             if (privatePath != null) {
                 viewModel.picturePath = privatePath
             } else {
-                Toast.makeText(context, "Error saving compressed image.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, errorSavingImageMessage, Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -85,22 +91,32 @@ fun AddEditStudentScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text(if (studentId == -1) "Add Student" else "Edit Student", fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        text = if (studentId == -1) stringResource(R.string.title_add_student) else stringResource(R.string.title_edit_student),
+                        fontWeight = FontWeight.Bold
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 actions = {
                     TextButton(onClick = {
                         if (viewModel.firstName.isBlank() || viewModel.lastName.isBlank() ||
                             viewModel.birthday == null || viewModel.guardiansStateList.isEmpty()) {
-                            Toast.makeText(context, "Please fill in all required fields (*) and add at least 1 Guardian", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, validationErrorMessage, Toast.LENGTH_LONG).show()
                         } else {
                             showSaveDialog = true
                         }
                     }) {
-                        Text("Save", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text(
+                            text = stringResource(R.string.action_save),
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
                     }
                 }
             )
@@ -135,9 +151,17 @@ fun AddEditStudentScreen(
                                 verticalArrangement = Arrangement.Center,
                                 modifier = Modifier.fillMaxSize()
                             ) {
-                                Icon(Icons.Default.CameraAlt, contentDescription = "Add Photo", tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                Icon(
+                                    imageVector = Icons.Default.CameraAlt,
+                                    contentDescription = stringResource(R.string.add_photo),
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text("Add Photo", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                Text(
+                                    text = stringResource(R.string.add_photo),
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
                             }
                         }
                     )
@@ -148,7 +172,7 @@ fun AddEditStudentScreen(
             OutlinedTextField(
                 value = viewModel.lastName,
                 onValueChange = { viewModel.lastName = it },
-                label = { Text("Last Name *") },
+                label = { Text(stringResource(R.string.label_last_name)) },
                 colors = m3TextFieldColors,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth()
@@ -158,14 +182,19 @@ fun AddEditStudentScreen(
             OutlinedTextField(
                 value = viewModel.firstName,
                 onValueChange = { viewModel.firstName = it },
-                label = { Text("First Name *") },
+                label = { Text(stringResource(R.string.label_first_name)) },
                 colors = m3TextFieldColors,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth()
             )
 
             // GENDER
-            Text("Gender *", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(
+                text = stringResource(R.string.label_gender),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
 
             val chipColors = FilterChipDefaults.filterChipColors(
                 selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -181,20 +210,20 @@ fun AddEditStudentScreen(
                 FilterChip(
                     selected = viewModel.gender == "F",
                     onClick = { viewModel.gender = "F" },
-                    label = { Text("Female") },
+                    label = { Text(stringResource(R.string.gender_female)) },
                     colors = chipColors
                 )
                 FilterChip(
                     selected = viewModel.gender == "M",
                     onClick = { viewModel.gender = "M" },
-                    label = { Text("Male") },
+                    label = { Text(stringResource(R.string.gender_male)) },
                     colors = chipColors
                 )
             }
 
             // BIRTHDAY PICKER
             val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.US)
-            val birthdayText = viewModel.birthday?.let { sdf.format(Date(it)) } ?: "Select Birthday *"
+            val birthdayText = viewModel.birthday?.let { sdf.format(Date(it)) } ?: stringResource(R.string.select_birthday)
 
             OutlinedButton(
                 onClick = { showDatePicker = true },
@@ -207,25 +236,29 @@ fun AddEditStudentScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(birthdayText, color = MaterialTheme.colorScheme.onSurface)
-                    Icon(Icons.Default.CalendarToday, contentDescription = "Select Date", tint = MaterialTheme.colorScheme.primary)
+                    Icon(
+                        imageVector = Icons.Default.CalendarToday,
+                        contentDescription = stringResource(R.string.select_date),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
 
-            // ADDRESS FIELD (Restored to clean, standard text input without obsolete maps metadata) [1]
+            // ADDRESS FIELD
             OutlinedTextField(
                 value = viewModel.address,
                 onValueChange = { viewModel.address = it },
-                label = { Text("Address / Location") },
+                label = { Text(stringResource(R.string.label_address)) },
                 colors = m3TextFieldColors,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // STUDENT CONTACT NUMBER [1]
+            // STUDENT CONTACT NUMBER
             OutlinedTextField(
                 value = viewModel.contactNumber,
                 onValueChange = { viewModel.contactNumber = it },
-                label = { Text("Student Contact Number") },
+                label = { Text(stringResource(R.string.label_contact_number)) },
                 colors = m3TextFieldColors,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Phone,
@@ -234,7 +267,12 @@ fun AddEditStudentScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Text("Guardians *", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(
+                text = stringResource(R.string.label_guardians),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
 
             viewModel.guardiansStateList.forEachIndexed { index, guardian ->
                 Card(
@@ -251,7 +289,7 @@ fun AddEditStudentScreen(
                             Text("${guardian.relationship} • ${guardian.phones.firstOrNull() ?: ""}", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                         }
                         IconButton(onClick = { viewModel.removeGuardian(index) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error)
+                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.action_remove), tint = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -266,13 +304,22 @@ fun AddEditStudentScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Add Guardian", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = stringResource(R.string.action_add_guardian),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
 
             // DYNAMIC CUSTOM FIELDS
             if (viewModel.customDataMap.isNotEmpty()) {
-                Text("Custom Schema Fields", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    text = stringResource(R.string.custom_schema_fields),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
 
                 viewModel.customDataMap.forEach { (key, value) ->
                     val userFriendlyLabel = key.replace("_", " ")
@@ -294,8 +341,8 @@ fun AddEditStudentScreen(
         if (showSaveDialog) {
             AlertDialog(
                 onDismissRequest = { showSaveDialog = false },
-                title = { Text("Save Changes?", fontWeight = FontWeight.Bold) },
-                text = { Text("Are you sure you want to save this student's profile details to the secure local directory?") },
+                title = { Text(stringResource(R.string.save_changes_title), fontWeight = FontWeight.Bold) },
+                text = { Text(stringResource(R.string.save_changes_description)) },
                 confirmButton = {
                     Button(
                         onClick = {
@@ -304,12 +351,12 @@ fun AddEditStudentScreen(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
-                        Text("Save")
+                        Text(stringResource(R.string.action_save))
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showSaveDialog = false }) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.action_cancel))
                     }
                 },
                 shape = RoundedCornerShape(28.dp)
@@ -320,30 +367,33 @@ fun AddEditStudentScreen(
         if (showAddGuardianDialog) {
             AlertDialog(
                 onDismissRequest = { showAddGuardianDialog = false },
-                title = { Text("Add New Guardian", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.add_guardian_title), fontWeight = FontWeight.Bold) },
                 text = {
                     Column(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()) // Resolved: Scrollable layout prevents visual cutoffs [1]
+                            .imePadding() // Resolved: Dynamic padding adjustment based on system IME/Keyboard [1]
                     ) {
                         OutlinedTextField(
                             value = newGuardianName,
                             onValueChange = { newGuardianName = it },
-                            label = { Text("Name *") },
+                            label = { Text(stringResource(R.string.guardian_name)) },
                             colors = m3TextFieldColors,
                             modifier = Modifier.fillMaxWidth()
                         )
                         OutlinedTextField(
                             value = newGuardianRelationship,
                             onValueChange = { newGuardianRelationship = it },
-                            label = { Text("Relationship (e.g. Mother) *") },
+                            label = { Text(stringResource(R.string.guardian_relationship)) },
                             colors = m3TextFieldColors,
                             modifier = Modifier.fillMaxWidth()
                         )
                         OutlinedTextField(
                             value = newGuardianContact,
                             onValueChange = { newGuardianContact = it },
-                            label = { Text("Contact Number *") },
+                            label = { Text(stringResource(R.string.guardian_contact)) },
                             colors = m3TextFieldColors,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                             modifier = Modifier.fillMaxWidth()
@@ -365,12 +415,12 @@ fun AddEditStudentScreen(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
-                        Text("Add")
+                        Text(stringResource(R.string.action_add))
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showAddGuardianDialog = false }) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.action_cancel))
                     }
                 },
                 shape = RoundedCornerShape(28.dp)
@@ -397,12 +447,12 @@ fun AddEditStudentScreen(
                     viewModel.birthday = datePickerState.selectedDateMillis
                     showDatePicker = false
                 }) {
-                    Text("OK")
+                    Text(stringResource(R.string.action_ok))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDatePicker = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         ) {

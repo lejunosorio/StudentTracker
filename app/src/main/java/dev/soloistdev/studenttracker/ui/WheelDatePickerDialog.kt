@@ -11,11 +11,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringArrayResource // Resolved: Explicit stringArrayResource import [1]
+import androidx.compose.ui.res.stringResource // Resolved: Explicit resource accessor import [1]
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.soloistdev.studenttracker.R // Resolved: Explicit R file import [1]
 import java.util.*
-import java.util.concurrent.atomic.AtomicBoolean // Resolved: Thread-safe atomic flag import [1]
+import java.util.concurrent.atomic.AtomicBoolean
 
 @Composable
 fun WheelDatePickerDialog(
@@ -73,13 +76,12 @@ fun WheelDatePickerDialog(
         }
     }
 
-    val monthNames = remember {
-        listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-    }
+    // Resolved: Fetches localized dynamic month names directly from resource string array [1]
+    val monthNames = stringArrayResource(R.array.month_names).toList()
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select Date", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+        title = { Text(stringResource(R.string.wheel_picker_title), fontWeight = FontWeight.Bold, fontSize = 20.sp) },
         text = {
             Box(
                 modifier = Modifier
@@ -147,12 +149,12 @@ fun WheelDatePickerDialog(
                     onConfirm(resultCal.timeInMillis)
                 }
             ) {
-                Text("OK")
+                Text(stringResource(R.string.action_ok))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.action_cancel))
             }
         },
         shape = RoundedCornerShape(28.dp)
@@ -170,12 +172,12 @@ fun WheelColumnPicker(
     val paddedItems = remember(items) { listOf("") + items + listOf("") }
     val lazyListState = rememberLazyListState(initialFirstVisibleItemIndex = selectedIndex)
 
-    // Synchronous JVM atomic mutex lock to bypass Compose async state scheduling [1]
+    // Synchronous JVM atomic mutex lock to bypass Compose async state scheduling
     val isProgrammaticScroll = remember { AtomicBoolean(false) }
 
     LaunchedEffect(lazyListState) {
         snapshotFlow { lazyListState.firstVisibleItemIndex }.collect { index ->
-            // Only update parent state if the scroll is NOT programmatically initiated [1]
+            // Only update parent state if the scroll is NOT programmatically initiated
             if (index in items.indices && !isProgrammaticScroll.get()) {
                 onValueChange(index)
                 if (lazyListState.isScrollInProgress) {
@@ -187,10 +189,10 @@ fun WheelColumnPicker(
 
     LaunchedEffect(selectedIndex) {
         if (lazyListState.firstVisibleItemIndex != selectedIndex && selectedIndex in items.indices) {
-            // Set the lock synchronously on the coroutine thread before suspending [1]
+            // Set the lock synchronously on the coroutine thread before suspending
             isProgrammaticScroll.set(true)
             lazyListState.scrollToItem(selectedIndex)
-            isProgrammaticScroll.set(false) // Releases lock once layout has fully settled [1]
+            isProgrammaticScroll.set(false) // Releases lock once layout has fully settled
         }
     }
 

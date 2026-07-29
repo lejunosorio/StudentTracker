@@ -9,7 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit // Explicit Edit icon import [1]
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,10 +17,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource // Resolved: Explicit resource accessor import [1]
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.soloistdev.studenttracker.R // Resolved: Explicit R file import [1]
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,14 +42,14 @@ fun TemplateManagerScreen(
     var tempIsRequired by remember { mutableStateOf(false) }
 
     var templateToDelete by remember { mutableStateOf<FormTemplateEntity?>(null) }
-
-    // Shows the custom field creation selection page
     var showDiscoveredFieldsScreen by remember { mutableStateOf(false) }
-
-    // Active editing template state manager [1]
     var editingTemplate by remember { mutableStateOf<FormTemplateEntity?>(null) }
 
-    // Dynamic state synchronization on bottom sheet open [1]
+    // Pre-read system Toast resources inside Composable scope to prevent context resolution stutters [1]
+    val fieldCreatedMsg = stringResource(R.string.toast_field_created)
+    val fieldUpdatedMsg = stringResource(R.string.toast_field_updated)
+    val invalidNameErrorMsg = stringResource(R.string.error_invalid_field_name)
+
     LaunchedEffect(showBottomSheet, editingTemplate) {
         if (showBottomSheet) {
             val template = editingTemplate
@@ -77,10 +79,10 @@ fun TemplateManagerScreen(
         Scaffold(
             topBar = {
                 CenterAlignedTopAppBar(
-                    title = { Text("Template Manager", fontWeight = FontWeight.Bold) },
+                    title = { Text(stringResource(R.string.menu_template_manager), fontWeight = FontWeight.Bold) },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                         }
                     },
                     actions = {
@@ -99,14 +101,14 @@ fun TemplateManagerScreen(
             floatingActionButton = {
                 FloatingActionButton(
                     onClick = {
-                        editingTemplate = null // Nullifies to treat sheet as New Creation [1]
+                        editingTemplate = null
                         showBottomSheet = true
                     },
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Template")
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.action_add))
                 }
             }
         ) { paddingValues ->
@@ -117,7 +119,7 @@ fun TemplateManagerScreen(
             ) {
                 item {
                     Text(
-                        text = "Active Custom Fields",
+                        text = stringResource(R.string.active_custom_fields_header),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
@@ -146,32 +148,32 @@ fun TemplateManagerScreen(
                                     fontSize = 16.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                val requiredLabel = if (template.isRequired) stringResource(R.string.action_yes) else stringResource(R.string.action_no)
                                 Text(
-                                    text = "Type: ${template.fieldType} | Required: ${if (template.isRequired) "Yes" else "No"}",
+                                    text = stringResource(R.string.template_card_desc, template.fieldType, requiredLabel),
                                     fontSize = 14.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                 )
                             }
 
-                            // Row Actions Container [1]
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 IconButton(onClick = {
-                                    editingTemplate = template // Directs sheet to populate with values [1]
+                                    editingTemplate = template
                                     showBottomSheet = true
                                 }) {
                                     Icon(
                                         imageVector = Icons.Default.Edit,
-                                        contentDescription = "Edit Template",
+                                        contentDescription = stringResource(R.string.template_edit_field_title),
                                         tint = MaterialTheme.colorScheme.primary
                                     )
                                 }
                                 IconButton(onClick = { templateToDelete = template }) {
                                     Icon(
                                         imageVector = Icons.Default.Delete,
-                                        contentDescription = "Delete",
+                                        contentDescription = stringResource(R.string.action_delete),
                                         tint = MaterialTheme.colorScheme.error
                                     )
                                 }
@@ -197,7 +199,7 @@ fun TemplateManagerScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Text(
-                            text = if (editingTemplate != null) "Edit Custom Field" else "New Custom Field",
+                            text = if (editingTemplate != null) stringResource(R.string.template_edit_field_title) else stringResource(R.string.template_new_field_title),
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -206,8 +208,8 @@ fun TemplateManagerScreen(
                         OutlinedTextField(
                             value = newFieldName,
                             onValueChange = { newFieldName = it },
-                            label = { Text("Field Name (Alphanumeric/Underscores)") },
-                            placeholder = { Text("e.g., Grade_Level") },
+                            label = { Text(stringResource(R.string.template_field_name_label)) },
+                            placeholder = { Text(stringResource(R.string.template_field_name_placeholder)) },
                             modifier = Modifier.fillMaxWidth()
                         )
 
@@ -225,13 +227,13 @@ fun TemplateManagerScreen(
                             FilterChip(
                                 selected = selectedType == "TEXT",
                                 onClick = { selectedType = "TEXT" },
-                                label = { Text("Text") },
+                                label = { Text(stringResource(R.string.template_type_text)) },
                                 colors = chipColors
                             )
                             FilterChip(
                                 selected = selectedType == "NUMBER",
                                 onClick = { selectedType = "NUMBER" },
-                                label = { Text("Number") },
+                                label = { Text(stringResource(R.string.template_type_number)) },
                                 colors = chipColors
                             )
                         }
@@ -243,7 +245,7 @@ fun TemplateManagerScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Required field", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                            Text(stringResource(R.string.template_required_field_label), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
                             Switch(
                                 checked = tempIsRequired,
                                 onCheckedChange = { tempIsRequired = it }
@@ -260,13 +262,13 @@ fun TemplateManagerScreen(
                                     isRequired = tempIsRequired
                                 )
                                 if (success) {
-                                    Toast.makeText(context, if (isEdit) "Field Updated Successfully!" else "Field Created Successfully!", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, if (isEdit) fieldUpdatedMsg else fieldCreatedMsg, Toast.LENGTH_SHORT).show()
                                     newFieldName = ""
                                     tempIsRequired = false
                                     editingTemplate = null
                                     showBottomSheet = false
                                 } else {
-                                    Toast.makeText(context, "Invalid name. Alphanumeric & underscores only.", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, invalidNameErrorMsg, Toast.LENGTH_LONG).show()
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -276,7 +278,7 @@ fun TemplateManagerScreen(
                             ),
                             shape = RoundedCornerShape(20.dp)
                         ) {
-                            Text(if (editingTemplate != null) "Update Template" else "Create Template")
+                            Text(if (editingTemplate != null) stringResource(R.string.template_action_update) else stringResource(R.string.template_action_create))
                         }
                     }
                 }
@@ -285,8 +287,8 @@ fun TemplateManagerScreen(
             templateToDelete?.let { template ->
                 AlertDialog(
                     onDismissRequest = { templateToDelete = null },
-                    title = { Text("Delete Custom Field?") },
-                    text = { Text("Are you sure you want to move the '${template.fieldName.replace("_", " ")}' custom field to the Recycle Bin? It can be restored within 30 days.") },
+                    title = { Text(stringResource(R.string.template_delete_dialog_title)) },
+                    text = { Text(stringResource(R.string.template_delete_dialog_desc, template.fieldName.replace("_", " "))) },
                     confirmButton = {
                         Button(
                             onClick = {
@@ -296,12 +298,12 @@ fun TemplateManagerScreen(
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                         ) {
-                            Text("Delete")
+                            Text(stringResource(R.string.action_delete))
                         }
                     },
                     dismissButton = {
                         TextButton(onClick = { templateToDelete = null }) {
-                            Text("Cancel")
+                            Text(stringResource(R.string.action_cancel))
                         }
                     },
                     shape = RoundedCornerShape(28.dp)

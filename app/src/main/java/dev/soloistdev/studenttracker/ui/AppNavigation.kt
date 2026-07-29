@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -24,36 +25,37 @@ fun AppNavigation() {
 
     val securityViewModel: SecurityViewModel = viewModel()
     val isUnlocked by securityViewModel.isUnlocked.collectAsState()
+    val scope = rememberCoroutineScope() // Compose-managed lifecycle coroutine scope [1]
 
     LaunchedEffect(isUnlocked) {
         if (isUnlocked) {
-            navController.navigate("view_all") {
-                popUpTo("security_gate") { inclusive = true }
+            navController.navigate(ScreenRoute.VIEW_ALL) {
+                popUpTo(ScreenRoute.SECURITY_GATE) { inclusive = true }
             }
         } else {
-            navController.navigate("security_gate") {
+            navController.navigate(ScreenRoute.SECURITY_GATE) {
                 popUpTo(0) { inclusive = true }
             }
         }
     }
 
-    NavHost(navController = navController, startDestination = "security_gate") {
+    NavHost(navController = navController, startDestination = ScreenRoute.SECURITY_GATE) {
 
-        composable("security_gate") {
+        composable(ScreenRoute.SECURITY_GATE) {
             SecurityGateScreen(
                 onUnlockSuccess = {
-                    navController.navigate("view_all") {
-                        popUpTo("security_gate") { inclusive = true }
+                    navController.navigate(ScreenRoute.VIEW_ALL) {
+                        popUpTo(ScreenRoute.SECURITY_GATE) { inclusive = true }
                     }
                 },
                 viewModel = securityViewModel
             )
         }
 
-        composable("view_all") {
+        composable(ScreenRoute.VIEW_ALL) {
             ViewAllScreen(
                 onAddStudent = { id ->
-                    if (navController.currentDestination?.route == "view_all") {
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
                         navController.navigate("add_edit/$id")
                     }
                 },
@@ -63,42 +65,42 @@ fun AppNavigation() {
                     }
                 },
                 onOpenTemplates = {
-                    if (navController.currentDestination?.route == "view_all") {
-                        navController.navigate("templates")
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                        navController.navigate(ScreenRoute.TEMPLATES)
                     }
                 },
                 onOpenMap = {
-                    if (navController.currentDestination?.route == "view_all") {
-                        navController.navigate("saved_filters")
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                        navController.navigate(ScreenRoute.SAVED_FILTERS)
                     }
                 },
                 onOpenRecycleBin = {
-                    if (navController.currentDestination?.route == "view_all") {
-                        navController.navigate("recycle_bin")
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                        navController.navigate(ScreenRoute.RECYCLE_BIN)
                     }
                 },
                 onOpenSync = {
-                    if (navController.currentDestination?.route == "view_all") {
-                        navController.navigate("sync")
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                        navController.navigate(ScreenRoute.SYNC)
                     }
                 },
                 onOpenSettings = {
-                    if (navController.currentDestination?.route == "view_all") {
-                        navController.navigate("app_settings")
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                        navController.navigate(ScreenRoute.APP_SETTINGS)
                     }
                 },
                 onOpenBiometrics = {
-                    if (navController.currentDestination?.route == "view_all") {
-                        navController.navigate("biometrics_privacy")
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                        navController.navigate(ScreenRoute.BIOMETRICS_PRIVACY)
                     }
                 },
                 onOpenAttendance = {
-                    if (navController.currentDestination?.route == "view_all") {
-                        navController.navigate("attendance")
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                        navController.navigate(ScreenRoute.ATTENDANCE)
                     }
                 },
                 onOpenAttendanceWithArgs = { recordId, dateMillis ->
-                    if (navController.currentDestination?.route == "view_all") {
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
                         navController.navigate("attendance?recordId=$recordId&dateMillis=$dateMillis")
                     }
                 }
@@ -106,7 +108,7 @@ fun AppNavigation() {
         }
 
         composable(
-            route = "profile/{studentId}",
+            route = ScreenRoute.PROFILE,
             arguments = listOf(navArgument("studentId") { type = NavType.IntType })
         ) { backStackEntry ->
             val studentId = backStackEntry.arguments?.getInt("studentId") ?: -1
@@ -118,7 +120,7 @@ fun AppNavigation() {
                     }
                 },
                 onEdit = { id ->
-                    if (navController.currentDestination?.route == "profile/{studentId}") {
+                    if (navController.currentDestination?.route == ScreenRoute.PROFILE) {
                         navController.navigate("add_edit/$id") {
                             popUpTo("profile/$studentId") { inclusive = true }
                         }
@@ -128,10 +130,11 @@ fun AppNavigation() {
                     PdfGeneratorHelper.generateAndShareStudentPdf(context, studentEntity)
                 },
                 onDeleteStudent = { id ->
-                    kotlinx.coroutines.MainScope().launch {
+                    // Resolved: Uses the Compose-managed lifecycle coroutine scope to eliminate unmanaged memory leaks [1]
+                    scope.launch {
                         repository.softDeleteStudent(id)
-                        navController.navigate("view_all") {
-                            popUpTo("view_all") { inclusive = true }
+                        navController.navigate(ScreenRoute.VIEW_ALL) {
+                            popUpTo(ScreenRoute.VIEW_ALL) { inclusive = true }
                         }
                     }
                 }
@@ -139,18 +142,17 @@ fun AppNavigation() {
         }
 
         composable(
-            route = "add_edit/{studentId}",
+            route = ScreenRoute.ADD_EDIT,
             arguments = listOf(navArgument("studentId") { type = NavType.IntType })
         ) { backStackEntry ->
             val studentId = backStackEntry.arguments?.getInt("studentId") ?: -1
             AddEditStudentScreen(
                 studentId = studentId,
                 onBack = {
-                    // Resolved: Replaced aggressive layout-wiping navigation with standard pop [1]
                     if (navController.previousBackStackEntry != null) {
-                        navController.popBackStack() // Smooth natural popping backstack transition [1]
+                        navController.popBackStack()
                     } else {
-                        navController.navigate("view_all") {
+                        navController.navigate(ScreenRoute.VIEW_ALL) {
                             popUpTo(0) { inclusive = true }
                         }
                     }
@@ -158,7 +160,7 @@ fun AppNavigation() {
             )
         }
 
-        composable("templates") {
+        composable(ScreenRoute.TEMPLATES) {
             TemplateManagerScreen(
                 onBack = {
                     if (navController.previousBackStackEntry != null) {
@@ -168,7 +170,7 @@ fun AppNavigation() {
             )
         }
 
-        composable("recycle_bin") {
+        composable(ScreenRoute.RECYCLE_BIN) {
             RecycleBinScreen(
                 onBack = {
                     if (navController.previousBackStackEntry != null) {
@@ -178,7 +180,7 @@ fun AppNavigation() {
             )
         }
 
-        composable("saved_filters") {
+        composable(ScreenRoute.SAVED_FILTERS) {
             SavedFiltersScreen(
                 onBack = {
                     if (navController.previousBackStackEntry != null) {
@@ -191,7 +193,7 @@ fun AppNavigation() {
             )
         }
 
-        composable("biometrics_privacy") {
+        composable(ScreenRoute.BIOMETRICS_PRIVACY) {
             BiometricsPrivacyScreen(
                 onBack = {
                     if (navController.previousBackStackEntry != null) {
@@ -201,7 +203,7 @@ fun AppNavigation() {
             )
         }
 
-        composable("sync") {
+        composable(ScreenRoute.SYNC) {
             SyncScreen(
                 onBack = {
                     if (navController.previousBackStackEntry != null) {
@@ -212,7 +214,7 @@ fun AppNavigation() {
         }
 
         composable(
-            route = "attendance?recordId={recordId}&dateMillis={dateMillis}",
+            route = ScreenRoute.ATTENDANCE,
             arguments = listOf(
                 navArgument("recordId") { type = NavType.IntType; defaultValue = -1 },
                 navArgument("dateMillis") { type = NavType.LongType; defaultValue = -1L }
@@ -229,15 +231,14 @@ fun AppNavigation() {
                     }
                 },
                 onRedirectToFilters = {
-                    navController.navigate("saved_filters") {
-                        popUpTo("attendance") { inclusive = true }
+                    navController.navigate(ScreenRoute.SAVED_FILTERS) {
+                        popUpTo(ScreenRoute.ATTENDANCE) { inclusive = true }
                     }
                 }
             )
         }
 
-        // 12. App Settings Screen
-        composable("app_settings") {
+        composable(ScreenRoute.APP_SETTINGS) {
             AppSettingsScreen(
                 onBack = {
                     if (navController.previousBackStackEntry != null) {
@@ -247,4 +248,19 @@ fun AppNavigation() {
             )
         }
     }
+}
+
+// Resolved: Centralized, compile-safe route registry [1]
+object ScreenRoute {
+    const val SECURITY_GATE = "security_gate"
+    const val VIEW_ALL = "view_all"
+    const val PROFILE = "profile/{studentId}"
+    const val ADD_EDIT = "add_edit/{studentId}"
+    const val TEMPLATES = "templates"
+    const val RECYCLE_BIN = "recycle_bin"
+    const val SAVED_FILTERS = "saved_filters"
+    const val BIOMETRICS_PRIVACY = "biometrics_privacy"
+    const val SYNC = "sync"
+    const val ATTENDANCE = "attendance?recordId={recordId}&dateMillis={dateMillis}"
+    const val APP_SETTINGS = "app_settings"
 }
