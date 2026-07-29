@@ -10,12 +10,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CalendarToday // ADDED: Icon import
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Comment
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Map
@@ -62,9 +64,15 @@ fun StudentProfileScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var activeTemplates by remember { mutableStateOf<List<FormTemplateEntity>>(emptyList()) }
 
+    // Behavior Tracking States
     var incidents by remember { mutableStateOf<List<BehaviorIncidentEntity>>(emptyList()) }
     var behaviorExpanded by remember { mutableStateOf(false) }
     var showAddIncidentDialog by remember { mutableStateOf(false) }
+
+    // Automated Communication States
+    var showNotificationDialog by remember { mutableStateOf(false) }
+    var selectedGuardianForNotification by remember { mutableStateOf<Guardian?>(null) }
+    var selectedPhoneForNotification by remember { mutableStateOf("") }
 
     fun refreshIncidents() {
         scope.launch {
@@ -436,7 +444,7 @@ fun StudentProfileScreen(
                                                 }
                                                 Spacer(modifier = Modifier.height(4.dp))
                                                 Text(
-                                                    text = "Incident Date: " + logSdf.format(Date(incident.incidentDate)), // UPDATED: Formats user-selected date
+                                                    text = "Incident Date: " + logSdf.format(Date(incident.incidentDate)),
                                                     fontSize = 11.sp,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                                                 )
@@ -547,20 +555,44 @@ fun StudentProfileScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(phone, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        IconButton(
-                                            onClick = {
-                                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
-                                                context.startActivity(intent)
-                                            },
-                                            colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                                            modifier = Modifier.size(36.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Call,
-                                                contentDescription = "Call $phone",
-                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                modifier = Modifier.size(18.dp)
-                                            )
+
+                                        // Dynamic Communication Actions Row
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
+                                            // SMS Alert Trigger button
+                                            IconButton(
+                                                onClick = {
+                                                    selectedGuardianForNotification = guardian
+                                                    selectedPhoneForNotification = phone
+                                                    showNotificationDialog = true
+                                                },
+                                                colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                                                modifier = Modifier.size(36.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Comment,
+                                                    contentDescription = "Send SMS Notification",
+                                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+
+                                            // Direct Dialer Dial Trigger button
+                                            IconButton(
+                                                onClick = {
+                                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
+                                                    context.startActivity(intent)
+                                                },
+                                                colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                                                modifier = Modifier.size(36.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Call,
+                                                    contentDescription = "Call $phone",
+                                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -573,13 +605,214 @@ fun StudentProfileScreen(
             CircularProgressIndicator()
         }
 
-        // ADD INCIDENT DIALOG
+        // DYNAMIC NATIVE NOTIFICATION DISPATCHER DIALOG
+        if (showNotificationDialog && selectedGuardianForNotification != null && student != null) {
+            val targetStudent = student!!
+            val targetGuardian = selectedGuardianForNotification!!
+
+            var selectedTemplate by remember { mutableStateOf("Absent") }
+            var customMessageText by remember { mutableStateOf("") }
+
+            val templateSdf = remember { SimpleDateFormat("MMMM dd, yyyy", Locale.US) }
+            val formattedToday = remember { templateSdf.format(Date()) }
+
+            val compiledMessage = remember(selectedTemplate, customMessageText, targetStudent, targetGuardian, incidents) {
+                when (selectedTemplate) {
+                    "Absent" -> {
+                        context.getString(R.string.sms_template_absent, targetGuardian.name, targetStudent.firstName, formattedToday)
+                    }
+                    "Behavior" -> {
+                        val recentIncident = incidents.firstOrNull()
+                        if (recentIncident != null) {
+                            val incidentDateStr = SimpleDateFormat("MMMM dd, yyyy", Locale.US).format(Date(recentIncident.incidentDate))
+                            context.getString(
+                                R.string.sms_template_behavior,
+                                targetGuardian.name,
+                                targetStudent.firstName,
+                                incidentDateStr,
+                                recentIncident.title,
+                                recentIncident.description.ifEmpty { "N/A" }
+                            )
+                        } else {
+                            ""
+                        }
+                    }
+                    else -> {
+                        context.getString(R.string.sms_template_custom, targetGuardian.name, targetStudent.firstName, customMessageText)
+                    }
+                }
+            }
+
+            val isBehaviorTemplateDisabled = incidents.isEmpty()
+
+            // Swapped to basic Dialog for absolute layout control
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { showNotificationDialog = false }
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(28.dp),
+                    tonalElevation = 6.dp,
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp)
+                            .verticalScroll(rememberScrollState())
+                            .imePadding(),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.notify_dialog_title),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        Text(
+                            text = "Recipient: ${targetGuardian.name} ($selectedPhoneForNotification)",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Text(
+                            text = stringResource(R.string.notify_select_template),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        // Segmented choice row ensuring zero wrapping
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf("Absent", "Behavior", "Custom").forEach { temp ->
+                                val isSelected = selectedTemplate == temp
+                                val isEnabled = !(temp == "Behavior" && isBehaviorTemplateDisabled)
+
+                                val containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                val contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+
+                                Surface(
+                                    onClick = { if (isEnabled) selectedTemplate = temp },
+                                    enabled = isEnabled,
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(1.dp, if (isEnabled) borderColor else borderColor.copy(alpha = 0.2f)),
+                                    color = if (isEnabled) containerColor else Color.Transparent,
+                                    modifier = Modifier.weight(1f) // Evenly-weighted columns
+                                ) {
+                                    Box(
+                                        modifier = Modifier.padding(vertical = 10.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = when (temp) {
+                                                "Absent" -> stringResource(R.string.notify_template_absent).substringBefore(" ")
+                                                "Behavior" -> stringResource(R.string.notify_template_behavior).substringBefore(" ")
+                                                else -> stringResource(R.string.notify_template_custom).substringBefore(" ")
+                                            },
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isEnabled) contentColor else contentColor.copy(alpha = 0.38f),
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (selectedTemplate == "Custom") {
+                            OutlinedTextField(
+                                value = customMessageText,
+                                onValueChange = { customMessageText = it },
+                                label = { Text("Message Body") },
+                                placeholder = { Text(stringResource(R.string.notify_custom_placeholder)) },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        // Message Preview Console
+                        Text(
+                            text = stringResource(R.string.notify_preview_label),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = if (selectedTemplate == "Behavior" && isBehaviorTemplateDisabled) {
+                                    stringResource(R.string.notify_error_no_behavior)
+                                } else {
+                                    compiledMessage
+                                },
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                                modifier = Modifier.padding(12.dp),
+                                color = if (selectedTemplate == "Behavior" && isBehaviorTemplateDisabled) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // Explicit horizontal action row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(onClick = { showNotificationDialog = false }) {
+                                Text(stringResource(R.string.action_cancel))
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    if (selectedTemplate == "Behavior" && isBehaviorTemplateDisabled) {
+                                        Toast.makeText(context, R.string.notify_error_no_behavior, Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        val smsUri = Uri.parse("smsto:$selectedPhoneForNotification")
+                                        val smsIntent = Intent(Intent.ACTION_SENDTO, smsUri).apply {
+                                            putExtra("sms_body", compiledMessage)
+                                        }
+                                        try {
+                                            context.startActivity(smsIntent)
+                                            showNotificationDialog = false
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, R.string.notify_error_intent_failed, Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                },
+                                enabled = !(selectedTemplate == "Behavior" && isBehaviorTemplateDisabled) &&
+                                        !(selectedTemplate == "Custom" && customMessageText.isBlank()),
+                                shape = RoundedCornerShape(20.dp)
+                            ) {
+                                Text(stringResource(R.string.notify_action_send))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ADD BEHAVIOR INCIDENT DIALOG
         if (showAddIncidentDialog) {
             var incidentTitle by remember { mutableStateOf("") }
             var selectedCategory by remember { mutableStateOf("Positive") }
             var incidentDescription by remember { mutableStateOf("") }
 
-            // ADDED: Local state to track incident date selection
             var incidentDate by remember { mutableLongStateOf(System.currentTimeMillis()) }
             var showIncidentDatePicker by remember { mutableStateOf(false) }
 
@@ -670,7 +903,6 @@ fun StudentProfileScreen(
                             }
                         }
 
-                        // ADDED: Date selection interaction layout
                         Text(
                             text = "Incident Date *",
                             fontSize = 12.sp,
@@ -718,7 +950,7 @@ fun StudentProfileScreen(
                                         title = incidentTitle.trim(),
                                         category = selectedCategory,
                                         description = incidentDescription.trim(),
-                                        incidentDate = incidentDate // SAVED: Direct mapping of custom date
+                                        incidentDate = incidentDate
                                     )
                                     repository.insertIncident(newIncident)
                                     refreshIncidents()
@@ -739,7 +971,6 @@ fun StudentProfileScreen(
                 shape = RoundedCornerShape(28.dp)
             )
 
-            // Dynamic date picker binder hook
             if (showIncidentDatePicker) {
                 WheelDatePickerDialog(
                     initialDateMillis = incidentDate,

@@ -379,5 +379,21 @@
     <string name="toast_incident_deleted">Incident entry removed.</string>
     <string name="error_behavior_title_required">Incident title cannot be blank.</string>
 
+    <!-- Automated Native Communication Dispatcher Strings -->
+    <string name="notify_dialog_title">Dispatch Guardian Notification</string>
+    <string name="notify_select_template">Select Alert Template *</string>
+    <string name="notify_template_absent">Absentee Alert</string>
+    <string name="notify_template_behavior">Behavior Milestone</string>
+    <string name="notify_template_custom">Custom Message</string>
+    <string name="notify_preview_label">Compiled Message Preview:</string>
+    <string name="notify_custom_placeholder">Write custom announcement details here…</string>
+    <string name="notify_action_send">Send SMS</string>
+    <string name="notify_error_no_behavior">No recorded behavioral milestones found to generate alert.</string>
+    <string name="notify_error_intent_failed">Could not locate a compatible local SMS application.</string>
+
+    <!-- Pre-formatted Templates -->
+    <string name="sms_template_absent">Dear %1\$s, we wanted to notify you that %2\$s was marked absent today (%3\$s). Please contact us at your earliest convenience to verify this absence. Thank you.</string>
+    <string name="sms_template_behavior">Dear %1\$s, we are pleased to share a behavioral milestone update for %2\$s on %3\$s. Event: \"%4\$s\". Notes: %5\$s</string>
+    <string name="sms_template_custom">Dear %1\$s, regarding %2\$s: %3\$s</string>
 
 </resources>
