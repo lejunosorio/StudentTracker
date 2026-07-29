@@ -1,5 +1,6 @@
 package dev.soloistdev.studenttracker.ui
 
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,6 +36,8 @@ import dev.soloistdev.studenttracker.data.JsonSyncEngine
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -244,6 +247,7 @@ fun SyncScreen(onBack: () -> Unit) {
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                             Spacer(modifier = Modifier.height(12.dp))
 
+                            // Resolved: Stripped Springfield, Taguig, and personalized dynamic fields from production import sample [1]
                             val sampleJson = """
                             [
                               {
@@ -251,7 +255,7 @@ fun SyncScreen(onBack: () -> Unit) {
                                 "lastName": "Doe",
                                 "gender": "M",
                                 "birthday": 1378598400000,
-                                "address": "Street Address, Brgy. 3, Taguig",
+                                "address": "123 Main Street, City",
                                 "guardiansJson": [
                                   {
                                     "name": "Jane Doe",
@@ -259,7 +263,7 @@ fun SyncScreen(onBack: () -> Unit) {
                                     "phones": ["555-0198"]
                                   }
                                 ],
-                                "customDataJson": "{\"Purok\": \"3\", \"Status\": \"Practice\"}"
+                                "customDataJson": "{\"Field_1\": \"Value_1\", \"Field_2\": \"Value_2\"}"
                               }
                             ]
                             """.trimIndent()

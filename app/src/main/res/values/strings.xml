@@ -6,8 +6,8 @@
     <string name="app_licensing_notice">Zero Licensing Costs Assured</string>
 
     <!-- Navigation Drawer & Titles -->
-    <string name="drawer_proctor_portal">Proctor Portal</string>
-    <string name="drawer_school_name">Springfield High School</string>
+    <string name="drawer_proctor_portal">Attendance Portal</string>
+    <string name="drawer_school_name">My Organization</string>
     <string name="menu_student_directory">Student Directory</string>
     <string name="menu_template_manager">Template Manager</string>
     <string name="menu_attendance_system">Attendance System</string>
@@ -297,7 +297,6 @@
 
     <!-- Context descriptor for the navigation menu drawer icon [1] -->
     <string name="drawer_menu">Menu</string>
-
     <!-- Wheel Date Picker Strings [1] -->
     <string name="wheel_picker_title">Select Date</string>
 
