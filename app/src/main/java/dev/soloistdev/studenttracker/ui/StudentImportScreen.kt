@@ -71,7 +71,9 @@ fun StudentImportScreen(
             if (isLoaded) {
                 Surface(
                     tonalElevation = 8.dp,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
                 ) {
                     Row(
                         modifier = Modifier

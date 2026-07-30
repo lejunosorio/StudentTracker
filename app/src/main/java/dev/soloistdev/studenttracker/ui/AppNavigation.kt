@@ -110,6 +110,11 @@ fun AppNavigation() {
                     if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
                         navController.navigate("attendance?recordId=$recordId&dateMillis=$dateMillis")
                     }
+                },
+                onOpenGradebook = {
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                        navController.navigate(ScreenRoute.GRADEBOOK)
+                    }
                 }
             )
         }
@@ -325,6 +330,16 @@ fun AppNavigation() {
                 }
             )
         }
+
+        composable(ScreenRoute.GRADEBOOK) {
+            GradebookScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -343,5 +358,7 @@ object ScreenRoute {
     const val IMPORT_STUDENT = "import_student?id={id}&first={first}&last={last}&gender={gender}&birthday={birthday}&address={address}&contact={contact}&guardians={guardians}&custom={custom}"
 
     const val MESSAGE_TEMPLATES = "message_templates"
+
+    const val GRADEBOOK = "gradebook"
 
 }

@@ -134,4 +134,23 @@ interface StudentDao {
 
     @Query("DELETE FROM message_templates WHERE id = :templateId")
     fun deleteMessageTemplate(templateId: Int)
+
+    // --- ASSESSMENT/GRADEBOOK QUERIES ---
+    @Query("SELECT * FROM assessment_columns WHERE isDeleted = 0 ORDER BY id ASC")
+    fun getAllAssessmentColumns(): List<AssessmentColumnEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertAssessmentColumn(column: AssessmentColumnEntity): Long
+
+    @Query("UPDATE assessment_columns SET isDeleted = 1 WHERE id = :columnId")
+    fun softDeleteAssessmentColumn(columnId: Int)
+
+    @Query("SELECT * FROM assessment_scores WHERE columnId = :columnId")
+    fun getScoresForColumn(columnId: Int): List<AssessmentScoreEntity>
+
+    @Query("SELECT * FROM assessment_scores")
+    fun getAllAssessmentScores(): List<AssessmentScoreEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertAssessmentScore(score: AssessmentScoreEntity): Long
 }

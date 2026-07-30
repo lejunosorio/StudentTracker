@@ -412,4 +412,19 @@
     <string name="saved_filter_sms_guardians">SMS to Guardians</string>
     <string name="bulk_sms_action">SMS All</string>
     <string name="bulk_sms_no_recipients">No valid phone numbers found for this roster selection.</string>
+
+    <!-- Gradebook Matrix Localized Strings -->
+    <string name="menu_gradebook_matrix">Gradebook Matrix</string>
+    <string name="gradebook_empty_state">No grading columns created.\nTap \u0027+\u0027 to add a task.</string>
+    <string name="gradebook_add_column">New Grading Task</string>
+    <string name="gradebook_column_name_label">Task Name * (e.g., Midterm)</string>
+    <string name="gradebook_max_points_label">Max Points (Default: 100.0)</string>
+    <string name="gradebook_toast_column_created">Grading column successfully created.</string>
+    <string name="gradebook_toast_column_deleted">Column moved to Recycle Bin.</string>
+    <string name="gradebook_toast_scores_saved">Grades saved successfully.</string>
+    <string name="gradebook_action_export">Export Gradebook</string>
+    <string name="gradebook_action_save_scores">Save Roster Grades</string>
+    <string name="gradebook_scores_header">Roster Evaluation Matrix</string>
+    <string name="gradebook_label_score">Score *</string>
+    <string name="gradebook_label_max_points">Max: %1$.1f points</string>
 </resources>

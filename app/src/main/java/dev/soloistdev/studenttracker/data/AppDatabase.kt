@@ -17,9 +17,11 @@ import java.io.IOException
         AttendanceRecordEntity::class,
         AttendanceLogEntity::class,
         BehaviorIncidentEntity::class,
-        MessageTemplateEntity::class // ADDED: Message template logger
+        MessageTemplateEntity::class,
+        AssessmentColumnEntity::class,
+        AssessmentScoreEntity::class
     ],
-    version = 10, // INCREMENTED: Schema upgraded to version 10
+    version = 11, // INCREMENTED: Schema upgraded to version 10
     exportSchema = false
 )
 

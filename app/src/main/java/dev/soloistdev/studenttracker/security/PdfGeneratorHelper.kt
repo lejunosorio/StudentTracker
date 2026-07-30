@@ -13,6 +13,8 @@ import androidx.core.content.FileProvider
 import dev.soloistdev.studenttracker.data.AppDatabase
 import dev.soloistdev.studenttracker.data.Guardian
 import dev.soloistdev.studenttracker.data.StudentEntity
+import dev.soloistdev.studenttracker.data.AssessmentColumnEntity // ADDED: Room entity imports
+import dev.soloistdev.studenttracker.data.AssessmentScoreEntity  // ADDED: Room entity imports
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -270,8 +272,6 @@ object PdfGeneratorHelper {
         val totalIncidents = behaviorIncidents.size
         if (totalIncidents == 0) {
             canvas2.drawText("No behavioral incidents or milestones recorded.", 40f, yPos2, textPaint)
-
-            // Draw empty state neutral grey pie chart
             paint.color = Color.rgb(224, 224, 224)
             canvas2.drawCircle(440f, 380f, 60f, paint)
             yPos2 += 100f
@@ -293,7 +293,7 @@ object PdfGeneratorHelper {
             canvas2.drawText("Neutral Milestones: $neutralCount (${neutralPct.toInt()}%)", 40f, yPos2, textPaint)
             yPos2 += 35f
 
-            // Dynamic Behavior Breakdown Pie Chart (Right) [50% Positive / 25% Negative / 25% Neutral representation]
+            // Dynamic Behavior Breakdown Pie Chart
             val rectFBehavior = RectF(380f, 330f, 500f, 450f)
             val pIncSweep = (positiveCount.toFloat() / totalIncidents.toFloat()) * 360f
             val nIncSweep = (negativeCount.toFloat() / totalIncidents.toFloat()) * 360f
@@ -301,17 +301,17 @@ object PdfGeneratorHelper {
 
             var behaviorStartAngle = -90f
             if (pIncSweep > 0) {
-                paint.color = Color.rgb(76, 175, 80) // Green
+                paint.color = Color.rgb(76, 175, 80)
                 canvas2.drawArc(rectFBehavior, behaviorStartAngle, pIncSweep, true, paint)
                 behaviorStartAngle += pIncSweep
             }
             if (nIncSweep > 0) {
-                paint.color = Color.rgb(229, 57, 53) // Red
+                paint.color = Color.rgb(229, 57, 53)
                 canvas2.drawArc(rectFBehavior, behaviorStartAngle, nIncSweep, true, paint)
                 behaviorStartAngle += nIncSweep
             }
             if (uIncSweep > 0) {
-                paint.color = Color.rgb(158, 158, 158) // Grey
+                paint.color = Color.rgb(158, 158, 158)
                 canvas2.drawArc(rectFBehavior, behaviorStartAngle, uIncSweep, true, paint)
             }
         }
@@ -343,6 +343,102 @@ object PdfGeneratorHelper {
         }
 
         pdfDocument.finishPage(page2)
+
+        // ==========================================
+        // PAGE 3: ACADEMIC PERFORMANCE & GRADE REPORT (ADDED)
+        // ==========================================
+        val pageInfo3 = PdfDocument.PageInfo.Builder(595, 842, 3).create()
+        val page3 = pdfDocument.startPage(pageInfo3)
+        val canvas3: Canvas = page3.canvas
+
+        // Page Header
+        canvas3.drawText("ACADEMIC PERFORMANCE & GRADE REPORT", 40f, 60f, headerPaint)
+        paint.color = Color.DKGRAY
+        canvas3.drawRect(40f, 80f, 555f, 82f, paint)
+
+        // Read relational Gradebook data from database
+        val gradingColumns = db.studentDao().getAllAssessmentColumns()
+        val studentScores = db.studentDao().getAllAssessmentScores().filter { it.studentId == student.id }
+
+        if (gradingColumns.isEmpty()) {
+            canvas3.drawText("No academic evaluations or tasks recorded.", 40f, 120f, textPaint)
+        } else {
+            // Draw Table Header Background block
+            paint.color = Color.rgb(240, 240, 240)
+            canvas3.drawRect(40f, 110f, 555f, 135f, paint)
+
+            // Draw Table Header Column Labels
+            val tableHeaderPaint = Paint(textPaint).apply { isFakeBoldText = true }
+            canvas3.drawText("Assessment Task / Column", 50f, 127f, tableHeaderPaint)
+            canvas3.drawText("Max Points", 300f, 127f, tableHeaderPaint)
+            canvas3.drawText("Achieved Grade / Score", 420f, 127f, tableHeaderPaint)
+
+            var rowY = 160f
+            var totalPointsPossible = 0.0
+            var totalPointsAchieved = 0.0
+            var numericCount = 0
+
+            gradingColumns.forEachIndexed { index, col ->
+                // Alternating zebra striping
+                if (index % 2 == 1) {
+                    paint.color = Color.rgb(250, 249, 250)
+                    canvas3.drawRect(40f, rowY - 17f, 555f, rowY + 8f, paint)
+                }
+
+                // Match score
+                val matchingScore = studentScores.find { it.columnId == col.id }
+                val scoreStr = matchingScore?.score ?: "N/A"
+
+                // Accumulate statistics for summary calculation if score is numeric
+                val scoreNum = scoreStr.toDoubleOrNull()
+                if (scoreNum != null) {
+                    totalPointsPossible += col.maxPoints
+                    totalPointsAchieved += scoreNum
+                    numericCount++
+                }
+
+                // Draw Row Text data
+                canvas3.drawText(col.name, 50f, rowY, textPaint)
+                canvas3.drawText(String.format(Locale.US, "%.1f", col.maxPoints), 300f, rowY, textPaint)
+                canvas3.drawText(scoreStr, 420f, rowY, Paint(textPaint).apply { isFakeBoldText = true })
+
+                // Draw Row divider line
+                paint.color = Color.rgb(230, 230, 230)
+                canvas3.drawLine(40f, rowY + 8f, 555f, rowY + 9f, paint)
+
+                rowY += 25f
+            }
+
+            // Draw Cumulative Academic Summary card if numeric performance metrics exist
+            if (numericCount > 0 && totalPointsPossible > 0) {
+                val summaryY = rowY + 30f
+                paint.color = Color.rgb(232, 245, 233) // Light green background card
+                canvas3.drawRoundRect(40f, summaryY, 555f, summaryY + 80f, 8f, 8f, paint)
+
+                val summaryTitlePaint = Paint(textPaint).apply {
+                    color = Color.rgb(46, 125, 50) // Green text color
+                    isFakeBoldText = true
+                    textSize = 12f
+                }
+                canvas3.drawText("OVERALL ACADEMIC PERFORMANCE SUMMARY", 60f, summaryY + 25f, summaryTitlePaint)
+
+                val averagePct = (totalPointsAchieved / totalPointsPossible) * 100f
+                canvas3.drawText(
+                    String.format(Locale.US, "Overall Cumulative Average Rate: %.1f%%", averagePct),
+                    60f,
+                    summaryY + 48f,
+                    textPaint
+                )
+                canvas3.drawText(
+                    String.format(Locale.US, "Total Points: %.1f / %.1f possible", totalPointsAchieved, totalPointsPossible),
+                    60f,
+                    summaryY + 65f,
+                    textPaint
+                )
+            }
+        }
+
+        pdfDocument.finishPage(page3)
 
         // Write complete compiled payload to cache sandbox
         val cacheDir = File(context.cacheDir, "pdf_reports").apply { mkdirs() }

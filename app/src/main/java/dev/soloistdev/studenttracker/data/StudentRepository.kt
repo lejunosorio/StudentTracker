@@ -175,4 +175,30 @@ class StudentRepository(private val context: Context) {
     suspend fun deleteMessageTemplate(templateId: Int) = withContext(Dispatchers.IO) {
         studentDao.deleteMessageTemplate(templateId)
     }
+
+    // Gradebook / Assessment Accessors
+    suspend fun getAllAssessmentColumns(): List<AssessmentColumnEntity> = withContext(Dispatchers.IO) {
+        studentDao.getAllAssessmentColumns()
+    }
+
+    suspend fun insertAssessmentColumn(column: AssessmentColumnEntity): Long = withContext(Dispatchers.IO) {
+        studentDao.insertAssessmentColumn(column)
+    }
+
+    suspend fun softDeleteAssessmentColumn(columnId: Int) = withContext(Dispatchers.IO) {
+        studentDao.softDeleteAssessmentColumn(columnId)
+    }
+
+    suspend fun getScoresForColumn(columnId: Int): List<AssessmentScoreEntity> = withContext(Dispatchers.IO) {
+        studentDao.getScoresForColumn(columnId)
+    }
+
+    suspend fun getAllAssessmentScores(): List<AssessmentScoreEntity> = withContext(Dispatchers.IO) {
+        studentDao.getAllAssessmentScores()
+    }
+
+    suspend fun insertAssessmentScore(score: AssessmentScoreEntity): Long = withContext(Dispatchers.IO) {
+        studentDao.insertAssessmentScore(score)
+    }
+
 }

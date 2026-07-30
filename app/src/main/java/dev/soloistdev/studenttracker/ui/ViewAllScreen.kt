@@ -54,6 +54,7 @@ fun ViewAllScreen(
     onOpenBiometrics: () -> Unit,
     onOpenAttendance: () -> Unit,
     onOpenAttendanceWithArgs: (Int, Long) -> Unit,
+    onOpenGradebook: () -> Unit,
     viewModel: StudentListViewModel = viewModel()
 ) {
     val students by viewModel.students.collectAsState()
@@ -156,6 +157,20 @@ fun ViewAllScreen(
                     )
 
                     NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.Book, contentDescription = null) },
+                        label = { Text(stringResource(R.string.menu_gradebook_matrix)) },
+                        selected = false,
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                onOpenGradebook()
+                            }
+                        },
+                        colors = drawerItemColors,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                    )
+
+                    NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Bookmarks, contentDescription = null) },
                         label = { Text(stringResource(R.string.menu_saved_filters)) },
                         selected = false,
@@ -229,6 +244,20 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
                     Spacer(modifier = Modifier.height(24.dp))
+
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.Book, contentDescription = null) },
+                        label = { Text(stringResource(R.string.menu_gradebook_matrix)) },
+                        selected = false,
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                onOpenGradebook()
+                            }
+                        },
+                        colors = drawerItemColors,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                    )
                 }
             }
         }
