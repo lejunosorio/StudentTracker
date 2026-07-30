@@ -188,6 +188,53 @@ fun AddEditStudentScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            val classrooms by viewModel.classrooms.collectAsState()
+            var classDropdownExpanded by remember { mutableStateOf(false) }
+
+            Text(
+                text = "Classroom Cohort Selection *",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            ExposedDropdownMenuBox(
+                expanded = classDropdownExpanded,
+                onExpandedChange = { classDropdownExpanded = it }
+            ) {
+                OutlinedTextField(
+                    value = viewModel.className.ifEmpty { "Select Classroom" },
+                    onValueChange = {},
+                    readOnly = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = classDropdownExpanded) },
+                    colors = m3TextFieldColors,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
+                )
+
+                ExposedDropdownMenu(
+                    expanded = classDropdownExpanded,
+                    onDismissRequest = { classDropdownExpanded = false }
+                ) {
+                    if (classrooms.isEmpty()) {
+                        DropdownMenuItem(
+                            text = { Text("No classrooms registered. Set them up in the navigation drawer.") },
+                            onClick = { classDropdownExpanded = false }
+                        )
+                    } else {
+                        classrooms.forEach { classroom ->
+                            DropdownMenuItem(
+                                text = { Text("${classroom.name} (${classroom.startTime} - ${classroom.endTime})") },
+                                onClick = {
+                                    viewModel.className = classroom.name
+                                    classDropdownExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
             // GENDER
             Text(
                 text = stringResource(R.string.label_gender),

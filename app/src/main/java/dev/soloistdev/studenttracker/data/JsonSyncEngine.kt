@@ -18,9 +18,8 @@ import java.io.IOException
 
 object JsonSyncEngine {
 
-    private const val MAX_IMPORT_SIZE_BYTES = 10 * 1024 * 1024 // Safety threshold boundary: 10MB limit
+    private const val MAX_IMPORT_SIZE_BYTES = 10 * 1024 * 1024
 
-    // Dynamic database merge summary representation [1]
     data class MergeSummary(
         val newStudentsCount: Int,
         val updatedStudentsCount: Int,
@@ -29,11 +28,9 @@ object JsonSyncEngine {
         val studentsToInsert: List<StudentEntity>,
         val studentsToUpdate: List<StudentEntity>,
         val logsToMerge: List<AttendanceLogEntity>,
-        // Holds intermediate ID maps to resolve newly created local IDs during execution [1]
         val incomingIdToIdentityMap: Map<Int, String>
     )
 
-    // Evaluates the chronological delta merge in-memory before writing [1]
     suspend fun evaluateMerge(
         context: Context,
         uri: Uri,
@@ -72,7 +69,6 @@ object JsonSyncEngine {
         val jsonString = String(decryptedContent, Charsets.UTF_8).trim()
         val payloadObj = try { JSONObject(jsonString) } catch (_: Exception) { null }
 
-        // Standardizes flat array imports and rich P2P payload schemas
         val incomingStudentsArr = payloadObj?.optJSONArray("students") ?: JSONArray(jsonString)
         val incomingLogsArr = payloadObj?.optJSONArray("attendanceLogs") ?: JSONArray()
 
@@ -88,7 +84,6 @@ object JsonSyncEngine {
         var updatedLogs = 0
         var skipped = 0
 
-        // Maps incoming student temp ID to their unique identity string [1]
         val incomingIdToIdentityMap = mutableMapOf<Int, String>()
         val identityToLocalIdMap = mutableMapOf<String, Int>()
         localStudents.forEach { s ->
@@ -96,7 +91,6 @@ object JsonSyncEngine {
             identityToLocalIdMap[identity] = s.id
         }
 
-        // 1. Process Student Profiles Chronologically
         for (i in 0 until incomingStudentsArr.length()) {
             val sObj = incomingStudentsArr.getJSONObject(i)
             val incomingId = sObj.optInt("id", -1)
@@ -120,7 +114,8 @@ object JsonSyncEngine {
                 picturePath = sObj.optString("picturePath", ""),
                 guardiansJson = sObj.optString("guardiansJson", "[]"),
                 customDataJson = sObj.optString("customDataJson", "{}"),
-                lastModified = lastMod
+                lastModified = lastMod,
+                className = sObj.optString("class", "") // UPDATED: Maps class key inside synchronizations
             )
 
             val localMatch = localStudents.find {
@@ -133,7 +128,6 @@ object JsonSyncEngine {
                 newStudents++
                 studentsToInsert.add(student)
             } else {
-                // If incoming profile is newer, overwrite local [1]
                 if (lastMod > localMatch.lastModified) {
                     updatedStudents++
                     studentsToUpdate.add(student.copy(id = localMatch.id))
@@ -143,7 +137,6 @@ object JsonSyncEngine {
             }
         }
 
-        // 2. Process Attendance Registers (Mapping natural ID references) [1]
         for (i in 0 until incomingLogsArr.length()) {
             val lObj = incomingLogsArr.getJSONObject(i)
             val recordId = lObj.optInt("recordId", -1)
@@ -174,7 +167,6 @@ object JsonSyncEngine {
             if (localMatch == null) {
                 logsToMerge.add(log)
             } else {
-                // If incoming attendance log is newer, overwrite local status [1]
                 if (lastMod > localMatch.lastModified) {
                     updatedLogs++
                     logsToMerge.add(log.copy(id = localMatch.id))
@@ -196,30 +188,25 @@ object JsonSyncEngine {
         )
     }
 
-    // Resolved: Commit transactional merge safely with ID mappings [1]
     suspend fun executeMerge(
         repository: StudentRepository,
         summary: MergeSummary
     ) = withContext(Dispatchers.IO) {
         val newlyCreatedIdsMap = mutableMapOf<String, Int>()
 
-        // 1. Insert new student profiles and capture generated IDs [1]
         summary.studentsToInsert.forEach { s ->
             val newId = repository.insertStudent(s).toInt()
             val identity = "${s.firstName.lowercase()}_${s.lastName.lowercase()}_${s.birthday}"
             newlyCreatedIdsMap[identity] = newId
         }
 
-        // 2. Overwrite updated student profiles [1]
         summary.studentsToUpdate.forEach { s ->
             repository.insertStudent(s)
         }
 
-        // 3. Merge attendance logs [1]
         summary.logsToMerge.forEach { log ->
             var studentIdToUse = log.studentId
             if (studentIdToUse == -1) {
-                // Resolve student ID for newly created students via profile parameters matching [1]
                 val key = summary.incomingIdToIdentityMap[log.studentId]
                 studentIdToUse = key?.let { newlyCreatedIdsMap[it] } ?: -1
             }
@@ -243,6 +230,7 @@ object JsonSyncEngine {
                 put("picturePath", student.picturePath)
                 put("guardiansJson", student.guardiansJson)
                 put("customDataJson", student.customDataJson)
+                put("class", student.className) // UPDATED: Exports className under key "class"
             }
             array.put(obj)
         }
@@ -364,10 +352,9 @@ object JsonSyncEngine {
         }
     }
 
-    // Direct segment resolution for file-scheme URIs to prevent query-failures [1]
     private fun getFileName(context: Context, uri: Uri): String? {
         if (uri.scheme == "file") {
-            return uri.lastPathSegment // Directly returns the file name segment [1]
+            return uri.lastPathSegment
         }
         var name: String? = null
         val cursor = context.contentResolver.query(uri, null, null, null, null)
@@ -410,7 +397,8 @@ object JsonSyncEngine {
                 picturePath = jsonObj.optString("picturePath", ""),
                 guardiansJson = resolvedGuardiansJson,
                 customDataJson = resolvedCustomDataJson,
-                isDeleted = false
+                isDeleted = false,
+                className = jsonObj.optString("class", "") // UPDATED: Maps JSON "class" -> Room className
             )
             repository.insertStudent(student)
         }

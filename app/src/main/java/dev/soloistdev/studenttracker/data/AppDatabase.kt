@@ -19,12 +19,12 @@ import java.io.IOException
         BehaviorIncidentEntity::class,
         MessageTemplateEntity::class,
         AssessmentColumnEntity::class,
-        AssessmentScoreEntity::class
+        AssessmentScoreEntity::class,
+        ClassroomEntity::class
     ],
-    version = 12, // INCREMENTED: Schema upgraded to version 10
+    version = 14, // INCREMENTED: Version upgraded to 13
     exportSchema = false
 )
-
 abstract class AppDatabase : RoomDatabase() {
     abstract fun studentDao(): StudentDao
 

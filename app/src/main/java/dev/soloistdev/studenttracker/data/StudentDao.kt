@@ -153,4 +153,14 @@ interface StudentDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertAssessmentScore(score: AssessmentScoreEntity): Long
+
+    // --- CLASSROOMS QUERIES ---
+    @Query("SELECT * FROM classrooms WHERE isDeleted = 0 ORDER BY name ASC")
+    fun getAllClassrooms(): List<ClassroomEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertClassroom(classroom: ClassroomEntity): Long
+
+    @Query("UPDATE classrooms SET isDeleted = 1 WHERE id = :classroomId")
+    fun softDeleteClassroom(classroomId: Int)
 }

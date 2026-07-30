@@ -16,5 +16,6 @@ data class StudentEntity(
     val guardiansJson: String = "[]",
     val customDataJson: String = "{}",
     val isDeleted: Boolean = false,
-    val lastModified: Long = System.currentTimeMillis()
+    val lastModified: Long = System.currentTimeMillis(),
+    val className: String = "" // ADDED: Instantly isolates students by classroom
 )

@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -14,7 +13,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dev.soloistdev.studenttracker.data.StudentEntity
-import dev.soloistdev.studenttracker.data.StudentRepository
 import dev.soloistdev.studenttracker.security.PdfGeneratorHelper
 import kotlinx.coroutines.launch
 
@@ -27,7 +25,7 @@ fun AppNavigation() {
     val isUnlocked by securityViewModel.isUnlocked.collectAsState()
     val scope = rememberCoroutineScope()
 
-    // Resolved: Standardized session gatekeeper to run ONLY on unlock transitions to prevent navigation high-jacks [1]
+    // Standardized session gatekeeper to run ONLY on unlock transitions to prevent navigation high-jacks [1]
     LaunchedEffect(isUnlocked) {
         // If the initial target destination is the deep-linked onboarding screen, bypass startup redirects [1]
         val initialRoute = navController.currentDestination?.route
@@ -115,6 +113,11 @@ fun AppNavigation() {
                     if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
                         navController.navigate(ScreenRoute.GRADEBOOK)
                     }
+                },
+                onOpenClassrooms = {
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                        navController.navigate(ScreenRoute.CLASSROOMS)
+                    }
                 }
             )
         }
@@ -141,7 +144,7 @@ fun AppNavigation() {
                     }
                 },
                 onSharePdf = { studentEntity ->
-                    // Resolved: Launch the suspending PDF compilation inside the Compose-managed lifecycle scope [1]
+                    // Launch the suspending PDF compilation inside the Compose-managed lifecycle scope [1]
                     scope.launch {
                         PdfGeneratorHelper.generateAndShareStudentPdf(context, studentEntity)
                     }
@@ -289,15 +292,15 @@ fun AppNavigation() {
                 navArgument("address") { type = NavType.StringType; defaultValue = "" },
                 navArgument("contact") { type = NavType.StringType; defaultValue = "" },
                 navArgument("guardians") { type = NavType.StringType; defaultValue = "[]" },
-                navArgument("custom") { type = NavType.StringType; defaultValue = "{}" }
+                navArgument("custom") { type = NavType.StringType; defaultValue = "{}" },
+                navArgument("class") { type = NavType.StringType; defaultValue = "" }
             ),
             deepLinks = listOf(
                 androidx.navigation.navDeepLink {
-                    uriPattern = "studenttracker://student?id={id}&first={first}&last={last}&gender={gender}&birthday={birthday}&address={address}&contact={contact}&guardians={guardians}&custom={custom}"
+                    uriPattern = "studenttracker://student?id={id}&first={first}&last={last}&gender={gender}&birthday={birthday}&address={address}&contact={contact}&guardians={guardians}&custom={custom}&class={class}"
                 }
             )
         ) { backStackEntry ->
-            val id = backStackEntry.arguments?.getInt("id") ?: -1
             val first = backStackEntry.arguments?.getString("first") ?: ""
             val last = backStackEntry.arguments?.getString("last") ?: ""
             val gender = backStackEntry.arguments?.getString("gender") ?: "F"
@@ -306,6 +309,7 @@ fun AppNavigation() {
             val contact = backStackEntry.arguments?.getString("contact") ?: ""
             val guardians = backStackEntry.arguments?.getString("guardians") ?: "[]"
             val custom = backStackEntry.arguments?.getString("custom") ?: "{}"
+            val className = backStackEntry.arguments?.getString("class") ?: ""
 
             StudentImportScreen(
                 tempStudent = StudentEntity(
@@ -316,7 +320,8 @@ fun AppNavigation() {
                     address = address,
                     contactNumber = contact,
                     guardiansJson = guardians,
-                    customDataJson = custom
+                    customDataJson = custom,
+                    className = className
                 ),
                 onDismiss = {
                     navController.navigate(ScreenRoute.VIEW_ALL) {
@@ -340,6 +345,16 @@ fun AppNavigation() {
                 }
             )
         }
+
+        composable(ScreenRoute.CLASSROOMS) {
+            ClassroomsScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -355,10 +370,11 @@ object ScreenRoute {
     const val SYNC = "sync"
     const val ATTENDANCE = "attendance?recordId={recordId}&dateMillis={dateMillis}"
     const val APP_SETTINGS = "app_settings"
-    const val IMPORT_STUDENT = "import_student?id={id}&first={first}&last={last}&gender={gender}&birthday={birthday}&address={address}&contact={contact}&guardians={guardians}&custom={custom}"
+    const val IMPORT_STUDENT = "import_student?id={id}&first={first}&last={last}&gender={gender}&birthday={birthday}&address={address}&contact={contact}&guardians={guardians}&custom={custom}&class={class}"
 
     const val MESSAGE_TEMPLATES = "message_templates"
 
     const val GRADEBOOK = "gradebook"
 
+    const val CLASSROOMS = "classrooms"
 }

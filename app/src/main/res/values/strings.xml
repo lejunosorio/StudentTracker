@@ -433,4 +433,6 @@
     <string name="gradebook_check_date_label">Checked Date: %1$s</string>
     <string name="gradebook_select_roster_filter">Select Roster Filter</string>
     <string name="gradebook_all_students">All Active Students</string>
+
+    <string name="menu_classrooms">Classrooms Schedule Planner</string>
 </resources>

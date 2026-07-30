@@ -201,4 +201,17 @@ class StudentRepository(private val context: Context) {
         studentDao.insertAssessmentScore(score)
     }
 
+    // Classroom Accessors
+    suspend fun getAllClassrooms(): List<ClassroomEntity> = withContext(Dispatchers.IO) {
+        studentDao.getAllClassrooms()
+    }
+
+    suspend fun insertClassroom(classroom: ClassroomEntity): Long = withContext(Dispatchers.IO) {
+        studentDao.insertClassroom(classroom)
+    }
+
+    suspend fun softDeleteClassroom(classroomId: Int) = withContext(Dispatchers.IO) {
+        studentDao.softDeleteClassroom(classroomId)
+    }
+
 }

@@ -51,7 +51,6 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
 
     private val sharedPrefs = application.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
 
-    // Dynamic background-mapped UI State Flow running on Dispatchers.Default
     val students: StateFlow<List<StudentUiState>> = combine(
         _rawStudents, _searchQuery, _sortOrder, _activeFilter
     ) { rawList, query, sort, filter ->
@@ -63,8 +62,8 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                 student.firstName.contains(query, ignoreCase = true) ||
                         student.lastName.contains(query, ignoreCase = true) ||
                         student.address.contains(query, ignoreCase = true) ||
-                        // Integrated: Allows searching directly by student phone numbers [1]
-                        student.contactNumber.contains(query, ignoreCase = true)
+                        student.contactNumber.contains(query, ignoreCase = true) ||
+                        student.className.contains(query, ignoreCase = true) // UPDATED: Allows directory search by class
             }
         }
 
@@ -75,8 +74,8 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                     "Last Name" -> student.lastName
                     "Gender" -> if (student.gender == "F") "Female" else "Male"
                     "Home Address" -> student.address
-                    // Integrated: Allows saving filters based on student contact numbers [1]
                     "Student Contact" -> student.contactNumber
+                    "Class" -> student.className // UPDATED: Maps class attributes to directory filters
                     "Age" -> {
                         val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
                         age.toString()
@@ -140,70 +139,17 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
             )
         }
     }
-        .flowOn(Dispatchers.Default) // Map off the Main Thread
+        .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
-        loadStudents()
-        loadTemplates()
+        loadData()
     }
 
-    private fun applyComparison(fieldValue: String, filter: FilterState): Boolean {
-        val value1 = filter.value1.trim()
-        val value2 = filter.value2.trim()
-
-        if (filter.field == "Birthday") {
-            val studentBirthday = fieldValue.toLongOrNull() ?: return false
-            val studentCal = Calendar.getInstance().apply { timeInMillis = studentBirthday }
-            return when (filter.comparison) {
-                "birth_year" -> {
-                    val yearVal = value1.toIntOrNull() ?: return false
-                    studentCal.get(Calendar.YEAR) == yearVal
-                }
-                "birth_month" -> {
-                    val monthVal = value1.toIntOrNull() ?: return false
-                    (studentCal.get(Calendar.MONTH) + 1) == monthVal
-                }
-                "birth_month_year" -> {
-                    val monthVal = value1.toIntOrNull() ?: return false
-                    val yearVal = value2.toIntOrNull() ?: return false
-                    (studentCal.get(Calendar.MONTH) + 1) == monthVal && studentCal.get(Calendar.YEAR) == yearVal
-                }
-                "exact_birthday" -> {
-                    val targetBirthday = value1.toLongOrNull() ?: return false
-                    val calFilter = Calendar.getInstance().apply { timeInMillis = targetBirthday }
-                    studentCal.get(Calendar.YEAR) == calFilter.get(Calendar.YEAR) &&
-                            studentCal.get(Calendar.DAY_OF_YEAR) == calFilter.get(Calendar.DAY_OF_YEAR)
-                }
-                else -> false
-            }
-        }
-
-        return when (filter.comparison) {
-            "contains" -> fieldValue.contains(value1, ignoreCase = true)
-            "does not contain" -> !fieldValue.contains(value1, ignoreCase = true)
-            "equal" -> fieldValue.equals(value1, ignoreCase = true)
-            "not equal" -> !fieldValue.equals(value1, ignoreCase = true)
-            "greater than" -> {
-                val numField = fieldValue.toDoubleOrNull()
-                val numVal = value1.toDoubleOrNull()
-                if (numField != null && numVal != null) numField > numVal else false
-            }
-            "less than" -> {
-                val numField = fieldValue.toDoubleOrNull()
-                val numVal = value1.toDoubleOrNull()
-                if (numField != null && numVal != null) numField < numVal else false
-            }
-            "In between" -> {
-                val numField = fieldValue.toDoubleOrNull()
-                val numMin = value1.toDoubleOrNull()
-                val numMax = value2.toDoubleOrNull()
-                if (numField != null && numMin != null && numMax != null) {
-                    numField in numMin..numMax
-                } else false
-            }
-            else -> true
-        }
+    // UPDATED: Standardized loadData triggers
+    fun loadData() {
+        loadStudents()
+        loadTemplates()
     }
 
     fun loadStudents() {
@@ -394,8 +340,66 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                     }
                 }
             }
-            clearSelection() // Exit selection mode automatically
-            loadStudents()   // Refresh directory state automatically
+            clearSelection()
+            loadStudents()
+        }
+    }
+
+    private fun applyComparison(fieldValue: String, filter: FilterState): Boolean {
+        val value1 = filter.value1.trim()
+        val value2 = filter.value2.trim()
+
+        if (filter.field == "Birthday") {
+            val studentBirthday = fieldValue.toLongOrNull() ?: return false
+            val studentCal = Calendar.getInstance().apply { timeInMillis = studentBirthday }
+            return when (filter.comparison) {
+                "birth_year" -> {
+                    val yearVal = value1.toIntOrNull() ?: return false
+                    studentCal.get(Calendar.YEAR) == yearVal
+                }
+                "birth_month" -> {
+                    val monthVal = value1.toIntOrNull() ?: return false
+                    (studentCal.get(Calendar.MONTH) + 1) == monthVal
+                }
+                "birth_month_year" -> {
+                    val monthVal = value1.toIntOrNull() ?: return false
+                    val yearVal = value2.toIntOrNull() ?: return false
+                    (studentCal.get(Calendar.MONTH) + 1) == monthVal && studentCal.get(Calendar.YEAR) == yearVal
+                }
+                "exact_birthday" -> {
+                    val targetBirthday = value1.toLongOrNull() ?: return false
+                    val calFilter = Calendar.getInstance().apply { timeInMillis = targetBirthday }
+                    studentCal.get(Calendar.YEAR) == calFilter.get(Calendar.YEAR) &&
+                            studentCal.get(Calendar.DAY_OF_YEAR) == calFilter.get(Calendar.DAY_OF_YEAR)
+                }
+                else -> false
+            }
+        }
+
+        return when (filter.comparison) {
+            "contains" -> fieldValue.contains(value1, ignoreCase = true)
+            "does not contain" -> !fieldValue.contains(value1, ignoreCase = true)
+            "equal" -> fieldValue.equals(value1, ignoreCase = true)
+            "not equal" -> !fieldValue.equals(value1, ignoreCase = true)
+            "greater than" -> {
+                val numField = fieldValue.toDoubleOrNull()
+                val numVal = value1.toDoubleOrNull()
+                if (numField != null && numVal != null) numField > numVal else false
+            }
+            "less than" -> {
+                val numField = fieldValue.toDoubleOrNull()
+                val numVal = value1.toDoubleOrNull()
+                if (numField != null && numVal != null) numField < numVal else false
+            }
+            "In between" -> {
+                val numField = fieldValue.toDoubleOrNull()
+                val numMin = value1.toDoubleOrNull()
+                val numMax = value2.toDoubleOrNull()
+                if (numField != null && numMin != null && numMax != null) {
+                    numField in numMin..numMax
+                } else false
+            }
+            else -> true
         }
     }
 }

@@ -8,7 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import dev.soloistdev.studenttracker.R // Resolved: Explicit R import [1]
+import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.Guardian
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
@@ -28,6 +28,8 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
     var contactNumber by mutableStateOf("")
     var picturePath by mutableStateOf("")
 
+    var className by mutableStateOf("") // ADDED: Binds class data in edit fields
+
     val guardiansStateList = mutableStateListOf<Guardian>()
     val customDataMap = mutableStateMapOf<String, String>()
 
@@ -36,11 +38,15 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
 
     private var editingStudentId: Int? = null
 
+    private val _classrooms = MutableStateFlow<List<dev.soloistdev.studenttracker.data.ClassroomEntity>>(emptyList())
+    val classrooms: StateFlow<List<dev.soloistdev.studenttracker.data.ClassroomEntity>> = _classrooms
+
     fun loadStudentForEditing(studentId: Int) {
         customDataMap.clear()
         guardiansStateList.clear()
 
         viewModelScope.launch {
+            _classrooms.value = repository.getAllClassrooms()
             val templates = repository.getAllFormTemplates()
 
             if (studentId == -1) {
@@ -61,6 +67,7 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                 address = student.address
                 contactNumber = student.contactNumber
                 picturePath = student.picturePath
+                className = student.className // UPDATED: Load className into editing textfield state
 
                 val list = Guardian.listFromJsonString(student.guardiansJson)
                 guardiansStateList.addAll(list)
@@ -79,7 +86,6 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
 
     fun addGuardian(name: String, relationship: String, contact: String) {
         if (name.isNotBlank() && contact.isNotBlank()) {
-            // Resolved: Fetch the fallback string from strings.xml using the AndroidViewModel application context [1]
             val fallbackRelationship = getApplication<Application>().getString(R.string.guardian_fallback_relationship)
 
             guardiansStateList.add(
@@ -117,7 +123,8 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                 contactNumber = contactNumber.trim(),
                 picturePath = picturePath,
                 guardiansJson = Guardian.listToJsonString(guardiansStateList.toList()),
-                customDataJson = jsonObject.toString()
+                customDataJson = jsonObject.toString(),
+                className = className.trim() // UPDATED: Write className to Room
             )
             repository.insertStudent(student)
             _saveSuccess.value = true
