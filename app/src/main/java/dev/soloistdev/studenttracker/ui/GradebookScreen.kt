@@ -1,10 +1,7 @@
 package dev.soloistdev.studenttracker.ui
 
 import android.widget.Toast
-
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,13 +12,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color // RESOLVED: Color import
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -29,71 +25,75 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.*
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GradebookScreen(onBack: () -> Unit) {
+fun GradebookScreen(
+    onBack: () -> Unit,
+    viewModel: GradebookViewModel = viewModel()
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val repository = remember { StudentRepository(context) }
+    val columns by viewModel.columns.collectAsState()
+    val savedFilters by viewModel.savedFilters.collectAsState()
+    val students by viewModel.students.collectAsState()
+    val scores by viewModel.scores.collectAsState()
 
-    var students by remember { mutableStateOf<List<StudentEntity>>(emptyList()) }
-    var columns by remember { mutableStateOf<List<AssessmentColumnEntity>>(emptyList()) }
     var activeColumn by remember { mutableStateOf<AssessmentColumnEntity?>(null) }
-    var scoresList by remember { mutableStateOf<List<AssessmentScoreEntity>>(emptyList()) }
-
-    // Roster scores input memory map
     val inputScores = remember { mutableStateMapOf<Int, String>() }
 
-    var showAddColumnDialog by remember { mutableStateOf(false) }
-
-    fun refreshData() {
-        scope.launch {
-            students = repository.getAllActiveStudents()
-            columns = repository.getAllAssessmentColumns()
-            if (activeColumn == null && columns.isNotEmpty()) {
-                activeColumn = columns.first()
-            }
-            activeColumn?.let { col ->
-                val scores = repository.getScoresForColumn(col.id)
-                inputScores.clear()
-                scores.forEach { inputScores[it.studentId] = it.score }
-            }
-            scoresList = repository.getAllAssessmentScores()
-        }
-    }
+    var showCreateSheetDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        refreshData()
+        viewModel.loadData()
     }
 
-    // Refresh student inputs dynamically when active column shifts
-    LaunchedEffect(activeColumn) {
+    // Dynamic state listener mapping scores on column transitions
+    LaunchedEffect(activeColumn, scores) {
         activeColumn?.let { col ->
-            val scores = repository.getScoresForColumn(col.id)
+            val matchingScores = scores.filter { it.columnId == col.id }
             inputScores.clear()
-            scores.forEach { inputScores[it.studentId] = it.score }
+            matchingScores.forEach { inputScores[it.studentId] = it.score }
         }
     }
+
+    val displayDateSdf = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text(stringResource(R.string.menu_gradebook_matrix), fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        text = if (activeColumn != null) activeColumn!!.name else stringResource(R.string.menu_gradebook_matrix),
+                        fontWeight = FontWeight.Bold
+                    )
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        if (activeColumn != null) {
+                            activeColumn = null // Returns back to master view
+                        } else {
+                            onBack()
+                        }
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 actions = {
-                    if (columns.isNotEmpty() && students.isNotEmpty()) {
+                    if (activeColumn != null && students.isNotEmpty()) {
                         IconButton(onClick = {
+                            val activeScores = scores.filter { it.columnId == activeColumn!!.id }
+                            val rosterIds = activeScores.map { it.studentId }.distinct()
+                            val roster = students.filter { it.id in rosterIds }
+
                             scope.launch {
-                                val allScores = repository.getAllAssessmentScores()
-                                GradebookExportEngine.exportGradebookToCsv(context, students, columns, allScores)
+                                GradebookExportEngine.exportGradebookToCsv(context, roster, listOf(activeColumn!!), activeScores)
                             }
                         }) {
                             Icon(Icons.Default.Download, contentDescription = stringResource(R.string.gradebook_action_export), tint = MaterialTheme.colorScheme.primary)
@@ -103,87 +103,109 @@ fun GradebookScreen(onBack: () -> Unit) {
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showAddColumnDialog = true },
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.action_add))
+            if (activeColumn == null) {
+                FloatingActionButton(
+                    onClick = { showCreateSheetDialog = true },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.action_add))
+                }
             }
         }
     ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            // Section 1: Dynamic Horizontally Scrollable Header Column/Task selector
-            Text(
-                text = "Active Evaluation Column *",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-            )
+        if (activeColumn == null) {
+            // ==========================================
+            // VIEW 1: MASTER LIST OF GRADING SHEETS
+            // ==========================================
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                Text(
+                    text = "Roster Grading Sheets",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                )
 
-            if (columns.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(80.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = stringResource(R.string.gradebook_empty_state),
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
-                }
-            } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    columns.forEach { col ->
-                        val isSelected = activeColumn?.id == col.id
-                        InputChip(
-                            selected = isSelected,
-                            onClick = { activeColumn = col },
-                            label = { Text(col.name) },
-                            trailingIcon = {
-                                IconButton(
-                                    onClick = {
-                                        scope.launch {
-                                            repository.softDeleteAssessmentColumn(col.id)
-                                            activeColumn = null
-                                            refreshData()
-                                            Toast.makeText(context, R.string.gradebook_toast_column_deleted, Toast.LENGTH_SHORT).show()
-                                        }
-                                    },
-                                    modifier = Modifier.size(16.dp)
-                                ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(12.dp))
-                                }
-                            },
-                            colors = InputChipDefaults.inputChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                containerColor = Color.Transparent,
-                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                if (columns.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.gradebook_empty_state),
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(columns) { col ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { activeColumn = col }, // Drill down into View 2
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = col.name,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Max Threshold: ${col.maxPoints} pts",
+                                            fontSize = 13.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "Exam: ${displayDateSdf.format(Date(col.examDate))} • Checked: ${displayDateSdf.format(Date(col.checkDate))}",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                    IconButton(onClick = {
+                                        viewModel.softDeleteColumn(col.id)
+                                    }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
+        } else {
+            // ==========================================
+            // VIEW 2: GRADING SHEET SCORES EDITOR
+            // ==========================================
+            val currentColumn = activeColumn!!
+            val associatedScores = scores.filter { it.columnId == currentColumn.id }
+            val rosterStudentIds = associatedScores.map { it.studentId }.distinct()
+            val filteredRoster = students.filter { it.id in rosterStudentIds }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-            if (activeColumn != null && students.isNotEmpty()) {
-                // Section 2: Active Task Details
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -195,35 +217,30 @@ fun GradebookScreen(onBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Evaluating: ${activeColumn!!.name}",
+                                text = "Evaluating: ${currentColumn.name}",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = stringResource(R.string.gradebook_label_max_points, activeColumn!!.maxPoints),
-                                fontSize = 13.sp,
+                                text = "Max Threshold: ${currentColumn.maxPoints} pts",
+                                fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Exam: ${displayDateSdf.format(Date(currentColumn.examDate))} • Checked: ${displayDateSdf.format(Date(currentColumn.checkDate))}",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                             )
                         }
                         Button(
                             onClick = {
-                                scope.launch {
-                                    inputScores.forEach { (studentId, score) ->
-                                        repository.insertAssessmentScore(
-                                            AssessmentScoreEntity(
-                                                columnId = activeColumn!!.id,
-                                                studentId = studentId,
-                                                score = score.trim()
-                                            )
-                                        )
-                                    }
-                                    refreshData()
-                                    Toast.makeText(context, R.string.gradebook_toast_scores_saved, Toast.LENGTH_SHORT).show()
-                                }
+                                viewModel.saveRosterScores(currentColumn.id, inputScores)
+                                Toast.makeText(context, R.string.gradebook_toast_scores_saved, Toast.LENGTH_SHORT).show()
                             },
                             shape = RoundedCornerShape(20.dp)
                         ) {
@@ -232,80 +249,84 @@ fun GradebookScreen(onBack: () -> Unit) {
                     }
                 }
 
-                // Section 3: Spreadsheet Roster Evaluation Matrix Listing
                 Text(
-                    text = stringResource(R.string.gradebook_scores_header),
+                    text = stringResource(R.string.gradebook_scores_header) + " (${filteredRoster.size} Members)",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
                 )
 
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .weight(1f),
-                    contentPadding = PaddingValues(bottom = 80.dp)
-                ) {
-                    items(students) { student ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                if (filteredRoster.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "Roster selection is empty.",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 80.dp)
+                    ) {
+                        items(filteredRoster) { student ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
                             ) {
-                                Column(modifier = Modifier.weight(1.1f)) {
-                                    Text(
-                                        text = "${student.lastName}, ${student.firstName}",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    val genderStr = if (student.gender == "F") "Female" else "Male"
-                                    Text(
-                                        text = "$genderStr | ${student.contactNumber.ifEmpty { "No Contact" }}",
-                                        fontSize = 12.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1.1f)) {
+                                        Text(
+                                            text = "${student.lastName}, ${student.firstName}",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        val genderStr = if (student.gender == "F") "Female" else "Male"
+                                        Text(
+                                            text = "$genderStr | ${student.contactNumber.ifEmpty { "No Contact" }}",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                    OutlinedTextField(
+                                        value = inputScores[student.id] ?: "",
+                                        onValueChange = { inputScores[student.id] = it },
+                                        label = { Text(stringResource(R.string.gradebook_label_score)) },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(0.9f)
                                     )
                                 }
-                                OutlinedTextField(
-                                    value = inputScores[student.id] ?: "",
-                                    onValueChange = { inputScores[student.id] = it },
-                                    label = { Text(stringResource(R.string.gradebook_label_score)) },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(0.9f)
-                                )
                             }
                         }
                     }
                 }
-            } else {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (students.isEmpty()) " Roster is empty. Add students to begin." else "Select an evaluation column above to record scores.",
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                    )
-                }
             }
         }
 
-        // ADD NEW GRADING COLUMN/TASK DIALOG
-        if (showAddColumnDialog) {
+        // CREATE DISPATCH GRADING SHEET DIALOG (Attendance layout model)
+        if (showCreateSheetDialog) {
             var colName by remember { mutableStateOf("") }
             var maxPointsInput by remember { mutableStateOf("100.0") }
 
+            var selectedFilterId by remember { mutableIntStateOf(0) } // 0 indicates "All active students"
+            var dropdownExpanded by remember { mutableStateOf(false) }
+
+            var examDate by remember { mutableLongStateOf(System.currentTimeMillis()) }
+            var checkDate by remember { mutableLongStateOf(System.currentTimeMillis()) }
+            var showExamDatePicker by remember { mutableStateOf(false) }
+            var showCheckDatePicker by remember { mutableStateOf(false) }
+
             AlertDialog(
-                onDismissRequest = { showAddColumnDialog = false },
+                onDismissRequest = { showCreateSheetDialog = false },
                 title = { Text(stringResource(R.string.gradebook_add_column), fontWeight = FontWeight.Bold) },
                 text = {
                     Column(
@@ -331,23 +352,112 @@ fun GradebookScreen(onBack: () -> Unit) {
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
                         )
+
+                        // Roster Filter Dropdown
+                        Text(
+                            text = stringResource(R.string.gradebook_select_roster_filter) + " *",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        val activeFilterLabel = if (selectedFilterId == 0) stringResource(R.string.gradebook_all_students) else savedFilters.find { it.id == selectedFilterId }?.filterName ?: ""
+                        ExposedDropdownMenuBox(
+                            expanded = dropdownExpanded,
+                            onExpandedChange = { dropdownExpanded = it }
+                        ) {
+                            OutlinedTextField(
+                                value = activeFilterLabel,
+                                onValueChange = {},
+                                readOnly = true,
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownExpanded) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
+                            )
+                            ExposedDropdownMenu(
+                                expanded = dropdownExpanded,
+                                onDismissRequest = { dropdownExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.gradebook_all_students)) },
+                                    onClick = {
+                                        selectedFilterId = 0
+                                        dropdownExpanded = false
+                                    }
+                                )
+                                savedFilters.forEach { filter ->
+                                    DropdownMenuItem(
+                                        text = { Text(filter.filterName) },
+                                        onClick = {
+                                            selectedFilterId = filter.id
+                                            dropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Exam Date selection button
+                        Text(
+                            text = "Exam Date Selection *",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        OutlinedButton(
+                            onClick = { showExamDatePicker = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(displayDateSdf.format(Date(examDate)), color = MaterialTheme.colorScheme.onSurface)
+                                Icon(Icons.Default.CalendarToday, contentDescription = "Select Exam Date", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+
+                        // Evaluation Checking Date selection button
+                        Text(
+                            text = "Checking Date Selection *",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        OutlinedButton(
+                            onClick = { showCheckDatePicker = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(displayDateSdf.format(Date(checkDate)), color = MaterialTheme.colorScheme.onSurface)
+                                Icon(Icons.Default.CalendarToday, contentDescription = "Select Check Date", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
                     }
                 },
                 confirmButton = {
                     Button(
                         onClick = {
                             if (colName.isNotBlank()) {
-                                scope.launch {
-                                    val limit = maxPointsInput.toDoubleOrNull() ?: 100.0
-                                    val col = AssessmentColumnEntity(
-                                        name = colName.trim(),
-                                        maxPoints = limit
-                                    )
-                                    repository.insertAssessmentColumn(col)
-                                    refreshData()
-                                    showAddColumnDialog = false
-                                    Toast.makeText(context, R.string.gradebook_toast_column_created, Toast.LENGTH_SHORT).show()
-                                }
+                                val limit = maxPointsInput.toDoubleOrNull() ?: 100.0
+                                viewModel.createGradingSheet(
+                                    name = colName.trim(),
+                                    maxPoints = limit,
+                                    examDate = examDate,
+                                    checkDate = checkDate,
+                                    filterId = selectedFilterId
+                                )
+                                showCreateSheetDialog = false
+                                colName = ""
+                                maxPointsInput = "100.0"
+                                Toast.makeText(context, R.string.gradebook_toast_column_created, Toast.LENGTH_SHORT).show()
                             }
                         },
                         enabled = colName.isNotBlank()
@@ -356,12 +466,35 @@ fun GradebookScreen(onBack: () -> Unit) {
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showAddColumnDialog = false }) {
+                    TextButton(onClick = { showCreateSheetDialog = false }) {
                         Text(stringResource(R.string.action_cancel))
                     }
                 },
                 shape = RoundedCornerShape(28.dp)
             )
+
+            // Dynamic date pickers
+            if (showExamDatePicker) {
+                WheelDatePickerDialog(
+                    initialDateMillis = examDate,
+                    onDismiss = { showExamDatePicker = false },
+                    onConfirm = { selectedMillis ->
+                        examDate = selectedMillis
+                        showExamDatePicker = false
+                    }
+                )
+            }
+
+            if (showCheckDatePicker) {
+                WheelDatePickerDialog(
+                    initialDateMillis = checkDate,
+                    onDismiss = { showCheckDatePicker = false },
+                    onConfirm = { selectedMillis ->
+                        checkDate = selectedMillis
+                        showCheckDatePicker = false
+                    }
+                )
+            }
         }
     }
 }

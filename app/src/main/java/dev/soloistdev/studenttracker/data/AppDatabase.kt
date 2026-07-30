@@ -21,7 +21,7 @@ import java.io.IOException
         AssessmentColumnEntity::class,
         AssessmentScoreEntity::class
     ],
-    version = 11, // INCREMENTED: Schema upgraded to version 10
+    version = 12, // INCREMENTED: Schema upgraded to version 10
     exportSchema = false
 )
 

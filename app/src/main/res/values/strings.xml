@@ -427,4 +427,10 @@
     <string name="gradebook_scores_header">Roster Evaluation Matrix</string>
     <string name="gradebook_label_score">Score *</string>
     <string name="gradebook_label_max_points">Max: %1$.1f points</string>
+
+    <!-- Gradebook Relational Onboarding Strings -->
+    <string name="gradebook_exam_date_label">Exam Date: %1$s</string>
+    <string name="gradebook_check_date_label">Checked Date: %1$s</string>
+    <string name="gradebook_select_roster_filter">Select Roster Filter</string>
+    <string name="gradebook_all_students">All Active Students</string>
 </resources>
