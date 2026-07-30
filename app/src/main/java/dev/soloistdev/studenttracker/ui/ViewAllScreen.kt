@@ -245,19 +245,7 @@ fun ViewAllScreen(
                     )
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.Book, contentDescription = null) },
-                        label = { Text(stringResource(R.string.menu_gradebook_matrix)) },
-                        selected = false,
-                        onClick = {
-                            scope.launch {
-                                drawerState.close()
-                                onOpenGradebook()
-                            }
-                        },
-                        colors = drawerItemColors,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                    )
+
                 }
             }
         }
