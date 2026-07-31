@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.CsvExportEngine
 import dev.soloistdev.studenttracker.data.JsonSyncEngine
+import dev.soloistdev.studenttracker.data.ImportResult
 import dev.soloistdev.studenttracker.data.LocalSyncEngine
 import dev.soloistdev.studenttracker.data.StudentRepository
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +61,12 @@ fun SyncScreen(onBack: () -> Unit) {
     var showImportConfirmDialog by remember { mutableStateOf(false) }
     var selectedImportUri by remember { mutableStateOf<Uri?>(null) }
 
+    // Dynamic Loading Dialog States
+    var showLoadingPopup by remember { mutableStateOf(false) }
+    var loadingStatusText by remember { mutableStateOf("") }
+    var importResult by remember { mutableStateOf<ImportResult?>(null) }
+    var isImportDone by remember { mutableStateOf(false) }
+
     // P2P State Managers
     val localSyncEngine = remember { LocalSyncEngine(context) }
     val syncState by localSyncEngine.syncState.collectAsState()
@@ -76,7 +83,7 @@ fun SyncScreen(onBack: () -> Unit) {
     ) { uri ->
         uri?.let { selectedUri ->
             selectedImportUri = selectedUri
-            showImportConfirmDialog = true // Triggers restoration confirmation dialog
+            showImportConfirmDialog = true
         }
     }
 
@@ -106,7 +113,6 @@ fun SyncScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
-            // ================= SECTION: LAN PEER-TO-PEER OFFLINE SYNC =================
             Text(
                 text = stringResource(R.string.sync_local_p2p_title),
                 fontSize = 14.sp,
@@ -153,8 +159,12 @@ fun SyncScreen(onBack: () -> Unit) {
                                 localSyncEngine.startLocalServer { tempBackupFile ->
                                     scope.launch {
                                         try {
-                                            JsonSyncEngine.importUnencryptedBackup(context, Uri.fromFile(tempBackupFile), repository)
-                                            Toast.makeText(context, "Database synchronization complete!", Toast.LENGTH_SHORT).show()
+                                            val result = JsonSyncEngine.importUnencryptedBackup(context, Uri.fromFile(tempBackupFile), repository)
+                                            if (result != null) {
+                                                importResult = result
+                                                isImportDone = true
+                                                showLoadingPopup = true
+                                            }
                                         } catch (e: Exception) {
                                             Toast.makeText(context, "Payload parsing failed: ${e.message}", Toast.LENGTH_LONG).show()
                                         }
@@ -416,7 +426,7 @@ fun SyncScreen(onBack: () -> Unit) {
             }
         }
 
-        // UNIFIED RESTORATION CONFIRMATION DIALOG (RESTORES ALL DATA STRUCTURES)
+        // CONFIRMATION DIALOG PRIOR TO FULL RESTORATION
         if (showImportConfirmDialog && selectedImportUri != null) {
             val importUri = selectedImportUri!!
             AlertDialog(
@@ -427,21 +437,22 @@ fun SyncScreen(onBack: () -> Unit) {
                     Button(
                         onClick = {
                             showImportConfirmDialog = false
+                            loadingStatusText = "Restoring entities..."
+                            isImportDone = false
+                            showLoadingPopup = true // Reveals dynamic loading dialog
+
                             scope.launch {
                                 val fileName = getFileName(context, importUri)
                                 val isEncrypted = fileName?.endsWith(".enc", ignoreCase = true) == true
 
-                                val success = if (isEncrypted) {
+                                val result = if (isEncrypted) {
                                     JsonSyncEngine.importSecureBackup(context, importUri, repository)
                                 } else {
                                     JsonSyncEngine.importUnencryptedBackup(context, importUri, repository)
                                 }
 
-                                if (success) {
-                                    Toast.makeText(context, "Database restored successfully!", Toast.LENGTH_LONG).show()
-                                } else {
-                                    Toast.makeText(context, "Failed to restore database payload.", Toast.LENGTH_LONG).show()
-                                }
+                                importResult = result
+                                isImportDone = true // Triggers Done button action block
                             }
                         }
                     ) {
@@ -451,6 +462,58 @@ fun SyncScreen(onBack: () -> Unit) {
                 dismissButton = {
                     TextButton(onClick = { showImportConfirmDialog = false }) {
                         Text(stringResource(R.string.action_no))
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
+        }
+
+        // DYNAMIC DATABASE RESTORATION PROGRESS POPUP
+        if (showLoadingPopup) {
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text(if (isImportDone) "Restoration Complete" else "Importing Data", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (!isImportDone) {
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(loadingStatusText, fontSize = 14.sp, textAlign = TextAlign.Center)
+                        } else {
+                            val res = importResult
+                            if (res != null) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    horizontalAlignment = Alignment.Start
+                                ) {
+                                    Text("Classrooms Loaded: ${res.classroomsCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("Students Loaded: ${res.studentsCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("Saved Filters Loaded: ${res.filtersCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("Attendance Sheets: ${res.attendanceCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("Gradebooks Loaded: ${res.gradebookCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                }
+                            } else {
+                                Text("Failed to decrypt or parse the backup payload. Verify your encryption key.", color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    if (isImportDone) {
+                        Button(
+                            onClick = {
+                                showLoadingPopup = false
+                                importResult = null
+                                isImportDone = false
+                            }
+                        ) {
+                            Text("Done")
+                        }
                     }
                 },
                 shape = RoundedCornerShape(28.dp)

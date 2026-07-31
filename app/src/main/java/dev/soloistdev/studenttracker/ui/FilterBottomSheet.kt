@@ -13,12 +13,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.stringResource // Resolved: Explicit resource accessor import [1]
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.soloistdev.studenttracker.R // Resolved: Explicit R file import [1]
+import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import java.text.SimpleDateFormat
 import java.util.*
@@ -30,7 +30,8 @@ fun FilterBottomSheet(
     availableTemplates: List<FormTemplateEntity>,
     onApplyFilter: (FilterState) -> Unit,
     onResetFilter: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    hideClassroomFilter: Boolean = false // ADDED: Hides Classroom from filter fields list in classroom view
 ) {
     var tempField by remember { mutableStateOf(activeFilter?.field ?: "Age") }
     var tempComparison by remember { mutableStateOf(activeFilter?.comparison ?: "In between") }
@@ -46,8 +47,16 @@ fun FilterBottomSheet(
     var showDatePicker1 by remember { mutableStateOf(false) }
     var showDatePicker2 by remember { mutableStateOf(false) }
 
-    val coreFields = listOf("First Name", "Last Name", "Gender", "Birthday", "Address", "Age", "Guardian Name", "Guardian Contact")
-    val fieldsList = remember {
+    // Dynamic field list creation
+    val coreFields = remember(hideClassroomFilter) {
+        if (hideClassroomFilter) {
+            listOf("First Name", "Last Name", "Gender", "Birthday", "Address", "Age")
+        } else {
+            listOf("First Name", "Last Name", "Gender", "Birthday", "Address", "Age", "Classroom")
+        }
+    }
+
+    val fieldsList = remember(coreFields) {
         val list = coreFields.toMutableList()
         availableTemplates.forEach { list.add(it.fieldName) }
         list
@@ -55,7 +64,7 @@ fun FilterBottomSheet(
 
     fun getFieldType(field: String): String {
         return when (field) {
-            "First Name", "Last Name", "Home Address", "Guardian Name", "Guardian Contact" -> "TEXT"
+            "First Name", "Last Name", "Home Address", "Classroom" -> "TEXT"
             "Gender" -> "GENDER"
             "Age" -> "NUMBER"
             "Birthday" -> "DATE"
@@ -69,6 +78,7 @@ fun FilterBottomSheet(
     val currentSelectedType = getFieldType(tempField)
     val isRangeMode = tempComparison == "In between"
     val isGenderMode = currentSelectedType == "GENDER"
+    val isClassroomMode = tempField == "Classroom"
     val isBirthdayMode = tempField == "Birthday"
 
     val val1Num = tempVal1.toDoubleOrNull()
@@ -133,6 +143,7 @@ fun FilterBottomSheet(
                                     option == "Birthday" -> "exact_birthday"
                                     newType == "NUMBER" -> "In between"
                                     newType == "GENDER" -> "equal"
+                                    option == "Classroom" -> "equal"
                                     else -> "contains"
                                 }
                                 tempVal1 = if (newType == "GENDER") "Female" else ""
@@ -161,10 +172,10 @@ fun FilterBottomSheet(
                         expanded = compExpanded,
                         onDismissRequest = { compExpanded = false }
                     ) {
-                        val operatorsList = if (currentSelectedType == "NUMBER") {
-                            listOf("equal", "greater than", "less than", "In between")
-                        } else {
-                            listOf("contains", "does not contain", "equal", "not equal")
+                        val operatorsList = when {
+                            currentSelectedType == "NUMBER" -> listOf("equal", "greater than", "less than", "In between")
+                            isClassroomMode -> listOf("equal", "not equal", "empty", "not empty")
+                            else -> listOf("contains", "does not contain", "equal", "not equal")
                         }
 
                         operatorsList.forEach { option ->
@@ -182,7 +193,6 @@ fun FilterBottomSheet(
 
             if (isBirthdayMode) {
                 var typeExpanded by remember { mutableStateOf(false) }
-                // Localized display labels mapped securely to database constants [1]
                 val birthdayTypes = listOf(
                     stringResource(R.string.birthday_type_year) to "birth_year",
                     stringResource(R.string.birthday_type_month) to "birth_month",
@@ -362,46 +372,49 @@ fun FilterBottomSheet(
                     )
                 }
             } else {
-                if (isRangeMode) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                val isValueRequired = tempComparison != "empty" && tempComparison != "not empty"
+                if (isValueRequired) {
+                    if (isRangeMode) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = tempVal1,
+                                onValueChange = { tempVal1 = it },
+                                label = { Text(stringResource(R.string.filter_value_min)) },
+                                isError = isValidationError,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f)
+                            )
+                            OutlinedTextField(
+                                value = tempVal2,
+                                onValueChange = { tempVal2 = it },
+                                label = { Text(stringResource(R.string.filter_value_max)) },
+                                isError = isValidationError,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        if (isValidationError) {
+                            Text(
+                                text = stringResource(R.string.filter_range_error),
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
+                    } else {
+                        val isNumeric = currentSelectedType == "NUMBER"
                         OutlinedTextField(
                             value = tempVal1,
                             onValueChange = { tempVal1 = it },
-                            label = { Text(stringResource(R.string.filter_value_min)) },
-                            isError = isValidationError,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f)
-                        )
-                        OutlinedTextField(
-                            value = tempVal2,
-                            onValueChange = { tempVal2 = it },
-                            label = { Text(stringResource(R.string.filter_value_max)) },
-                            isError = isValidationError,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f)
+                            label = { Text(stringResource(R.string.filter_value_singular)) },
+                            keyboardOptions = KeyboardOptions(keyboardType = if (isNumeric) KeyboardType.Number else KeyboardType.Text),
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
-
-                    if (isValidationError) {
-                        Text(
-                            text = stringResource(R.string.filter_range_error),
-                            color = MaterialTheme.colorScheme.error,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(start = 4.dp)
-                        )
-                    }
-                } else {
-                    val isNumeric = currentSelectedType == "NUMBER"
-                    OutlinedTextField(
-                        value = tempVal1,
-                        onValueChange = { tempVal1 = it },
-                        label = { Text(stringResource(R.string.filter_value_singular)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = if (isNumeric) KeyboardType.Number else KeyboardType.Text),
-                        modifier = Modifier.fillMaxWidth()
-                    )
                 }
             }
 
@@ -430,20 +443,23 @@ fun FilterBottomSheet(
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(
                     onClick = {
-                        if (!isValidationError) {
+                        val isValueRequired = tempComparison != "empty" && tempComparison != "not empty"
+                        val isValueValid = !isValueRequired || tempVal1.isNotBlank()
+
+                        if (!isValidationError && isValueValid) {
                             onApplyFilter(
                                 FilterState(
                                     field = tempField,
                                     comparison = tempComparison,
-                                    value1 = tempVal1,
-                                    value2 = tempVal2,
+                                    value1 = if (isValueRequired) tempVal1.trim() else "",
+                                    value2 = if (isValueRequired && isRangeMode) tempVal2.trim() else "",
                                     isPinned = tempIsPinned
                                 )
                             )
                             onDismiss()
                         }
                     },
-                    enabled = !isValidationError,
+                    enabled = !isValidationError && (tempComparison == "empty" || tempComparison == "not empty" || tempVal1.isNotBlank()),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (isValidationError) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary,
                         contentColor = if (isValidationError) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onPrimary

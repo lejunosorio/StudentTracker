@@ -19,6 +19,15 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// Data holder class returning database restoration results
+data class ImportResult(
+    val classroomsCount: Int,
+    val studentsCount: Int,
+    val filtersCount: Int,
+    val attendanceCount: Int,
+    val gradebookCount: Int
+)
+
 object JsonSyncEngine {
 
     private const val MAX_IMPORT_SIZE_BYTES = 10 * 1024 * 1024 // 10MB limit
@@ -95,7 +104,17 @@ object JsonSyncEngine {
         }
 
         val bdaySdf = SimpleDateFormat("MM-dd-yyyy", Locale.US)
+
+        // Reconciles incoming payload classes to prevent data-loss on clean merges
+        val incomingClassrooms = mutableSetOf<String>()
+        val classroomsArr = payloadObj?.optJSONArray("classrooms")
+        if (classroomsArr != null) {
+            for (c in 0 until classroomsArr.length()) {
+                incomingClassrooms.add(classroomsArr.getJSONObject(c).optString("name", "").trim())
+            }
+        }
         val dbClassrooms = repository.getAllClassrooms().map { it.name.trim() }.toSet()
+        val validClassrooms = dbClassrooms + incomingClassrooms
 
         for (i in 0 until incomingStudentsArr.length()) {
             val sObj = incomingStudentsArr.getJSONObject(i)
@@ -113,9 +132,9 @@ object JsonSyncEngine {
                 incomingIdToIdentityMap[incomingId] = identity
             }
 
-            // Classroom validation bounds
-            val rawClass = sObj.optString("classRoom", sObj.optString("class", "")).trim()
-            val validatedClass = if (dbClassrooms.contains(rawClass)) rawClass else ""
+            // Boundary validation check: Nullify className if the class profile is unregistered
+            val rawClass = sObj.optString("Classroom", sObj.optString("classRoom", sObj.optString("class", ""))).trim()
+            val validatedClass = if (validClassrooms.contains(rawClass)) rawClass else ""
 
             val student = StudentEntity(
                 firstName = first,
@@ -288,7 +307,8 @@ object JsonSyncEngine {
         context.startActivity(Intent.createChooser(shareIntent, "Share Encrypted Backup"))
     }
 
-    suspend fun importSecureBackup(context: Context, uri: Uri, repository: StudentRepository): Boolean = withContext(Dispatchers.IO) {
+    // Standardized functions returning the parsed counts as ImportResult
+    suspend fun importSecureBackup(context: Context, uri: Uri, repository: StudentRepository): ImportResult? = withContext(Dispatchers.IO) {
         try {
             verifyFileSizeLimit(context, uri)
 
@@ -300,7 +320,7 @@ object JsonSyncEngine {
                 FileOutputStream(tempEncFile).use { fos ->
                     stream.copyTo(fos)
                 }
-            } ?: return@withContext false
+            } ?: return@withContext null
 
             val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
             val encryptedFile = EncryptedFile.Builder(
@@ -317,6 +337,7 @@ object JsonSyncEngine {
 
             val decryptedString = String(content, Charsets.UTF_8).trim()
 
+            // Backwards compatibility check
             val payloadObj = if (decryptedString.startsWith("{")) {
                 JSONObject(decryptedString)
             } else {
@@ -324,23 +345,24 @@ object JsonSyncEngine {
             }
 
             parseAndInsertBackupPayload(payloadObj, repository)
-            true
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            null
         }
     }
 
-    suspend fun importUnencryptedBackup(context: Context, uri: Uri, repository: StudentRepository): Boolean = withContext(Dispatchers.IO) {
+    // Standardized functions returning the parsed counts as ImportResult
+    suspend fun importUnencryptedBackup(context: Context, uri: Uri, repository: StudentRepository): ImportResult? = withContext(Dispatchers.IO) {
         try {
             verifyFileSizeLimit(context, uri)
 
             val content = context.contentResolver.openInputStream(uri)?.use { stream ->
                 stream.readBytes()
-            } ?: return@withContext false
+            } ?: return@withContext null
 
             val jsonString = String(content, Charsets.UTF_8).trim()
 
+            // Backwards compatibility check
             val payloadObj = if (jsonString.startsWith("{")) {
                 JSONObject(jsonString)
             } else {
@@ -348,15 +370,20 @@ object JsonSyncEngine {
             }
 
             parseAndInsertBackupPayload(payloadObj, repository)
-            true
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            null
         }
     }
 
-    private suspend fun parseAndInsertBackupPayload(payloadObj: JSONObject, repository: StudentRepository) {
+    private suspend fun parseAndInsertBackupPayload(payloadObj: JSONObject, repository: StudentRepository): ImportResult {
         val sdfBday = SimpleDateFormat("MM-dd-yyyy", Locale.US)
+
+        var classroomsLoaded = 0
+        var studentsLoaded = 0
+        var filtersLoaded = 0
+        var attendanceLoaded = 0
+        var gradebookLoaded = 0
 
         val validClassroomNames = mutableSetOf<String>()
 
@@ -377,11 +404,11 @@ object JsonSyncEngine {
                         endTime = end
                     )
                     repository.insertClassroom(classroom)
+                    classroomsLoaded++
                 }
             }
         }
 
-        // Collect existing local database classrooms
         repository.getAllClassrooms().forEach {
             validClassroomNames.add(it.name.trim())
         }
@@ -427,8 +454,8 @@ object JsonSyncEngine {
                 }
             } catch (_: Exception) {}
 
-            // Validate classroom bounds
-            val rawClass = sObj.optString("classRoom", sObj.optString("class", "")).trim()
+            // Relational classroom bound validations
+            val rawClass = sObj.optString("Classroom", sObj.optString("classRoom", sObj.optString("class", ""))).trim()
             val validatedClass = if (validClassroomNames.contains(rawClass)) rawClass else ""
 
             val student = StudentEntity(
@@ -445,6 +472,7 @@ object JsonSyncEngine {
                 className = validatedClass
             )
             val newStudentId = repository.insertStudent(student).toInt()
+            studentsLoaded++
 
             val identifier = "${last}_${first}_${student.className}"
             studentIdentifierToIdMap[identifier] = newStudentId
@@ -488,8 +516,8 @@ object JsonSyncEngine {
             for (i in 0 until filtersArr.length()) {
                 val fObj = filtersArr.getJSONObject(i)
                 val name = fObj.optString("name", "")
-                val rawField = fObj.optString("field", "")
-                val field = if (rawField == "classRoom") "Class" else rawField
+                val rawField = fObj.optString("field", fObj.optString("fieldName", ""))
+                val field = if (rawField == "classRoom" || rawField == "Classroom") "Classroom" else rawField
 
                 var comp = fObj.optString("comparison", "equal")
                 val bdayFilterType = fObj.optString("birthdayFilterType", "")
@@ -505,11 +533,12 @@ object JsonSyncEngine {
                     filterName = name,
                     fieldName = field,
                     comparison = comp,
-                    value1 = fObj.optString("value", ""),
-                    value2 = "",
+                    value1 = fObj.optString("value", fObj.optString("value1", "")),
+                    value2 = fObj.optString("value2", ""),
                     displayOrder = fObj.optInt("displayOrder", i)
                 )
                 repository.insertSavedFilter(filter)
+                filtersLoaded++
             }
         }
 
@@ -532,6 +561,7 @@ object JsonSyncEngine {
                     endDate = endMillis
                 )
                 val recordId = repository.insertAttendanceRecord(record).toInt()
+                attendanceLoaded++
 
                 val participantsArr = rObj.optJSONArray("participants")
                 if (participantsArr != null) {
@@ -585,6 +615,7 @@ object JsonSyncEngine {
                     savedFilterId = 0
                 )
                 val columnId = repository.insertAssessmentColumn(column).toInt()
+                gradebookLoaded++
 
                 val gradesArr = gObj.optJSONArray("grades")
                 if (gradesArr != null) {
@@ -606,6 +637,14 @@ object JsonSyncEngine {
                 }
             }
         }
+
+        return ImportResult(
+            classroomsCount = classroomsLoaded,
+            studentsCount = studentsLoaded,
+            filtersCount = filtersLoaded,
+            attendanceCount = attendanceLoaded,
+            gradebookCount = gradebookLoaded
+        )
     }
 
     private fun verifyFileSizeLimit(context: Context, uri: Uri) {

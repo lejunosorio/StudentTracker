@@ -63,7 +63,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                         student.lastName.contains(query, ignoreCase = true) ||
                         student.address.contains(query, ignoreCase = true) ||
                         student.contactNumber.contains(query, ignoreCase = true) ||
-                        student.className.contains(query, ignoreCase = true) // Search matching class names
+                        student.className.contains(query, ignoreCase = true)
             }
         }
 
@@ -75,7 +75,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                     "Gender" -> if (student.gender == "F") "Female" else "Male"
                     "Home Address" -> student.address
                     "Student Contact" -> student.contactNumber
-                    "Class", "classRoom" -> student.className // Maps both keys to Room className
+                    "Class", "Classroom" -> student.className // UPDATED: "Classroom" key mapping
                     "Age" -> {
                         val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
                         age.toString()

@@ -284,11 +284,10 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
-                    Spacer(modifier = Modifier.weight(1f)) // ADDED: Pushes subsequent list nodes to the absolute bottom bounds
+                    Spacer(modifier = Modifier.weight(1f))
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // RECYCLE BIN AT THE VERY BOTTOM (UPDATED)
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Delete, contentDescription = null) },
                         label = { Text(stringResource(R.string.menu_recycle_bin)) },
@@ -578,10 +577,16 @@ fun ViewAllScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val allChipLabel = if (selectedClassroomForView == "All" || selectedClassroomForView == null) {
+                            stringResource(R.string.action_all)
+                        } else {
+                            selectedClassroomForView!!
+                        }
+
                         FilterChip(
                             selected = activeFilter == null,
                             onClick = { viewModel.clearActiveFilter() },
-                            label = { Text(stringResource(R.string.action_all)) },
+                            label = { Text(allChipLabel) }, // Displays the active Classroom name as baseline
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                                 selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -795,7 +800,8 @@ fun ViewAllScreen(
                 availableTemplates = availableTemplates,
                 onApplyFilter = { viewModel.applyFilter(it) },
                 onResetFilter = { viewModel.clearFilter() },
-                onDismiss = { showFilterSheet = false }
+                onDismiss = { showFilterSheet = false },
+                hideClassroomFilter = selectedClassroomForView != null // Hide Classroom filter in classroom sub-view
             )
         }
 

@@ -112,7 +112,6 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     fun deleteRecord(recordId: Int) {
         viewModelScope.launch {
             try {
-                // CORRECTED: Call the repository soft-delete method [1]
                 repository.softDeleteAttendanceRecord(recordId)
                 loadRecords()
             } catch (_: Exception) {
@@ -600,7 +599,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     <fill><patternFill patternType="none"/></fill>
     <fill><patternFill patternType="gray125"/></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FF1B5E20"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FF2E7D32"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF2E7D32"/></fgColor></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFE8F5E9"/></fgColor></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFFFEBEE"/></patternFill></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFFFF3E0"/></patternFill></fill>
@@ -622,7 +621,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
   </cellStyleXfs>
   <cellXfs count="10">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="2" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="2" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
     <xf numFmtId="0" fontId="1" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
     <xf numFmtId="0" fontId="1" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
     <xf numFmtId="0" fontId="1" fillId="5" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
@@ -715,6 +714,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
             "Last Name" -> student.lastName
             "Gender" -> if (student.gender == "F") "Female" else "Male"
             "Address" -> student.address
+            "Class", "Classroom" -> student.className
             "Age" -> {
                 val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
                 age.toString()

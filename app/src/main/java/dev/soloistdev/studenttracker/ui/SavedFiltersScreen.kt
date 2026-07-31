@@ -671,7 +671,7 @@ fun FilterDialogForm(
     var val2 by remember { mutableStateOf(existingFilter?.value2 ?: "") }
     var showDatePicker1 by remember { mutableStateOf(false) }
 
-    val coreFields = listOf("First Name", "Last Name", "Gender", "Birthday", "Address", "Age", "classRoom")
+    val coreFields = listOf("First Name", "Last Name", "Gender", "Birthday", "Address", "Age", "Classroom")
     val fieldsList = remember {
         val list = coreFields.toMutableList()
         templates.forEach { list.add(it.fieldName) }
@@ -680,7 +680,7 @@ fun FilterDialogForm(
 
     val isBirthdayMode = field == "Birthday"
     val isGenderMode = field == "Gender"
-    val isClassroomMode = field == "classRoom"
+    val isClassroomMode = field == "Classroom"
     val isRangeMode = comparison == "In between"
 
     val val1Num = val1.toDoubleOrNull()
@@ -732,7 +732,7 @@ fun FilterDialogForm(
                                     comparison = when (option) {
                                         "Birthday" -> "exact_birthday"
                                         "Gender" -> "equal"
-                                        "classRoom" -> "equal"
+                                        "Classroom" -> "equal"
                                         "Age" -> "In between"
                                         else -> "contains"
                                     }
@@ -758,7 +758,7 @@ fun FilterDialogForm(
                         DropdownMenu(expanded = compExpanded, onDismissRequest = { compExpanded = false }) {
                             val operatorsList = when (field) {
                                 "Age" -> listOf("equal", "greater than", "less than", "In between")
-                                "classRoom" -> listOf("equal", "not equal", "empty", "not empty")
+                                "Classroom" -> listOf("equal", "not equal", "empty", "not empty")
                                 else -> listOf("contains", "does not contain", "equal", "not equal")
                             }
                             operatorsList.forEach { option ->
@@ -991,11 +991,11 @@ fun FilterDialogForm(
             }
         },
         confirmButton = {
+            val isValueRequired = comparison != "empty" && comparison != "not empty"
+            val isValueValid = !isValueRequired || val1.isNotBlank()
+
             Button(
                 onClick = {
-                    val isValueRequired = comparison != "empty" && comparison != "not empty"
-                    val isValueValid = !isValueRequired || val1.isNotBlank()
-
                     if (name.isNotBlank() && isValueValid && !isValidationError) {
                         onSave(
                             SavedFilterEntity(
@@ -1049,7 +1049,7 @@ private fun getFieldValue(student: StudentEntity, field: String): String {
         "Gender" -> if (student.gender == "F") "Female" else "Male"
         "Address", "Home Address" -> student.address
         "Student Contact" -> student.contactNumber
-        "Class", "classRoom" -> student.className
+        "Class", "Classroom" -> student.className
         "Age" -> {
             val currentYear = Calendar.getInstance().get(Calendar.YEAR)
             val birthCal = Calendar.getInstance().apply { timeInMillis = student.birthday }
