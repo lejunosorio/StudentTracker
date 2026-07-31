@@ -403,4 +403,39 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
             else -> true
         }
     }
+
+    fun createManualGradebookRecord(
+        name: String,
+        selectedIds: List<Int>,
+        maxPoints: Double,
+        examDate: Long,
+        checkDate: Long,
+        onCreated: (Int) -> Unit
+    ) {
+        viewModelScope.launch {
+            // Build the primary grading sheet column
+            val column = dev.soloistdev.studenttracker.data.AssessmentColumnEntity(
+                name = name.trim(),
+                maxPoints = maxPoints,
+                examDate = examDate,
+                checkDate = checkDate,
+                savedFilterId = 0
+            )
+            val columnId = repository.insertAssessmentColumn(column).toInt()
+
+            // Pre-populate grading score slots for each matched participant
+            selectedIds.forEach { studentId ->
+                repository.insertAssessmentScore(
+                    dev.soloistdev.studenttracker.data.AssessmentScoreEntity(
+                        columnId = columnId,
+                        studentId = studentId,
+                        score = ""
+                    )
+                )
+            }
+
+            clearSelection()
+            onCreated(columnId)
+        }
+    }
 }

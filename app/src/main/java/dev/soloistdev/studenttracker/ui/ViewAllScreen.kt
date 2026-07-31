@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -23,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -33,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -77,6 +80,7 @@ fun ViewAllScreen(
     var showSortSheet by remember { mutableStateOf(false) }
     var showBulkDeleteConfirmDialog by remember { mutableStateOf(false) }
 
+    // Attendance creation states
     var showCreateAttendanceDialog by remember { mutableStateOf(false) }
     var attendanceRecordName by remember { mutableStateOf("") }
     var startDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -86,6 +90,15 @@ fun ViewAllScreen(
 
     val isDateRangeInvalid = startDateMillis > endDateMillis
 
+    // Gradebook creation states (ADDED)
+    var showCreateGradebookDialog by remember { mutableStateOf(false) }
+    var gradebookRecordName by remember { mutableStateOf("") }
+    var gradebookMaxPoints by remember { mutableStateOf("100.0") }
+    var gradebookExamDate by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var gradebookCheckDate by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var showExamDatePicker by remember { mutableStateOf(false) }
+    var showCheckDatePicker by remember { mutableStateOf(false) }
+
     val bulkDeleteConfirmMsg = stringResource(R.string.delete_members_bulk_confirmation, selectedStudentIds.size)
     val bulkDeleteSuccessMsg = stringResource(R.string.toast_moved_to_recycle_bin, stringResource(R.string.menu_students))
 
@@ -94,10 +107,8 @@ fun ViewAllScreen(
     // ==========================================
     // CLASSROOMS BOARD CONTROLLERS & DATA MERGES
     // ==========================================
-    // null = State A (Classrooms Board), non-null (e.g. "All" or "Class 10-A") = State B (Directory List)
     var selectedClassroomForView by remember { mutableStateOf<String?>(null) }
 
-    // Dynamically compile a distinct, sorted list of registered classrooms from the student database
     val distinctClassrooms = remember(students) {
         students.map { it.student.className }.filter { it.isNotBlank() }.distinct().sorted()
     }
@@ -106,7 +117,6 @@ fun ViewAllScreen(
         return students.count { it.student.className == className }
     }
 
-    // Filters UI roster list based on the active selection
     val filteredDirectoryStudents = remember(students, selectedClassroomForView) {
         if (selectedClassroomForView == null || selectedClassroomForView == "All") {
             students
@@ -144,7 +154,6 @@ fun ViewAllScreen(
                         unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    // GROUP 1: DAILY OPERATIONS / CORE PORTAL
                     Text(
                         text = "DAILY PORTAL",
                         fontSize = 11.sp,
@@ -207,7 +216,6 @@ fun ViewAllScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    // GROUP 2: SCHEMAS & SAVED FILTER TARGETS
                     Text(
                         text = "CUSTOMIZATION",
                         fontSize = 11.sp,
@@ -247,7 +255,6 @@ fun ViewAllScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    // GROUP 3: SYSTEM UTILITIES & APP SETTINGS
                     Text(
                         text = "SYSTEM & SETTINGS",
                         fontSize = 11.sp,
@@ -324,6 +331,14 @@ fun ViewAllScreen(
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
+                            // ADDED: Create Gradebook Sheet action inside Selection-Mode App Bar
+                            IconButton(onClick = { showCreateGradebookDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Book,
+                                    contentDescription = "Create Gradebook Sheet",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
                             IconButton(onClick = { showCreateAttendanceDialog = true }) {
                                 Icon(
                                     imageVector = Icons.Default.EventAvailable,
@@ -358,7 +373,7 @@ fun ViewAllScreen(
                         navigationIcon = {
                             IconButton(onClick = {
                                 if (selectedClassroomForView != null) {
-                                    selectedClassroomForView = null // Returns back to Classrooms Board State A
+                                    selectedClassroomForView = null
                                 } else {
                                     scope.launch { drawerState.open() }
                                 }
@@ -370,6 +385,21 @@ fun ViewAllScreen(
                             }
                         },
                         actions = {
+                            // ADDED: Create Gradebook and Attendance actions positioned beside the Refresh function [1]
+                            IconButton(onClick = { showCreateGradebookDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Book,
+                                    contentDescription = "Create Gradebook Sheet",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            IconButton(onClick = { showCreateAttendanceDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.EventAvailable,
+                                    contentDescription = "Create Attendance Record",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
                             IconButton(onClick = { viewModel.loadData() }) {
                                 Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                             }
@@ -434,7 +464,6 @@ fun ViewAllScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // All classrooms Master Selection Card
                         item {
                             Card(
                                 modifier = Modifier
@@ -461,7 +490,6 @@ fun ViewAllScreen(
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         }
 
-                        // Specific Classroom Cards (Dynamically populated from Student database records)
                         if (distinctClassrooms.isEmpty()) {
                             item {
                                 Box(
@@ -512,7 +540,6 @@ fun ViewAllScreen(
                         .fillMaxSize()
                         .padding(paddingValues)
                 ) {
-                    // Search Row
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -568,7 +595,6 @@ fun ViewAllScreen(
                         }
                     }
 
-                    // Horizontally Scrollable Workbench Chips
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -586,7 +612,7 @@ fun ViewAllScreen(
                         FilterChip(
                             selected = activeFilter == null,
                             onClick = { viewModel.clearActiveFilter() },
-                            label = { Text(allChipLabel) }, // Displays the active Classroom name as baseline
+                            label = { Text(allChipLabel) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                                 selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -642,7 +668,6 @@ fun ViewAllScreen(
                             )
                         }
                     } else {
-                        // Swipe-to-dismiss Student List Directory
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(bottom = 80.dp)
@@ -801,7 +826,7 @@ fun ViewAllScreen(
                 onApplyFilter = { viewModel.applyFilter(it) },
                 onResetFilter = { viewModel.clearFilter() },
                 onDismiss = { showFilterSheet = false },
-                hideClassroomFilter = selectedClassroomForView != null // Hide Classroom filter in classroom sub-view
+                hideClassroomFilter = selectedClassroomForView != null
             )
         }
 
@@ -825,6 +850,7 @@ fun ViewAllScreen(
             )
         }
 
+        // ATTENDANCE CREATION DIALOG (UPDATED WITH SELECTION ESTIMATE LABELS) [1]
         if (showCreateAttendanceDialog) {
             val m3TextFieldColors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -832,6 +858,10 @@ fun ViewAllScreen(
                 focusedLabelColor = MaterialTheme.colorScheme.primary,
                 unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            val activeTargetRosterIds = remember(filteredDirectoryStudents, selectedStudentIds, isSelectionMode) {
+                if (isSelectionMode) selectedStudentIds.toList() else filteredDirectoryStudents.map { it.student.id }
+            }
 
             AlertDialog(
                 onDismissRequest = {
@@ -849,6 +879,20 @@ fun ViewAllScreen(
                             .imePadding(),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        // Notice Label informing the proctor exactly how many students are compiled [1]
+                        val attendanceNoticeText = if (isSelectionMode) {
+                            "Notice: ${activeTargetRosterIds.size} selected students will be added to this attendance record."
+                        } else {
+                            "Notice: All ${activeTargetRosterIds.size} students in this view will be added to this attendance record."
+                        }
+                        Text(
+                            text = attendanceNoticeText,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+
                         OutlinedTextField(
                             value = attendanceRecordName,
                             onValueChange = { attendanceRecordName = it },
@@ -912,7 +956,7 @@ fun ViewAllScreen(
                             if (attendanceRecordName.isNotBlank() && !isDateRangeInvalid) {
                                 viewModel.createManualAttendanceRecord(
                                     name = attendanceRecordName,
-                                    selectedIds = selectedStudentIds.toList(),
+                                    selectedIds = activeTargetRosterIds, // COMPILED: Custom target roster
                                     startDateMillis = startDateMillis,
                                     endDateMillis = endDateMillis
                                 ) { recordId, normalizedStartMillis ->
@@ -937,6 +981,141 @@ fun ViewAllScreen(
                             attendanceRecordName = ""
                             startDateMillis = System.currentTimeMillis()
                             endDateMillis = System.currentTimeMillis()
+                        }
+                    ) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
+        }
+
+        // CREATE GRADEBOOK SHEET DIALOG (ADDED WITH SELECTION ESTIMATE LABELS) [1]
+        if (showCreateGradebookDialog) {
+            val m3TextFieldColors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                focusedLabelColor = MaterialTheme.colorScheme.primary,
+                unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            val activeTargetRosterIds = remember(filteredDirectoryStudents, selectedStudentIds, isSelectionMode) {
+                if (isSelectionMode) selectedStudentIds.toList() else filteredDirectoryStudents.map { it.student.id }
+            }
+
+            AlertDialog(
+                onDismissRequest = {
+                    showCreateGradebookDialog = false
+                    gradebookRecordName = ""
+                    gradebookMaxPoints = "100.0"
+                },
+                title = { Text("New Grading Sheet", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .imePadding(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Notice Label informing the proctor exactly how many students are compiled [1]
+                        val gradebookNoticeText = if (isSelectionMode) {
+                            "Notice: ${activeTargetRosterIds.size} selected students will be added to this gradebook sheet."
+                        } else {
+                            "Notice: All ${activeTargetRosterIds.size} students in this view will be added to this gradebook sheet."
+                        }
+                        Text(
+                            text = gradebookNoticeText,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+
+                        OutlinedTextField(
+                            value = gradebookRecordName,
+                            onValueChange = { gradebookRecordName = it },
+                            label = { Text("Sheet Name * (e.g. Midterm)") },
+                            colors = m3TextFieldColors,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = gradebookMaxPoints,
+                            onValueChange = { gradebookMaxPoints = it },
+                            label = { Text("Max Points *") },
+                            colors = m3TextFieldColors,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        val sdf = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
+
+                        // Exam Date selection button
+                        Text(text = "Exam Date *", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        OutlinedButton(
+                            onClick = { showExamDatePicker = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(sdf.format(Date(gradebookExamDate)), color = MaterialTheme.colorScheme.onSurface)
+                                Icon(Icons.Default.CalendarToday, contentDescription = "Select Exam Date", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+
+                        // Evaluation Checking Date selection button
+                        Text(text = "Checking Date *", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        OutlinedButton(
+                            onClick = { showCheckDatePicker = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(sdf.format(Date(gradebookCheckDate)), color = MaterialTheme.colorScheme.onSurface)
+                                Icon(Icons.Default.CalendarToday, contentDescription = "Select Check Date", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (gradebookRecordName.isNotBlank()) {
+                                val limit = gradebookMaxPoints.toDoubleOrNull() ?: 100.0
+                                viewModel.createManualGradebookRecord(
+                                    name = gradebookRecordName,
+                                    selectedIds = activeTargetRosterIds, // COMPILED: Custom target roster
+                                    maxPoints = limit,
+                                    examDate = gradebookExamDate,
+                                    checkDate = gradebookCheckDate
+                                ) { _ ->
+                                    showCreateGradebookDialog = false
+                                    gradebookRecordName = ""
+                                    gradebookMaxPoints = "100.0"
+                                    onOpenGradebook() // Opens the Gradebook to log scores immediately
+                                }
+                            }
+                        },
+                        enabled = gradebookRecordName.isNotBlank()
+                    ) {
+                        Text(stringResource(R.string.action_save))
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showCreateGradebookDialog = false
+                            gradebookRecordName = ""
+                            gradebookMaxPoints = "100.0"
                         }
                     ) {
                         Text(stringResource(R.string.action_cancel))
@@ -971,6 +1150,32 @@ fun ViewAllScreen(
                     TextButton(onClick = {
                         pickerState.selectedDateMillis?.let { endDateMillis = it }
                         showEndPicker = false
+                    }) { Text(stringResource(R.string.action_ok)) }
+                }
+            ) { DatePicker(state = pickerState, showModeToggle = false) }
+        }
+
+        if (showExamDatePicker) {
+            val pickerState = rememberDatePickerState(initialSelectedDateMillis = gradebookExamDate)
+            DatePickerDialog(
+                onDismissRequest = { showExamDatePicker = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        pickerState.selectedDateMillis?.let { gradebookExamDate = it }
+                        showExamDatePicker = false
+                    }) { Text(stringResource(R.string.action_ok)) }
+                }
+            ) { DatePicker(state = pickerState, showModeToggle = false) }
+        }
+
+        if (showCheckDatePicker) {
+            val pickerState = rememberDatePickerState(initialSelectedDateMillis = gradebookCheckDate)
+            DatePickerDialog(
+                onDismissRequest = { showCheckDatePicker = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        pickerState.selectedDateMillis?.let { gradebookCheckDate = it }
+                        showCheckDatePicker = false
                     }) { Text(stringResource(R.string.action_ok)) }
                 }
             ) { DatePicker(state = pickerState, showModeToggle = false) }
