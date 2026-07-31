@@ -90,13 +90,8 @@ fun AppNavigation() {
                     }
                 },
                 onOpenSettings = {
-                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                    if (navController.currentDestination?.route == "view_all") {
                         navController.navigate(ScreenRoute.APP_SETTINGS)
-                    }
-                },
-                onOpenBiometrics = {
-                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
-                        navController.navigate(ScreenRoute.BIOMETRICS_PRIVACY)
                     }
                 },
                 onOpenAttendance = {
@@ -276,6 +271,11 @@ fun AppNavigation() {
                 onBack = {
                     if (navController.previousBackStackEntry != null) {
                         navController.popBackStack()
+                    }
+                },
+                onNavigateToBiometrics = { // ADDED: Direct configuration callback mapping
+                    if (navController.currentDestination?.route == ScreenRoute.APP_SETTINGS) {
+                        navController.navigate(ScreenRoute.BIOMETRICS_PRIVACY)
                     }
                 }
             )

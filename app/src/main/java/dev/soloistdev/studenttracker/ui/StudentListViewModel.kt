@@ -63,7 +63,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                         student.lastName.contains(query, ignoreCase = true) ||
                         student.address.contains(query, ignoreCase = true) ||
                         student.contactNumber.contains(query, ignoreCase = true) ||
-                        student.className.contains(query, ignoreCase = true) // UPDATED: Allows directory search by class
+                        student.className.contains(query, ignoreCase = true) // Search matching class names
             }
         }
 
@@ -75,7 +75,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                     "Gender" -> if (student.gender == "F") "Female" else "Male"
                     "Home Address" -> student.address
                     "Student Contact" -> student.contactNumber
-                    "Class" -> student.className // UPDATED: Maps class attributes to directory filters
+                    "Class", "classRoom" -> student.className // Maps both keys to Room className
                     "Age" -> {
                         val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
                         age.toString()
@@ -146,7 +146,6 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
         loadData()
     }
 
-    // UPDATED: Standardized loadData triggers
     fun loadData() {
         loadStudents()
         loadTemplates()
@@ -381,6 +380,8 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
             "does not contain" -> !fieldValue.contains(value1, ignoreCase = true)
             "equal" -> fieldValue.equals(value1, ignoreCase = true)
             "not equal" -> !fieldValue.equals(value1, ignoreCase = true)
+            "empty" -> fieldValue.isBlank()
+            "not empty" -> fieldValue.isNotBlank()
             "greater than" -> {
                 val numField = fieldValue.toDoubleOrNull()
                 val numVal = value1.toDoubleOrNull()

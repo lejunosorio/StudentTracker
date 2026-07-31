@@ -1,6 +1,8 @@
 package dev.soloistdev.studenttracker.ui
 
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -17,9 +19,11 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Comment
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.EventAvailable // RESOLVED: EventAvailable icon import
+import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.SettingsCell
 import androidx.compose.material3.*
@@ -47,7 +51,6 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
-import androidx.core.net.toUri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,16 +69,13 @@ fun SavedFiltersScreen(
     val messageTemplates by viewModel.messageTemplates.collectAsState()
     val templates by viewModel.templates.collectAsState()
 
-    // Screen State Controller: null = State A (Filters List), Non-Null = State B (Filtered Directory)
     var selectedFilterForView by remember { mutableStateOf<SavedFilterEntity?>(null) }
 
-    // Dialog state controllers
     var showFilterDialog by remember { mutableStateOf(false) }
     var editingFilter by remember { mutableStateOf<SavedFilterEntity?>(null) }
     var showBulkSmsDialog by remember { mutableStateOf(false) }
-    var bulkSmsTarget by remember { mutableStateOf("Students") } // "Students" or "Guardians"
+    var bulkSmsTarget by remember { mutableStateOf("Students") }
 
-    // Attendance Creation dialog states
     var showCreateAttendanceDialog by remember { mutableStateOf(false) }
     var attendanceRecordName by remember { mutableStateOf("") }
     var startDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -121,7 +121,7 @@ fun SavedFiltersScreen(
                 navigationIcon = {
                     IconButton(onClick = {
                         if (selectedFilterForView != null) {
-                            selectedFilterForView = null // Returns back to State A list
+                            selectedFilterForView = null
                         } else {
                             onBack()
                         }
@@ -139,7 +139,6 @@ fun SavedFiltersScreen(
                             )
                         }
                     } else {
-                        // Context actions for the filtered student directory
                         IconButton(onClick = {
                             bulkSmsTarget = "Students"
                             showBulkSmsDialog = true
@@ -180,9 +179,6 @@ fun SavedFiltersScreen(
         }
     ) { paddingValues ->
         if (selectedFilterForView == null) {
-            // ==========================================
-            // STATE A: SAVED FILTERS MASTER DIRECTORY
-            // ==========================================
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -227,7 +223,7 @@ fun SavedFiltersScreen(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { selectedFilterForView = filter }, // Enters State B roster
+                                    .clickable { selectedFilterForView = filter },
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                             ) {
                                 Row(
@@ -260,9 +256,6 @@ fun SavedFiltersScreen(
                 }
             }
         } else {
-            // ==========================================
-            // STATE B: FILTERED STUDENT LIST DIRECTORY
-            // ==========================================
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -375,7 +368,6 @@ fun SavedFiltersScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
 
-                        // 1. Template Dropdown Selector
                         val dropdownLabel = selectedTemplate?.name ?: "Custom (Empty Canvas)"
                         ExposedDropdownMenuBox(
                             expanded = dropdownExpanded,
@@ -418,7 +410,6 @@ fun SavedFiltersScreen(
                             }
                         }
 
-                        // 2. Message Body Textarea
                         OutlinedTextField(
                             value = textBody,
                             onValueChange = { textBody = it },
@@ -431,7 +422,6 @@ fun SavedFiltersScreen(
 
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        // 3. Side-by-side Horizontal dialog control row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.End,
@@ -456,7 +446,7 @@ fun SavedFiltersScreen(
                                     } else {
                                         val separator = if (android.os.Build.MANUFACTURER.equals("Samsung", ignoreCase = true)) ";" else ","
                                         val numbers = targetPhones.joinToString(separator)
-                                        val smsUri = "smsto:$numbers".toUri()
+                                        val smsUri = Uri.parse("smsto:$numbers")
                                         val smsIntent = Intent(Intent.ACTION_SENDTO, smsUri).apply {
                                             putExtra("sms_body", textBody)
                                         }
@@ -464,7 +454,6 @@ fun SavedFiltersScreen(
                                             context.startActivity(smsIntent)
                                             showBulkSmsDialog = false
                                         } catch (e: Exception) {
-                                            e.printStackTrace()
                                             Toast.makeText(context, R.string.notify_error_intent_failed, Toast.LENGTH_LONG).show()
                                         }
                                     }
@@ -581,7 +570,6 @@ fun SavedFiltersScreen(
                                         set(Calendar.MILLISECOND, 0)
                                     }.timeInMillis
 
-                                    // Build attendance record linked to this filter
                                     val record = dev.soloistdev.studenttracker.data.AttendanceRecordEntity(
                                         name = attendanceRecordName.trim(),
                                         savedFilterId = selectedFilterForView!!.id,
@@ -590,7 +578,6 @@ fun SavedFiltersScreen(
                                     )
                                     val recordId = repository.insertAttendanceRecord(record).toInt()
 
-                                    // Populate log sheets
                                     val daysList = generateDateList(normalizedStart, normalizedEnd)
                                     daysList.forEach { date ->
                                         matchingStudents.forEach { studentState ->
@@ -684,7 +671,7 @@ fun FilterDialogForm(
     var val2 by remember { mutableStateOf(existingFilter?.value2 ?: "") }
     var showDatePicker1 by remember { mutableStateOf(false) }
 
-    val coreFields = listOf("First Name", "Last Name", "Gender", "Birthday", "Address", "Age")
+    val coreFields = listOf("First Name", "Last Name", "Gender", "Birthday", "Address", "Age", "classRoom")
     val fieldsList = remember {
         val list = coreFields.toMutableList()
         templates.forEach { list.add(it.fieldName) }
@@ -693,6 +680,7 @@ fun FilterDialogForm(
 
     val isBirthdayMode = field == "Birthday"
     val isGenderMode = field == "Gender"
+    val isClassroomMode = field == "classRoom"
     val isRangeMode = comparison == "In between"
 
     val val1Num = val1.toDoubleOrNull()
@@ -744,6 +732,7 @@ fun FilterDialogForm(
                                     comparison = when (option) {
                                         "Birthday" -> "exact_birthday"
                                         "Gender" -> "equal"
+                                        "classRoom" -> "equal"
                                         "Age" -> "In between"
                                         else -> "contains"
                                     }
@@ -767,10 +756,10 @@ fun FilterDialogForm(
                             modifier = Modifier.fillMaxWidth()
                         )
                         DropdownMenu(expanded = compExpanded, onDismissRequest = { compExpanded = false }) {
-                            val operatorsList = if (field == "Age") {
-                                listOf("equal", "greater than", "less than", "In between")
-                            } else {
-                                listOf("contains", "does not contain", "equal", "not equal")
+                            val operatorsList = when (field) {
+                                "Age" -> listOf("equal", "greater than", "less than", "In between")
+                                "classRoom" -> listOf("equal", "not equal", "empty", "not empty")
+                                else -> listOf("contains", "does not contain", "equal", "not equal")
                             }
                             operatorsList.forEach { option ->
                                 DropdownMenuItem(
@@ -956,44 +945,47 @@ fun FilterDialogForm(
                         )
                     }
                 } else {
-                    if (isRangeMode) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
+                    val isValueRequired = comparison != "empty" && comparison != "not empty"
+                    if (isValueRequired) {
+                        if (isRangeMode) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = val1,
+                                    onValueChange = { val1 = it },
+                                    label = { Text("Value 1 (Min) *") },
+                                    isError = isValidationError,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = val2,
+                                    onValueChange = { val2 = it },
+                                    label = { Text("Value 2 (Max) *") },
+                                    isError = isValidationError,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
+                            if (isValidationError) {
+                                Text(
+                                    text = "Value 2 (Max) must be strictly greater than Value 1",
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(start = 4.dp)
+                                )
+                            }
+                        } else {
                             OutlinedTextField(
                                 value = val1,
                                 onValueChange = { val1 = it },
-                                label = { Text("Value 1 (Min) *") },
-                                isError = isValidationError,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.weight(1f)
-                            )
-                            OutlinedTextField(
-                                value = val2,
-                                onValueChange = { val2 = it },
-                                label = { Text("Value 2 (Max) *") },
-                                isError = isValidationError,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.weight(1f)
+                                label = { Text("Value *") },
+                                modifier = Modifier.fillMaxWidth()
                             )
                         }
-
-                        if (isValidationError) {
-                            Text(
-                                text = "Value 2 (Max) must be strictly greater than Value 1",
-                                color = MaterialTheme.colorScheme.error,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(start = 4.dp)
-                            )
-                        }
-                    } else {
-                        OutlinedTextField(
-                            value = val1,
-                            onValueChange = { val1 = it },
-                            label = { Text("Value *") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
                     }
                 }
             }
@@ -1001,21 +993,24 @@ fun FilterDialogForm(
         confirmButton = {
             Button(
                 onClick = {
-                    if (name.isNotBlank() && val1.isNotBlank() && !isValidationError) {
+                    val isValueRequired = comparison != "empty" && comparison != "not empty"
+                    val isValueValid = !isValueRequired || val1.isNotBlank()
+
+                    if (name.isNotBlank() && isValueValid && !isValidationError) {
                         onSave(
                             SavedFilterEntity(
                                 id = existingFilter?.id ?: 0,
                                 filterName = name.trim(),
                                 fieldName = field,
                                 comparison = comparison,
-                                value1 = val1.trim(),
-                                value2 = val2.trim(),
+                                value1 = if (isValueRequired) val1.trim() else "",
+                                value2 = if (isValueRequired && isRangeMode) val2.trim() else "",
                                 displayOrder = existingFilter?.displayOrder ?: 0
                             )
                         )
                     }
                 },
-                enabled = !isValidationError
+                enabled = !isValidationError && (comparison == "empty" || comparison == "not empty" || val1.isNotBlank())
             ) { Text("Save") }
         },
         dismissButton = {
@@ -1054,6 +1049,7 @@ private fun getFieldValue(student: StudentEntity, field: String): String {
         "Gender" -> if (student.gender == "F") "Female" else "Male"
         "Address", "Home Address" -> student.address
         "Student Contact" -> student.contactNumber
+        "Class", "classRoom" -> student.className
         "Age" -> {
             val currentYear = Calendar.getInstance().get(Calendar.YEAR)
             val birthCal = Calendar.getInstance().apply { timeInMillis = student.birthday }
@@ -1118,6 +1114,8 @@ private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2
         "does not contain" -> !cleanVal.contains(v1, ignoreCase = true)
         "equal" -> cleanVal.equals(v1, ignoreCase = true)
         "not equal" -> !cleanVal.equals(v1, ignoreCase = true)
+        "empty" -> cleanVal.isBlank()
+        "not empty" -> cleanVal.isNotBlank()
         "greater than" -> {
             val numField = cleanVal.toDoubleOrNull()
             val numVal = v1.toDoubleOrNull()
@@ -1138,6 +1136,7 @@ private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2
     }
 }
 
+// Helper function to generate date lists for attendance sheets
 private fun generateDateList(startDate: Long, endDate: Long): List<Long> {
     val dates = mutableListOf<Long>()
     val startCal = Calendar.getInstance().apply {

@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.Security // RESOLVED: Security icon import
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.*
@@ -33,7 +34,10 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppSettingsScreen(onBack: () -> Unit) {
+fun AppSettingsScreen(
+    onBack: () -> Unit,
+    onNavigateToBiometrics: () -> Unit // ADDED: Navigation callback to unlock privacy screen
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { StudentRepository(context) }
@@ -56,7 +60,6 @@ fun AppSettingsScreen(onBack: () -> Unit) {
         unfocusedTextColor = MaterialTheme.colorScheme.onSurface
     )
 
-    // Pre-read system Toast resources safely inside Composable scope to prevent stale locale caches [1]
     val cardBadgeDisabledMsg = stringResource(R.string.settings_card_badge_disabled_toast)
     val clearMapsSuccessMsg = stringResource(R.string.settings_clear_maps_success)
     val dbCompactSuccessMsg = stringResource(R.string.settings_compact_db_success)
@@ -138,6 +141,41 @@ fun AppSettingsScreen(onBack: () -> Unit) {
                 }
             }
 
+            // Security & Privacy Category (ADDED)
+            Text("Security & Privacy", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToBiometrics() } // Navigates directly on click
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.menu_biometrics_privacy),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Configure master passcode lock & biometric fingerprint settings",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = "Navigate to Security Settings",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
             // Card Customization Category
             Text(stringResource(R.string.settings_card_customization), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
@@ -180,7 +218,6 @@ fun AppSettingsScreen(onBack: () -> Unit) {
 
                             availableTemplates.forEach { template ->
                                 val userFriendlyLabel = template.fieldName.replace("_", " ")
-                                // Resolved: Pre-reads localized format strings inside the Composable loop [1]
                                 val setBadgeMsg = stringResource(R.string.settings_card_badge_set_toast, userFriendlyLabel)
 
                                 DropdownMenuItem(

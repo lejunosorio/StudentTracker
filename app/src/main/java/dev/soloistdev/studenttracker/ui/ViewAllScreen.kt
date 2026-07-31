@@ -53,7 +53,6 @@ fun ViewAllScreen(
     onOpenRecycleBin: () -> Unit,
     onOpenSync: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenBiometrics: () -> Unit,
     onOpenAttendance: () -> Unit,
     onOpenAttendanceWithArgs: (Int, Long) -> Unit,
     onOpenGradebook: () -> Unit,
@@ -128,14 +127,14 @@ fun ViewAllScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 24.dp, top = 36.dp, bottom = 16.dp)
+                            .padding(start = 24.dp, top = 28.dp, bottom = 12.dp)
                     ) {
                         Text(stringResource(R.string.drawer_proctor_portal), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                         Text(stringResource(R.string.drawer_school_name), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     val drawerItemColors = NavigationDrawerItemDefaults.colors(
                         selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -143,6 +142,15 @@ fun ViewAllScreen(
                         selectedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
                         unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    // GROUP 1: DAILY OPERATIONS / CORE PORTAL
+                    Text(
+                        text = "DAILY PORTAL",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 4.dp)
                     )
 
                     NavigationDrawerItem(
@@ -155,13 +163,13 @@ fun ViewAllScreen(
                     )
 
                     NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.Build, contentDescription = null) },
-                        label = { Text(stringResource(R.string.menu_template_manager)) },
+                        icon = { Icon(Icons.Default.School, contentDescription = null) },
+                        label = { Text(stringResource(R.string.menu_classrooms)) },
                         selected = false,
                         onClick = {
                             scope.launch {
                                 drawerState.close()
-                                onOpenTemplates()
+                                onOpenClassrooms()
                             }
                         },
                         colors = drawerItemColors,
@@ -196,6 +204,32 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    // GROUP 2: SCHEMAS & SAVED FILTER TARGETS
+                    Text(
+                        text = "CUSTOMIZATION",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 4.dp)
+                    )
+
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.Build, contentDescription = null) },
+                        label = { Text(stringResource(R.string.menu_template_manager)) },
+                        selected = false,
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                onOpenTemplates()
+                            }
+                        },
+                        colors = drawerItemColors,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                    )
+
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Bookmarks, contentDescription = null) },
                         label = { Text(stringResource(R.string.menu_saved_filters)) },
@@ -210,6 +244,18 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    // GROUP 3: SYSTEM UTILITIES & APP SETTINGS
+                    Text(
+                        text = "SYSTEM & SETTINGS",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 4.dp)
+                    )
+
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Refresh, contentDescription = null) },
                         label = { Text(stringResource(R.string.menu_backup_sync)) },
@@ -218,38 +264,6 @@ fun ViewAllScreen(
                             scope.launch {
                                 drawerState.close()
                                 onOpenSync()
-                            }
-                        },
-                        colors = drawerItemColors,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                    )
-
-                    Spacer(modifier = Modifier.weight(1f))
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.Delete, contentDescription = null) },
-                        label = { Text(stringResource(R.string.menu_recycle_bin)) },
-                        selected = false,
-                        onClick = {
-                            scope.launch {
-                                drawerState.close()
-                                onOpenRecycleBin()
-                            }
-                        },
-                        colors = drawerItemColors,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                    )
-
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.Security, contentDescription = null) },
-                        label = { Text(stringResource(R.string.menu_biometrics_privacy)) },
-                        selected = false,
-                        onClick = {
-                            scope.launch {
-                                drawerState.close()
-                                onOpenBiometrics()
                             }
                         },
                         colors = drawerItemColors,
@@ -269,21 +283,26 @@ fun ViewAllScreen(
                         colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
-                    Spacer(modifier = Modifier.height(24.dp))
 
+                    Spacer(modifier = Modifier.weight(1f)) // ADDED: Pushes subsequent list nodes to the absolute bottom bounds
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // RECYCLE BIN AT THE VERY BOTTOM (UPDATED)
                     NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.Book, contentDescription = null) },
-                        label = { Text(stringResource(R.string.menu_classrooms)) },
+                        icon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                        label = { Text(stringResource(R.string.menu_recycle_bin)) },
                         selected = false,
                         onClick = {
                             scope.launch {
                                 drawerState.close()
-                                onOpenClassrooms()
+                                onOpenRecycleBin()
                             }
                         },
                         colors = drawerItemColors,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
             }
         }

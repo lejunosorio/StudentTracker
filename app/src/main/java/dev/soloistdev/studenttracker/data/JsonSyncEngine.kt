@@ -15,10 +15,13 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 object JsonSyncEngine {
 
-    private const val MAX_IMPORT_SIZE_BYTES = 10 * 1024 * 1024
+    private const val MAX_IMPORT_SIZE_BYTES = 10 * 1024 * 1024 // 10MB limit
 
     data class MergeSummary(
         val newStudentsCount: Int,
@@ -91,18 +94,28 @@ object JsonSyncEngine {
             identityToLocalIdMap[identity] = s.id
         }
 
+        val bdaySdf = SimpleDateFormat("MM-dd-yyyy", Locale.US)
+        val dbClassrooms = repository.getAllClassrooms().map { it.name.trim() }.toSet()
+
         for (i in 0 until incomingStudentsArr.length()) {
             val sObj = incomingStudentsArr.getJSONObject(i)
             val incomingId = sObj.optInt("id", -1)
             val first = sObj.optString("firstName", "")
             val last = sObj.optString("lastName", "")
-            val bday = sObj.optLong("birthday", 0L)
+
+            val bdayStr = sObj.optString("birthday", "")
+            val bday = try { bdaySdf.parse(bdayStr)?.time ?: sObj.optLong("birthday", 0L) } catch (_: Exception) { sObj.optLong("birthday", 0L) }
+
             val lastMod = sObj.optLong("lastModified", 0L)
 
             val identity = "${first.lowercase()}_${last.lowercase()}_$bday"
             if (incomingId != -1) {
                 incomingIdToIdentityMap[incomingId] = identity
             }
+
+            // Classroom validation bounds
+            val rawClass = sObj.optString("classRoom", sObj.optString("class", "")).trim()
+            val validatedClass = if (dbClassrooms.contains(rawClass)) rawClass else ""
 
             val student = StudentEntity(
                 firstName = first,
@@ -115,7 +128,7 @@ object JsonSyncEngine {
                 guardiansJson = sObj.optString("guardiansJson", "[]"),
                 customDataJson = sObj.optString("customDataJson", "{}"),
                 lastModified = lastMod,
-                className = sObj.optString("class", "") // UPDATED: Maps class key inside synchronizations
+                className = validatedClass
             )
 
             val localMatch = localStudents.find {
@@ -230,7 +243,7 @@ object JsonSyncEngine {
                 put("picturePath", student.picturePath)
                 put("guardiansJson", student.guardiansJson)
                 put("customDataJson", student.customDataJson)
-                put("class", student.className) // UPDATED: Exports className under key "class"
+                put("class", student.className)
             }
             array.put(obj)
         }
@@ -303,9 +316,14 @@ object JsonSyncEngine {
             tempEncFile.delete()
 
             val decryptedString = String(content, Charsets.UTF_8).trim()
-            val array = JSONArray(decryptedString)
 
-            parseAndInsertJsonArray(array, repository)
+            val payloadObj = if (decryptedString.startsWith("{")) {
+                JSONObject(decryptedString)
+            } else {
+                JSONObject().apply { put("students", JSONArray(decryptedString)) }
+            }
+
+            parseAndInsertBackupPayload(payloadObj, repository)
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -323,17 +341,270 @@ object JsonSyncEngine {
 
             val jsonString = String(content, Charsets.UTF_8).trim()
 
-            val array = if (jsonString.startsWith("[")) {
-                JSONArray(jsonString)
+            val payloadObj = if (jsonString.startsWith("{")) {
+                JSONObject(jsonString)
             } else {
-                JSONArray().apply { put(JSONObject(jsonString)) }
+                JSONObject().apply { put("students", JSONArray(jsonString)) }
             }
 
-            parseAndInsertJsonArray(array, repository)
+            parseAndInsertBackupPayload(payloadObj, repository)
             true
         } catch (e: Exception) {
             e.printStackTrace()
             false
+        }
+    }
+
+    private suspend fun parseAndInsertBackupPayload(payloadObj: JSONObject, repository: StudentRepository) {
+        val sdfBday = SimpleDateFormat("MM-dd-yyyy", Locale.US)
+
+        val validClassroomNames = mutableSetOf<String>()
+
+        // 1. Classrooms
+        val classroomsArr = payloadObj.optJSONArray("classrooms")
+        if (classroomsArr != null) {
+            for (i in 0 until classroomsArr.length()) {
+                val cObj = classroomsArr.getJSONObject(i)
+                val name = cObj.optString("name", "").trim()
+                val start = cObj.optString("start", "08:00 AM")
+                val end = cObj.optString("end", "04:00 PM")
+
+                if (name.isNotEmpty()) {
+                    validClassroomNames.add(name)
+                    val classroom = ClassroomEntity(
+                        name = name,
+                        startTime = start,
+                        endTime = end
+                    )
+                    repository.insertClassroom(classroom)
+                }
+            }
+        }
+
+        // Collect existing local database classrooms
+        repository.getAllClassrooms().forEach {
+            validClassroomNames.add(it.name.trim())
+        }
+
+        // Auto-discover custom fields and templates silently
+        val existingTemplateNames = repository.getAllFormTemplates().map { it.fieldName }.toSet()
+        val discoveredTemplates = mutableSetOf<String>()
+
+        // 2. Students & Relational Behavior Logs
+        val studentsArr = payloadObj.optJSONArray("students") ?: JSONArray()
+        val studentIdentifierToIdMap = mutableMapOf<String, Int>()
+
+        for (i in 0 until studentsArr.length()) {
+            val sObj = studentsArr.getJSONObject(i)
+            val first = sObj.optString("firstName", "")
+            val last = sObj.optString("lastName", "")
+            val bdayStr = sObj.optString("birthday", "")
+            val bdayMillis = try { sdfBday.parse(bdayStr)?.time ?: 0L } catch (_: Exception) { 0L }
+
+            val rawGuardians = sObj.opt("guardiansJson")
+            val resolvedGuardiansJson = when (rawGuardians) {
+                is JSONArray -> rawGuardians.toString()
+                is String -> rawGuardians
+                else -> "[]"
+            }
+
+            val rawCustomData = sObj.opt("customDataJson")
+            val resolvedCustomDataJson = when (rawCustomData) {
+                is JSONObject -> rawCustomData.toString()
+                is String -> rawCustomData
+                else -> "{}"
+            }
+
+            // Silent key discovery
+            try {
+                val customJson = JSONObject(resolvedCustomDataJson)
+                val keys = customJson.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    if (key.isNotBlank() && !existingTemplateNames.contains(key) && !discoveredTemplates.contains(key)) {
+                        discoveredTemplates.add(key)
+                    }
+                }
+            } catch (_: Exception) {}
+
+            // Validate classroom bounds
+            val rawClass = sObj.optString("classRoom", sObj.optString("class", "")).trim()
+            val validatedClass = if (validClassroomNames.contains(rawClass)) rawClass else ""
+
+            val student = StudentEntity(
+                firstName = first,
+                lastName = last,
+                gender = sObj.optString("gender", ""),
+                birthday = bdayMillis,
+                address = sObj.optString("address", ""),
+                contactNumber = sObj.optString("contactNumber", ""),
+                picturePath = sObj.optString("picturePath", ""),
+                guardiansJson = resolvedGuardiansJson,
+                customDataJson = resolvedCustomDataJson,
+                isDeleted = false,
+                className = validatedClass
+            )
+            val newStudentId = repository.insertStudent(student).toInt()
+
+            val identifier = "${last}_${first}_${student.className}"
+            studentIdentifierToIdMap[identifier] = newStudentId
+
+            val behaviorArr = sObj.optJSONArray("behaviorIncidents")
+            if (behaviorArr != null) {
+                for (b in 0 until behaviorArr.length()) {
+                    val bObj = behaviorArr.getJSONObject(b)
+                    val title = bObj.optString("title", "")
+                    val cat = bObj.optString("category", "Neutral")
+                    val desc = bObj.optString("description", "")
+                    val bDateStr = bObj.optString("date", "")
+                    val bDateMillis = try { sdfBday.parse(bDateStr)?.time ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }
+
+                    val incident = BehaviorIncidentEntity(
+                        studentId = newStudentId,
+                        title = title,
+                        category = cat,
+                        description = desc,
+                        incidentDate = bDateMillis
+                    )
+                    repository.insertIncident(incident)
+                }
+            }
+        }
+
+        // Silent creation of discovered fields
+        discoveredTemplates.forEach { field ->
+            repository.insertFormTemplate(
+                FormTemplateEntity(
+                    fieldName = field,
+                    fieldType = "TEXT",
+                    isRequired = false
+                )
+            )
+        }
+
+        // 3. Saved Filters
+        val filtersArr = payloadObj.optJSONArray("savedFilters")
+        if (filtersArr != null) {
+            for (i in 0 until filtersArr.length()) {
+                val fObj = filtersArr.getJSONObject(i)
+                val name = fObj.optString("name", "")
+                val rawField = fObj.optString("field", "")
+                val field = if (rawField == "classRoom") "Class" else rawField
+
+                var comp = fObj.optString("comparison", "equal")
+                val bdayFilterType = fObj.optString("birthdayFilterType", "")
+                if (bdayFilterType.isNotEmpty()) {
+                    comp = when (bdayFilterType) {
+                        "BirthMonth" -> "birth_month"
+                        "BirthYear" -> "birth_year"
+                        else -> "exact_birthday"
+                    }
+                }
+
+                val filter = SavedFilterEntity(
+                    filterName = name,
+                    fieldName = field,
+                    comparison = comp,
+                    value1 = fObj.optString("value", ""),
+                    value2 = "",
+                    displayOrder = fObj.optInt("displayOrder", i)
+                )
+                repository.insertSavedFilter(filter)
+            }
+        }
+
+        // 4. Attendance Sheets & Log matrix
+        val attendanceArr = payloadObj.optJSONArray("attendanceRecord")
+        if (attendanceArr != null) {
+            for (i in 0 until attendanceArr.length()) {
+                val rObj = attendanceArr.getJSONObject(i)
+                val rName = rObj.optString("name", "")
+                val startStr = rObj.optString("startDate", "")
+                val endStr = rObj.optString("endDate", "")
+
+                val startMillis = try { sdfBday.parse(startStr)?.time ?: 0L } catch (_: Exception) { 0L }
+                val endMillis = try { sdfBday.parse(endStr)?.time ?: 0L } catch (_: Exception) { 0L }
+
+                val record = AttendanceRecordEntity(
+                    name = rName,
+                    savedFilterId = 0,
+                    startDate = startMillis,
+                    endDate = endMillis
+                )
+                val recordId = repository.insertAttendanceRecord(record).toInt()
+
+                val participantsArr = rObj.optJSONArray("participants")
+                if (participantsArr != null) {
+                    for (p in 0 until participantsArr.length()) {
+                        val pObj = participantsArr.getJSONObject(p)
+                        val identifier = pObj.optString("studentIdentifier", "")
+                        val localStudentId = studentIdentifierToIdMap[identifier] ?: -1
+
+                        if (localStudentId != -1) {
+                            val attendanceLogsObj = pObj.optJSONObject("attendance")
+                            if (attendanceLogsObj != null) {
+                                val logDates = attendanceLogsObj.keys()
+                                while (logDates.hasNext()) {
+                                    val dateStr = logDates.next()
+                                    val logStatus = attendanceLogsObj.optString(dateStr, "NOT_SET")
+                                    val logDateMillis = try { sdfBday.parse(dateStr)?.time ?: 0L } catch (_: Exception) { 0L }
+
+                                    val log = AttendanceLogEntity(
+                                        recordId = recordId,
+                                        dateMillis = logDateMillis,
+                                        studentId = localStudentId,
+                                        status = logStatus.uppercase()
+                                    )
+                                    repository.insertAttendanceLog(log)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. Gradebook Sheets & Score matrix
+        val gradebookArr = payloadObj.optJSONArray("gradeBook")
+        if (gradebookArr != null) {
+            for (i in 0 until gradebookArr.length()) {
+                val gObj = gradebookArr.getJSONObject(i)
+                val gName = gObj.optString("name", "")
+                val maxPoints = gObj.optDouble("maxPoints", 100.0)
+                val examStr = gObj.optString("examDate", "")
+                val checkStr = gObj.optString("checkDate", "")
+
+                val examMillis = try { sdfBday.parse(examStr)?.time ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }
+                val checkMillis = try { sdfBday.parse(checkStr)?.time ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }
+
+                val column = AssessmentColumnEntity(
+                    name = gName,
+                    maxPoints = maxPoints,
+                    examDate = examMillis,
+                    checkDate = checkMillis,
+                    savedFilterId = 0
+                )
+                val columnId = repository.insertAssessmentColumn(column).toInt()
+
+                val gradesArr = gObj.optJSONArray("grades")
+                if (gradesArr != null) {
+                    for (g in 0 until gradesArr.length()) {
+                        val scoreObj = gradesArr.getJSONObject(g)
+                        val identifier = scoreObj.optString("studentIdentifier", "")
+                        val localStudentId = studentIdentifierToIdMap[identifier] ?: -1
+
+                        if (localStudentId != -1) {
+                            val scoreStr = scoreObj.optString("score", "")
+                            val scoreEntity = AssessmentScoreEntity(
+                                columnId = columnId,
+                                studentId = localStudentId,
+                                score = scoreStr
+                            )
+                            repository.insertAssessmentScore(scoreEntity)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -367,40 +638,5 @@ object JsonSyncEngine {
             }
         }
         return name
-    }
-
-    private suspend fun parseAndInsertJsonArray(array: JSONArray, repository: StudentRepository) {
-        for (i in 0 until array.length()) {
-            val jsonObj = array.getJSONObject(i)
-
-            val rawGuardians = jsonObj.opt("guardiansJson")
-            val resolvedGuardiansJson = when (rawGuardians) {
-                is JSONArray -> rawGuardians.toString()
-                is String -> rawGuardians
-                else -> "[]"
-            }
-
-            val rawCustomData = jsonObj.opt("customDataJson")
-            val resolvedCustomDataJson = when (rawCustomData) {
-                is JSONObject -> rawCustomData.toString()
-                is String -> rawCustomData
-                else -> "{}"
-            }
-
-            val student = StudentEntity(
-                firstName = jsonObj.optString("firstName", ""),
-                lastName = jsonObj.optString("lastName", ""),
-                gender = jsonObj.optString("gender", ""),
-                birthday = jsonObj.optLong("birthday", 0L),
-                address = jsonObj.optString("address", ""),
-                contactNumber = jsonObj.optString("contactNumber", ""),
-                picturePath = jsonObj.optString("picturePath", ""),
-                guardiansJson = resolvedGuardiansJson,
-                customDataJson = resolvedCustomDataJson,
-                isDeleted = false,
-                className = jsonObj.optString("class", "") // UPDATED: Maps JSON "class" -> Room className
-            )
-            repository.insertStudent(student)
-        }
     }
 }
