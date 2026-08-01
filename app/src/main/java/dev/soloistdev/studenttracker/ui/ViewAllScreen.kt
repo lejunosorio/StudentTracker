@@ -24,7 +24,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -60,6 +59,7 @@ fun ViewAllScreen(
     onOpenAttendanceWithArgs: (Int, Long) -> Unit,
     onOpenGradebook: () -> Unit,
     onOpenClassrooms: () -> Unit,
+    onOpenQueryBuilder: () -> Unit, // ADDED: Unified route callback parameter
     viewModel: StudentListViewModel = viewModel()
 ) {
     val students by viewModel.students.collectAsState()
@@ -90,7 +90,7 @@ fun ViewAllScreen(
 
     val isDateRangeInvalid = startDateMillis > endDateMillis
 
-    // Gradebook creation states (ADDED)
+    // Gradebook creation states
     var showCreateGradebookDialog by remember { mutableStateOf(false) }
     var gradebookRecordName by remember { mutableStateOf("") }
     var gradebookMaxPoints by remember { mutableStateOf("100.0") }
@@ -154,6 +154,7 @@ fun ViewAllScreen(
                         unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
+                    // GROUP 1: DAILY PORTAL
                     Text(
                         text = "DAILY PORTAL",
                         fontSize = 11.sp,
@@ -216,6 +217,7 @@ fun ViewAllScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
+                    // GROUP 2: CUSTOMIZATION
                     Text(
                         text = "CUSTOMIZATION",
                         fontSize = 11.sp,
@@ -252,9 +254,25 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
+                    // ADDED: Declarative menu option enabling direct navigation to the Query Builder [1]
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.ManageSearch, contentDescription = null) },
+                        label = { Text(stringResource(R.string.menu_query_builder)) },
+                        selected = false,
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                onOpenQueryBuilder() // Invokes navigation callback
+                            }
+                        },
+                        colors = drawerItemColors,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                    )
+
                     Spacer(modifier = Modifier.height(8.dp))
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
+                    // GROUP 3: SYSTEM UTILITIES & APP SETTINGS
                     Text(
                         text = "SYSTEM & SETTINGS",
                         fontSize = 11.sp,
@@ -331,7 +349,6 @@ fun ViewAllScreen(
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
-                            // ADDED: Create Gradebook Sheet action inside Selection-Mode App Bar
                             IconButton(onClick = { showCreateGradebookDialog = true }) {
                                 Icon(
                                     imageVector = Icons.Default.Book,
@@ -385,7 +402,6 @@ fun ViewAllScreen(
                             }
                         },
                         actions = {
-                            // ADDED: Create Gradebook and Attendance actions positioned beside the Refresh function [1]
                             IconButton(onClick = { showCreateGradebookDialog = true }) {
                                 Icon(
                                     imageVector = Icons.Default.Book,
@@ -668,6 +684,7 @@ fun ViewAllScreen(
                             )
                         }
                     } else {
+                        // Swipe-to-dismiss Student List Directory
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(bottom = 80.dp)
@@ -879,7 +896,6 @@ fun ViewAllScreen(
                             .imePadding(),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // Notice Label informing the proctor exactly how many students are compiled [1]
                         val attendanceNoticeText = if (isSelectionMode) {
                             "Notice: ${activeTargetRosterIds.size} selected students will be added to this attendance record."
                         } else {
@@ -956,7 +972,7 @@ fun ViewAllScreen(
                             if (attendanceRecordName.isNotBlank() && !isDateRangeInvalid) {
                                 viewModel.createManualAttendanceRecord(
                                     name = attendanceRecordName,
-                                    selectedIds = activeTargetRosterIds, // COMPILED: Custom target roster
+                                    selectedIds = activeTargetRosterIds,
                                     startDateMillis = startDateMillis,
                                     endDateMillis = endDateMillis
                                 ) { recordId, normalizedStartMillis ->
@@ -1018,7 +1034,6 @@ fun ViewAllScreen(
                             .imePadding(),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // Notice Label informing the proctor exactly how many students are compiled [1]
                         val gradebookNoticeText = if (isSelectionMode) {
                             "Notice: ${activeTargetRosterIds.size} selected students will be added to this gradebook sheet."
                         } else {
@@ -1093,7 +1108,7 @@ fun ViewAllScreen(
                                 val limit = gradebookMaxPoints.toDoubleOrNull() ?: 100.0
                                 viewModel.createManualGradebookRecord(
                                     name = gradebookRecordName,
-                                    selectedIds = activeTargetRosterIds, // COMPILED: Custom target roster
+                                    selectedIds = activeTargetRosterIds,
                                     maxPoints = limit,
                                     examDate = gradebookExamDate,
                                     checkDate = gradebookCheckDate
@@ -1101,7 +1116,7 @@ fun ViewAllScreen(
                                     showCreateGradebookDialog = false
                                     gradebookRecordName = ""
                                     gradebookMaxPoints = "100.0"
-                                    onOpenGradebook() // Opens the Gradebook to log scores immediately
+                                    onOpenGradebook()
                                 }
                             }
                         },

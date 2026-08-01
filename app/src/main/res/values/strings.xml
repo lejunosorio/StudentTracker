@@ -435,4 +435,20 @@
     <string name="gradebook_all_students">All Active Students</string>
 
     <string name="menu_classrooms">Classrooms Schedule Planner</string>
+
+    <!-- Query Builder Localized Strings -->
+    <string name="menu_query_builder">Advanced Query Builder</string>
+    <string name="query_builder_add_rule">Add Filter Condition</string>
+    <string name="query_builder_match_all">Match All (AND)</string>
+    <string name="query_builder_match_any">Match Any (OR)</string>
+    <string name="query_builder_empty_rules">No query rules configured.\nTap \u0027+ Add Filter Condition\u0027 to start building your query.</string>
+    <string name="query_builder_results_header">Query Match Results</string>
+
+    <!-- Advanced Query Builder Wizard layout Strings -->
+    <string name="query_builder_action_show_results">Show Results</string>
+    <string name="query_results_title">Query Match Results</string>
+    <string name="query_results_save_dialog_title">Save Query as Filter?</string>
+    <string name="query_results_save_dialog_desc">Enter a unique group name to pre-save this multi-criteria query as a Saved Filter group.</string>
+    <string name="query_results_toast_saved">Query successfully saved as a Saved Filter group.</string>
+
 </resources>

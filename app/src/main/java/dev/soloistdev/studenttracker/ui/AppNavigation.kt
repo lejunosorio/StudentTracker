@@ -16,6 +16,26 @@ import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.security.PdfGeneratorHelper
 import kotlinx.coroutines.launch
 
+// Explicit screen imports to guarantee compile-time visibility across build configurations
+import dev.soloistdev.studenttracker.ui.SecurityGateScreen
+import dev.soloistdev.studenttracker.ui.ViewAllScreen
+import dev.soloistdev.studenttracker.ui.StudentProfileScreen
+import dev.soloistdev.studenttracker.ui.AddEditStudentScreen
+import dev.soloistdev.studenttracker.ui.TemplateManagerScreen
+import dev.soloistdev.studenttracker.ui.RecycleBinScreen
+import dev.soloistdev.studenttracker.ui.SavedFiltersScreen
+import dev.soloistdev.studenttracker.ui.MessageTemplatesScreen
+import dev.soloistdev.studenttracker.ui.BiometricsPrivacyScreen
+import dev.soloistdev.studenttracker.ui.SyncScreen
+import dev.soloistdev.studenttracker.ui.AttendanceScreen
+import dev.soloistdev.studenttracker.ui.AppSettingsScreen
+import dev.soloistdev.studenttracker.ui.StudentImportScreen
+import dev.soloistdev.studenttracker.ui.GradebookScreen
+import dev.soloistdev.studenttracker.ui.ClassroomsScreen
+import dev.soloistdev.studenttracker.ui.QueryBuilderScreen
+import dev.soloistdev.studenttracker.ui.QueryResultsScreen // ADDED: Query Results Screen import
+import dev.soloistdev.studenttracker.ui.QueryViewModel    // ADDED: Shared View Model import
+
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
@@ -24,6 +44,9 @@ fun AppNavigation() {
     val securityViewModel: SecurityViewModel = viewModel()
     val isUnlocked by securityViewModel.isUnlocked.collectAsState()
     val scope = rememberCoroutineScope()
+
+    // ADDED: Shared Query State ViewModel persisted across the Query sub-graph context
+    val queryViewModel: QueryViewModel = viewModel()
 
     // Standardized session gatekeeper to run ONLY on unlock transitions to prevent navigation high-jacks [1]
     LaunchedEffect(isUnlocked) {
@@ -112,6 +135,11 @@ fun AppNavigation() {
                 onOpenClassrooms = {
                     if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
                         navController.navigate(ScreenRoute.CLASSROOMS)
+                    }
+                },
+                onOpenQueryBuilder = { // Binds navigation transaction safely
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                        navController.navigate(ScreenRoute.QUERY_BUILDER)
                     }
                 }
             )
@@ -273,7 +301,7 @@ fun AppNavigation() {
                         navController.popBackStack()
                     }
                 },
-                onNavigateToBiometrics = { // ADDED: Direct configuration callback mapping
+                onNavigateToBiometrics = { // Direct configuration callback mapping
                     if (navController.currentDestination?.route == ScreenRoute.APP_SETTINGS) {
                         navController.navigate(ScreenRoute.BIOMETRICS_PRIVACY)
                     }
@@ -355,6 +383,41 @@ fun AppNavigation() {
                 }
             )
         }
+
+        // Binds Shared QueryViewModel context to the condition builder Screen [1]
+        composable(ScreenRoute.QUERY_BUILDER) {
+            QueryBuilderScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                },
+                onShowResults = {
+                    navController.navigate(ScreenRoute.QUERY_RESULTS) // Transitions to adjacent Results segment
+                },
+                viewModel = queryViewModel
+            )
+        }
+
+        // Binds Shared QueryViewModel context to the results segment [1]
+        composable(ScreenRoute.QUERY_RESULTS) {
+            QueryResultsScreen(
+                onBackToBuilder = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack() // Pops directly back preserving state
+                    }
+                },
+                onStudentClick = { id ->
+                    navController.navigate("profile/$id")
+                },
+                onOpenAttendanceWithArgs = { recordId, dateMillis ->
+                    navController.navigate("attendance?recordId=$recordId&dateMillis=$dateMillis") {
+                        popUpTo(ScreenRoute.QUERY_RESULTS) { inclusive = true }
+                    }
+                },
+                viewModel = queryViewModel
+            )
+        }
     }
 }
 
@@ -377,4 +440,7 @@ object ScreenRoute {
     const val GRADEBOOK = "gradebook"
 
     const val CLASSROOMS = "classrooms"
+
+    const val QUERY_BUILDER = "query_builder"
+    const val QUERY_RESULTS = "query_results" // ADDED: Declares the Query Results endpoint identifier
 }
