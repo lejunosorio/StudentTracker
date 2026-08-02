@@ -33,8 +33,9 @@ import dev.soloistdev.studenttracker.ui.StudentImportScreen
 import dev.soloistdev.studenttracker.ui.GradebookScreen
 import dev.soloistdev.studenttracker.ui.ClassroomsScreen
 import dev.soloistdev.studenttracker.ui.QueryBuilderScreen
-import dev.soloistdev.studenttracker.ui.QueryResultsScreen // ADDED: Query Results Screen import
-import dev.soloistdev.studenttracker.ui.QueryViewModel    // ADDED: Shared View Model import
+import dev.soloistdev.studenttracker.ui.QueryResultsScreen
+import dev.soloistdev.studenttracker.ui.QueryViewModel
+import dev.soloistdev.studenttracker.ui.SeatingChartScreen // ADDED: Seating Chart Screen import
 
 @Composable
 fun AppNavigation() {
@@ -45,7 +46,7 @@ fun AppNavigation() {
     val isUnlocked by securityViewModel.isUnlocked.collectAsState()
     val scope = rememberCoroutineScope()
 
-    // ADDED: Shared Query State ViewModel persisted across the Query sub-graph context
+    // Shared Query State ViewModel persisted across the Query sub-graph context
     val queryViewModel: QueryViewModel = viewModel()
 
     // Standardized session gatekeeper to run ONLY on unlock transitions to prevent navigation high-jacks [1]
@@ -140,6 +141,11 @@ fun AppNavigation() {
                 onOpenQueryBuilder = { // Binds navigation transaction safely
                     if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
                         navController.navigate(ScreenRoute.QUERY_BUILDER)
+                    }
+                },
+                onOpenSeatingChart = { className -> // ADDED: Binds seating chart navigation transaction safely
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                        navController.navigate("seating_chart/$className")
                     }
                 }
             )
@@ -418,6 +424,25 @@ fun AppNavigation() {
                 viewModel = queryViewModel
             )
         }
+
+        // ADDED: Composable destination binding for the Interactive 2D Seating Chart Screen [1]
+        composable(
+            route = ScreenRoute.SEATING_CHART,
+            arguments = listOf(navArgument("className") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val className = backStackEntry.arguments?.getString("className") ?: ""
+            SeatingChartScreen(
+                className = className,
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                },
+                onStudentClick = { id ->
+                    navController.navigate("profile/$id")
+                }
+            )
+        }
     }
 }
 
@@ -442,5 +467,7 @@ object ScreenRoute {
     const val CLASSROOMS = "classrooms"
 
     const val QUERY_BUILDER = "query_builder"
-    const val QUERY_RESULTS = "query_results" // ADDED: Declares the Query Results endpoint identifier
+    const val QUERY_RESULTS = "query_results"
+
+    const val SEATING_CHART = "seating_chart/{className}" // ADDED: Declares the Seating Chart endpoint identifier
 }

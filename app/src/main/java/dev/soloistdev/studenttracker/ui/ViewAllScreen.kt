@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ManageSearch
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -59,7 +60,8 @@ fun ViewAllScreen(
     onOpenAttendanceWithArgs: (Int, Long) -> Unit,
     onOpenGradebook: () -> Unit,
     onOpenClassrooms: () -> Unit,
-    onOpenQueryBuilder: () -> Unit, // ADDED: Unified route callback parameter
+    onOpenQueryBuilder: () -> Unit,
+    onOpenSeatingChart: (String) -> Unit, // ADDED: Seating chart navigation callback
     viewModel: StudentListViewModel = viewModel()
 ) {
     val students by viewModel.students.collectAsState()
@@ -254,15 +256,14 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
-                    // ADDED: Declarative menu option enabling direct navigation to the Query Builder [1]
                     NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.ManageSearch, contentDescription = null) },
+                        icon = { Icon(Icons.AutoMirrored.Filled.ManageSearch, contentDescription = null) },
                         label = { Text(stringResource(R.string.menu_query_builder)) },
                         selected = false,
                         onClick = {
                             scope.launch {
                                 drawerState.close()
-                                onOpenQueryBuilder() // Invokes navigation callback
+                                onOpenQueryBuilder()
                             }
                         },
                         colors = drawerItemColors,
@@ -402,6 +403,16 @@ fun ViewAllScreen(
                             }
                         },
                         actions = {
+                            // Seating Chart launcher icon displayed when inside a Classroom detail view
+                            if (selectedClassroomForView != null && selectedClassroomForView != "All") {
+                                IconButton(onClick = { onOpenSeatingChart(selectedClassroomForView!!) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.DirectionsBus,
+                                        contentDescription = "Open Seating Chart Planner",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
                             IconButton(onClick = { showCreateGradebookDialog = true }) {
                                 Icon(
                                     imageVector = Icons.Default.Book,
@@ -480,6 +491,7 @@ fun ViewAllScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        // All classrooms Master Selection Card
                         item {
                             Card(
                                 modifier = Modifier
@@ -506,6 +518,7 @@ fun ViewAllScreen(
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         }
 
+                        // Specific Classroom Cards (Dynamically populated from Student database records)
                         if (distinctClassrooms.isEmpty()) {
                             item {
                                 Box(
@@ -556,6 +569,7 @@ fun ViewAllScreen(
                         .fillMaxSize()
                         .padding(paddingValues)
                 ) {
+                    // Search Row
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()

@@ -451,4 +451,5 @@
     <string name="query_results_save_dialog_desc">Enter a unique group name to pre-save this multi-criteria query as a Saved Filter group.</string>
     <string name="query_results_toast_saved">Query successfully saved as a Saved Filter group.</string>
 
+    <string name="behavior_quick_category_label">Category *</string>
 </resources>

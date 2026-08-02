@@ -22,7 +22,7 @@ import java.io.IOException
         AssessmentScoreEntity::class,
         ClassroomEntity::class
     ],
-    version = 14, // INCREMENTED: Version upgraded to 13
+    version = 15, // INCREMENTED: Version upgraded to 13
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

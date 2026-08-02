@@ -163,4 +163,7 @@ interface StudentDao {
 
     @Query("UPDATE classrooms SET isDeleted = 1 WHERE id = :classroomId")
     fun softDeleteClassroom(classroomId: Int)
+
+    @Query("UPDATE students SET seatingX = :x, seatingY = :y WHERE id = :studentId")
+    fun updateStudentSeating(studentId: Int, x: Float, y: Float)
 }

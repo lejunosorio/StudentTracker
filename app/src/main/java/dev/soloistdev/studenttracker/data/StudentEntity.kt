@@ -17,5 +17,9 @@ data class StudentEntity(
     val customDataJson: String = "{}",
     val isDeleted: Boolean = false,
     val lastModified: Long = System.currentTimeMillis(),
-    val className: String = "" // ADDED: Instantly isolates students by classroom
+    val className: String = "",
+
+    // ADDED: Coordinates serialized as normalized floats (0f..1f)
+    val seatingX: Float = -1f,
+    val seatingY: Float = -1f
 )

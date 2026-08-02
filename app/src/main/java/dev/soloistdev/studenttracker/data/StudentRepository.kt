@@ -214,4 +214,7 @@ class StudentRepository(private val context: Context) {
         studentDao.softDeleteClassroom(classroomId)
     }
 
+    suspend fun updateStudentSeating(studentId: Int, x: Float, y: Float) = withContext(Dispatchers.IO) {
+        studentDao.updateStudentSeating(studentId, x, y)
+    }
 }
