@@ -2,7 +2,6 @@ package dev.soloistdev.studenttracker.ui
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,10 +13,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
@@ -26,13 +27,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity // RESOLVED: Local density import
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.soloistdev.studenttracker.R
@@ -40,6 +43,8 @@ import dev.soloistdev.studenttracker.data.BehaviorIncidentEntity
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
 import kotlinx.coroutines.launch
+import kotlin.math.ceil
+import kotlin.math.round
 import kotlin.math.sqrt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,14 +57,20 @@ fun SeatingChartScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { StudentRepository(context) }
-
-    // Density resolver for screen conversions [2]
     val density = LocalDensity.current
 
     var students by remember { mutableStateOf<List<StudentEntity>>(emptyList()) }
     var selectedStudentForAction by remember { mutableStateOf<StudentEntity?>(null) }
     var showActionSheet by remember { mutableStateOf(false) }
     var showAddIncidentDialog by remember { mutableStateOf(false) }
+
+    // Placement Dialog state controllers
+    var showLayoutSelectorDialog by remember { mutableStateOf(false) }
+    var showCustomGridDialog by remember { mutableStateOf(false) }
+
+    // Tracks the active row and column grid counts to draw the background grid
+    var activeGridRows by remember { mutableIntStateOf(0) }
+    var activeGridCols by remember { mutableIntStateOf(0) }
 
     fun refreshStudents() {
         scope.launch {
@@ -77,6 +88,30 @@ fun SeatingChartScreen(
 
     var canvasSize by remember { mutableStateOf(Offset.Zero) }
 
+    // Dynamic pixel-level overlap calculations
+    val overlapDistancePx = with(density) { 48.dp.toPx() }
+    val overlappingStudentIds = remember(placedStudents, canvasSize, overlapDistancePx) {
+        val set = mutableSetOf<Int>()
+        if (canvasSize.x > 0 && canvasSize.y > 0) {
+            placedStudents.forEachIndexed { i, studentA ->
+                val ax = studentA.seatingX * canvasSize.x
+                val ay = studentA.seatingY * canvasSize.y
+                for (j in i + 1 until placedStudents.size) {
+                    val studentB = placedStudents[j]
+                    val bx = studentB.seatingX * canvasSize.x
+                    val by = studentB.seatingY * canvasSize.y
+
+                    val dist = sqrt((ax - bx) * (ax - bx) + (ay - by) * (ay - by))
+                    if (dist < overlapDistancePx) {
+                        set.add(studentA.id)
+                        set.add(studentB.id)
+                    }
+                }
+            }
+        }
+        set
+    }
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -84,6 +119,14 @@ fun SeatingChartScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showLayoutSelectorDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Apps,
+                            contentDescription = "Choose Seating Layout"
+                        )
                     }
                 }
             )
@@ -150,6 +193,7 @@ fun SeatingChartScreen(
             }
 
             // Interactive 2D Workspace Canvas
+            val gridLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -157,9 +201,35 @@ fun SeatingChartScreen(
                     .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
                     .border(2.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(16.dp))
+                    .drawBehind {
+                        if (activeGridRows > 0 && activeGridCols > 0) {
+                            val strokeWidthPx = 1.dp.toPx()
+
+                            // Draw Vertical Grid Lines
+                            for (i in 1 until activeGridCols) {
+                                val x = (i * size.width) / activeGridCols
+                                drawLine(
+                                    color = gridLineColor,
+                                    start = Offset(x, 0f),
+                                    end = Offset(x, size.height),
+                                    strokeWidth = strokeWidthPx
+                                )
+                            }
+
+                            // Draw Horizontal Grid Lines
+                            for (i in 1 until activeGridRows) {
+                                val y = (i * size.height) / activeGridRows
+                                drawLine(
+                                    color = gridLineColor,
+                                    start = Offset(0f, y),
+                                    end = Offset(size.width, y),
+                                    strokeWidth = strokeWidthPx
+                                )
+                            }
+                        }
+                    }
             ) {
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                    // RESOLVED: Convert Dp to Px to prevent drag delta jumps [1, 2]
                     val maxWidthPx = with(density) { maxWidth.toPx() }
                     val maxHeightPx = with(density) { maxHeight.toPx() }
                     canvasSize = Offset(maxWidthPx, maxHeightPx)
@@ -175,20 +245,54 @@ fun SeatingChartScreen(
                             .align(Alignment.TopCenter)
                     )
 
+                    // Live placement stats console
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 20.dp)
+                            .align(Alignment.TopCenter),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            val properlyPlacedCount = placedStudents.size - overlappingStudentIds.size
+                            val overlappedCount = overlappingStudentIds.size
+                            val unplacedCount = unplacedStudents.size
+
+                            Text(
+                                text = "$properlyPlacedCount properly placed • $overlappedCount overlapped • $unplacedCount unplaced",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+
                     // Draw Placed Student Nodes
                     placedStudents.forEach { student ->
-                        var localOffsetX by remember(student.id) { mutableStateOf(student.seatingX) }
-                        var localOffsetY by remember(student.id) { mutableStateOf(student.seatingY) }
+                        // RESOLVED: Bind remember keys to seatingX and seatingY to trigger Compose state invalidation [1, 2]
+                        var localOffsetX by remember(student.id, student.seatingX) { mutableStateOf(student.seatingX) }
+                        var localOffsetY by remember(student.id, student.seatingY) { mutableStateOf(student.seatingY) }
 
                         val leftOffset = (localOffsetX * maxWidth.value).dp
                         val topOffset = (localOffsetY * maxHeight.value).dp
+
+                        val isOverlapping = overlappingStudentIds.contains(student.id)
+                        val nodeContainerColor = if (isOverlapping) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                        val nodeContentColor = if (isOverlapping) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary
+                        val nodeBorderStroke = if (isOverlapping) BorderStroke(2.dp, MaterialTheme.colorScheme.onErrorContainer) else null
 
                         Box(
                             modifier = Modifier
                                 .offset(x = leftOffset - 24.dp, y = topOffset - 24.dp)
                                 .size(48.dp)
                                 .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
+                                .background(nodeContainerColor)
+                                .then(if (nodeBorderStroke != null) Modifier.border(nodeBorderStroke, CircleShape) else Modifier)
                                 .pointerInput(student.id) {
                                     detectTapGestures(
                                         onTap = {
@@ -201,18 +305,30 @@ fun SeatingChartScreen(
                                     detectDragGestures(
                                         onDrag = { change, dragAmount ->
                                             change.consume()
-                                            // Evaluates exact 1-to-1 pixel progress relative to finger movement [1, 2]
-                                            val newX = (localOffsetX + dragAmount.x / canvasSize.x).coerceIn(0.05f, 0.95f)
-                                            val newY = (localOffsetY + dragAmount.y / canvasSize.y).coerceIn(0.05f, 0.95f)
-                                            localOffsetX = newX
-                                            localOffsetY = newY
-
-                                            scope.launch {
-                                                repository.updateStudentSeating(student.id, newX, newY)
-                                            }
+                                            localOffsetX = (localOffsetX + dragAmount.x / canvasSize.x).coerceIn(0.05f, 0.95f)
+                                            localOffsetY = (localOffsetY + dragAmount.y / canvasSize.y).coerceIn(0.05f, 0.95f)
                                         },
                                         onDragEnd = {
-                                            refreshStudents() // Sync list on gesture end
+                                            if (activeGridRows > 0 && activeGridCols > 0) {
+                                                val c = round(localOffsetX * activeGridCols - 0.5f).toInt().coerceIn(0, activeGridCols - 1)
+                                                val r = round(localOffsetY * activeGridRows - 0.5f).toInt().coerceIn(0, activeGridRows - 1)
+
+                                                val snappedX = (c + 0.5f) / activeGridCols.toFloat()
+                                                val snappedY = (r + 0.5f) / activeGridRows.toFloat()
+
+                                                localOffsetX = snappedX
+                                                localOffsetY = snappedY
+
+                                                scope.launch {
+                                                    repository.updateStudentSeating(student.id, snappedX, snappedY)
+                                                    refreshStudents()
+                                                }
+                                            } else {
+                                                scope.launch {
+                                                    repository.updateStudentSeating(student.id, localOffsetX, localOffsetY)
+                                                    refreshStudents()
+                                                }
+                                            }
                                         }
                                     )
                                 },
@@ -221,7 +337,7 @@ fun SeatingChartScreen(
                             val initials = "${student.lastName.take(1)}${student.firstName.take(1)}".uppercase()
                             Text(
                                 text = initials,
-                                color = MaterialTheme.colorScheme.onPrimary,
+                                color = nodeContentColor,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp
                             )
@@ -382,6 +498,171 @@ fun SeatingChartScreen(
                         selectedStudentForAction = null
                     }) {
                         Text(stringResource(R.string.action_cancel))
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
+        }
+
+        // ALGORITHM LAYOUT SELECTOR MENU DIALOG
+        if (showLayoutSelectorDialog) {
+            AlertDialog(
+                onDismissRequest = { showLayoutSelectorDialog = false },
+                title = { Text("Choose Seating Layout Style", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // 1. FREEFORM / DRAFT OPTION
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    scope.launch {
+                                        students.forEach { s ->
+                                            repository.updateStudentSeating(s.id, -1f, -1f)
+                                        }
+                                        activeGridRows = 0
+                                        activeGridCols = 0
+                                        refreshStudents()
+                                        showLayoutSelectorDialog = false
+                                        Toast.makeText(context, "Arrangement reset to manual draft!", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text("Freeform / Manual Draft", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Text("Resets all student seats so you can position them manually on the canvas.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                            }
+                        }
+
+                        // 2. CEILING PERFECT SQUARE OPTION
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val rosterSize = students.size
+                                    if (rosterSize > 0) {
+                                        val S = ceil(sqrt(rosterSize.toDouble())).toInt()
+                                        scope.launch {
+                                            students.forEachIndexed { index, student ->
+                                                val r = index / S
+                                                val c = index % S
+                                                val x = (c + 0.5f) / S.toFloat()
+                                                val y = (r + 0.5f) / S.toFloat()
+                                                repository.updateStudentSeating(student.id, x, y)
+                                            }
+                                            activeGridRows = S
+                                            activeGridCols = S
+                                            refreshStudents()
+                                            showLayoutSelectorDialog = false
+                                            Toast.makeText(context, "Arranged in a $S x $S ceiling square!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        showLayoutSelectorDialog = false
+                                    }
+                                },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text("Ceiling Square Grid", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Text("Auto-arranges students into a perfect square grid matching the nearest ceiling perfect square of the roster.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                            }
+                        }
+
+                        // 3. CUSTOM R x C GRID OPTION
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    showCustomGridDialog = true
+                                },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text("Custom Grid (Rows x Columns)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Text("Input custom row and column parameters to construct your own seating layout.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showLayoutSelectorDialog = false }) {
+                        Text("Cancel")
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
+        }
+
+        // CUSTOM GRID DIMENSIONS PROMPT DIALOG
+        if (showCustomGridDialog) {
+            var customRows by remember { mutableStateOf("5") }
+            var customCols by remember { mutableStateOf("5") }
+
+            AlertDialog(
+                onDismissRequest = { showCustomGridDialog = false },
+                title = { Text("Configure Custom Grid", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth().imePadding()
+                    ) {
+                        Text("Define the dimensions of your custom grid. Roster student size must fit within your Row x Column limits.")
+
+                        OutlinedTextField(
+                            value = customRows,
+                            onValueChange = { customRows = it.filter { c -> c.isDigit() } },
+                            label = { Text("Grid Rows *") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = customCols,
+                            onValueChange = { customCols = it.filter { c -> c.isDigit() } },
+                            label = { Text("Grid Columns *") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val R = customRows.toIntOrNull() ?: 5
+                            val C = customCols.toIntOrNull() ?: 5
+                            val rosterSize = students.size
+
+                            if (R * C < rosterSize) {
+                                Toast.makeText(context, "Roster size ($rosterSize) exceeds your grid's capacity ($R x $C)!", Toast.LENGTH_LONG).show()
+                            } else {
+                                scope.launch {
+                                    students.forEachIndexed { index, student ->
+                                        val r = index / C
+                                        val c = index % C
+                                        val x = (c + 0.5f) / C.toFloat()
+                                        val y = (r + 0.5f) / R.toFloat()
+                                        repository.updateStudentSeating(student.id, x, y)
+                                    }
+                                    activeGridRows = R
+                                    activeGridCols = C
+                                    refreshStudents()
+                                    showCustomGridDialog = false
+                                    showLayoutSelectorDialog = false
+                                    Toast.makeText(context, "Arranged in a $R x $C grid!", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    ) {
+                        Text("Apply Grid")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showCustomGridDialog = false }) {
+                        Text("Cancel")
                     }
                 },
                 shape = RoundedCornerShape(28.dp)
