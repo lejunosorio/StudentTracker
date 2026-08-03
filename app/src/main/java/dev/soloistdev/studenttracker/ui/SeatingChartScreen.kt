@@ -17,10 +17,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -88,28 +85,65 @@ fun SeatingChartScreen(
 
     var canvasSize by remember { mutableStateOf(Offset.Zero) }
 
-    // Dynamic pixel-level overlap calculations
-    val overlapDistancePx = with(density) { 48.dp.toPx() }
-    val overlappingStudentIds = remember(placedStudents, canvasSize, overlapDistancePx) {
+    // DYNAMIC PIXEL-LEVEL & RELATIONAL GRID OVERLAP CALCULATIONS [1, 2]
+    val overlappingStudentIds = remember(placedStudents, canvasSize, activeGridCols, activeGridRows) {
         val set = mutableSetOf<Int>()
-        if (canvasSize.x > 0 && canvasSize.y > 0) {
-            placedStudents.forEachIndexed { i, studentA ->
-                val ax = studentA.seatingX * canvasSize.x
-                val ay = studentA.seatingY * canvasSize.y
-                for (j in i + 1 until placedStudents.size) {
-                    val studentB = placedStudents[j]
-                    val bx = studentB.seatingX * canvasSize.x
-                    val by = studentB.seatingY * canvasSize.y
+        if (canvasSize.x > 0 && canvasSize.y > 0 && placedStudents.isNotEmpty()) {
+            if (activeGridCols > 0 && activeGridRows > 0) {
+                // GRID MODE: Overlap only if multiple students are assigned to the exact same cell coordinate (r, c) [1]
+                placedStudents.forEachIndexed { i, studentA ->
+                    val cA = round(studentA.seatingX * activeGridCols - 0.5f).toInt()
+                    val rA = round(studentA.seatingY * activeGridRows - 0.5f).toInt()
 
-                    val dist = sqrt((ax - bx) * (ax - bx) + (ay - by) * (ay - by))
-                    if (dist < overlapDistancePx) {
-                        set.add(studentA.id)
-                        set.add(studentB.id)
+                    for (j in i + 1 until placedStudents.size) {
+                        val studentB = placedStudents[j]
+                        val cB = round(studentB.seatingX * activeGridCols - 0.5f).toInt()
+                        val rB = round(studentB.seatingY * activeGridRows - 0.5f).toInt()
+
+                        if (cA == cB && rA == rB) {
+                            set.add(studentA.id)
+                            set.add(studentB.id)
+                        }
+                    }
+                }
+            } else {
+                // FREEFORM MODE: Overlap if physical circle boundaries collide (distance < 48dp) [1]
+                val diameterPx = with(density) { 48.dp.toPx() }
+                placedStudents.forEachIndexed { i, studentA ->
+                    val ax = studentA.seatingX * canvasSize.x
+                    val ay = studentA.seatingY * canvasSize.y
+                    for (j in i + 1 until placedStudents.size) {
+                        val studentB = placedStudents[j]
+                        val bx = studentB.seatingX * canvasSize.x
+                        val by = studentB.seatingY * canvasSize.y
+
+                        val dist = sqrt((ax - bx) * (ax - bx) + (ay - by) * (ay - by))
+                        if (dist < diameterPx) {
+                            set.add(studentA.id)
+                            set.add(studentB.id)
+                        }
                     }
                 }
             }
         }
         set
+    }
+
+    val nodeSizeDp = remember(placedStudents.size, canvasSize, activeGridCols, activeGridRows) {
+        if (activeGridCols > 0 && activeGridRows > 0 && canvasSize.x > 0) {
+            val cellWidthDp = (canvasSize.x / activeGridCols) / density.density
+            val cellHeightDp = (canvasSize.y / activeGridRows) / density.density
+            // Dynamically scales circle diameter based on grid density [2]
+            val dynamicSize = (minOf(cellWidthDp, cellHeightDp) * 0.85f).coerceIn(24f, 48f)
+            dynamicSize.dp
+        } else {
+            48.dp // Default size for free form layouts
+        }
+    }
+
+    // ADAPTIVE TYPOGRAPHY ENGINE [1, 2]
+    val fontSizeSp = remember(nodeSizeDp) {
+        if (nodeSizeDp < 32.dp) 10.sp else if (nodeSizeDp < 40.dp) 12.sp else 14.sp
     }
 
     Scaffold(
@@ -274,9 +308,8 @@ fun SeatingChartScreen(
 
                     // Draw Placed Student Nodes
                     placedStudents.forEach { student ->
-                        // RESOLVED: Bind remember keys to seatingX and seatingY to trigger Compose state invalidation [1, 2]
-                        var localOffsetX by remember(student.id, student.seatingX) { mutableStateOf(student.seatingX) }
-                        var localOffsetY by remember(student.id, student.seatingY) { mutableStateOf(student.seatingY) }
+                        var localOffsetX by remember(student.id, student.seatingX) { mutableFloatStateOf(student.seatingX) }
+                        var localOffsetY by remember(student.id, student.seatingY) { mutableFloatStateOf(student.seatingY) }
 
                         val leftOffset = (localOffsetX * maxWidth.value).dp
                         val topOffset = (localOffsetY * maxHeight.value).dp
@@ -288,8 +321,8 @@ fun SeatingChartScreen(
 
                         Box(
                             modifier = Modifier
-                                .offset(x = leftOffset - 24.dp, y = topOffset - 24.dp)
-                                .size(48.dp)
+                                .offset(x = leftOffset - (nodeSizeDp / 2), y = topOffset - (nodeSizeDp / 2)) // UPDATED: Centers correctly based on dynamic size [1, 2]
+                                .size(nodeSizeDp) // UPDATED: Dynamic sizing applied [1, 2]
                                 .clip(CircleShape)
                                 .background(nodeContainerColor)
                                 .then(if (nodeBorderStroke != null) Modifier.border(nodeBorderStroke, CircleShape) else Modifier)
@@ -339,7 +372,7 @@ fun SeatingChartScreen(
                                 text = initials,
                                 color = nodeContentColor,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
+                                fontSize = fontSizeSp // UPDATED: Adaptive typography applied [1, 2]
                             )
                         }
                     }
@@ -545,20 +578,20 @@ fun SeatingChartScreen(
                                 .clickable {
                                     val rosterSize = students.size
                                     if (rosterSize > 0) {
-                                        val S = ceil(sqrt(rosterSize.toDouble())).toInt()
+                                        val s = ceil(sqrt(rosterSize.toDouble())).toInt()
                                         scope.launch {
                                             students.forEachIndexed { index, student ->
-                                                val r = index / S
-                                                val c = index % S
-                                                val x = (c + 0.5f) / S.toFloat()
-                                                val y = (r + 0.5f) / S.toFloat()
+                                                val r = index / s
+                                                val c = index % s
+                                                val x = (c + 0.5f) / s.toFloat()
+                                                val y = (r + 0.5f) / s.toFloat()
                                                 repository.updateStudentSeating(student.id, x, y)
                                             }
-                                            activeGridRows = S
-                                            activeGridCols = S
+                                            activeGridRows = s
+                                            activeGridCols = s
                                             refreshStudents()
                                             showLayoutSelectorDialog = false
-                                            Toast.makeText(context, "Arranged in a $S x $S ceiling square!", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Arranged in a $s x $s ceiling square!", Toast.LENGTH_SHORT).show()
                                         }
                                     } else {
                                         showLayoutSelectorDialog = false
@@ -632,27 +665,27 @@ fun SeatingChartScreen(
                 confirmButton = {
                     Button(
                         onClick = {
-                            val R = customRows.toIntOrNull() ?: 5
-                            val C = customCols.toIntOrNull() ?: 5
+                            val r = customRows.toIntOrNull() ?: 5
+                            val c = customCols.toIntOrNull() ?: 5
                             val rosterSize = students.size
 
-                            if (R * C < rosterSize) {
-                                Toast.makeText(context, "Roster size ($rosterSize) exceeds your grid's capacity ($R x $C)!", Toast.LENGTH_LONG).show()
+                            if (r * c < rosterSize) {
+                                Toast.makeText(context, "Roster size ($rosterSize) exceeds your grid's capacity ($r x $c)!", Toast.LENGTH_LONG).show()
                             } else {
                                 scope.launch {
                                     students.forEachIndexed { index, student ->
-                                        val r = index / C
-                                        val c = index % C
-                                        val x = (c + 0.5f) / C.toFloat()
-                                        val y = (r + 0.5f) / R.toFloat()
+                                        val r = index / c
+                                        val c = index % c
+                                        val x = (c + 0.5f) / c.toFloat()
+                                        val y = (r + 0.5f) / r.toFloat()
                                         repository.updateStudentSeating(student.id, x, y)
                                     }
-                                    activeGridRows = R
-                                    activeGridCols = C
+                                    activeGridRows = r
+                                    activeGridCols = c
                                     refreshStudents()
                                     showCustomGridDialog = false
                                     showLayoutSelectorDialog = false
-                                    Toast.makeText(context, "Arranged in a $R x $C grid!", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Arranged in a $r x $c grid!", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
