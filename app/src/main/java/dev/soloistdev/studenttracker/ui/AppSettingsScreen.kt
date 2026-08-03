@@ -5,11 +5,12 @@ import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CleaningServices
-import androidx.compose.material.icons.filled.Security // RESOLVED: Security icon import
+import androidx.compose.material.icons.filled.Delete // RESOLVED: Delete icon import
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.*
@@ -36,7 +37,7 @@ import java.io.File
 @Composable
 fun AppSettingsScreen(
     onBack: () -> Unit,
-    onNavigateToBiometrics: () -> Unit // ADDED: Navigation callback to unlock privacy screen
+    onNavigateToBiometrics: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -45,11 +46,18 @@ fun AppSettingsScreen(
     val sharedPrefs = remember { context.getSharedPreferences("app_settings", Context.MODE_PRIVATE) }
 
     var dynamicColorsEnabled by remember { mutableStateOf(sharedPrefs.getBoolean("dynamic_colors", true)) }
-    var darkThemeEnabled by remember { mutableStateOf(sharedPrefs.getBoolean("force_dark_theme", true)) }
+
+    // State flow tracking three-choice dropdown
+    var appTheme by remember { mutableStateOf(sharedPrefs.getString("app_theme", "System") ?: "System") }
+    var themeDropdownExpanded by remember { mutableStateOf(false) }
 
     var activeBadgeField by remember { mutableStateOf(sharedPrefs.getString("card_banner_field", "") ?: "") }
     var availableTemplates by remember { mutableStateOf<List<FormTemplateEntity>>(emptyList()) }
     var dropdownExpanded by remember { mutableStateOf(false) }
+
+    // Database Purging Local States (ADDED) [1]
+    var showPurgeDialog by remember { mutableStateOf(false) }
+    var purgeInputText by remember { mutableStateOf("") }
 
     val m3TextFieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -61,7 +69,6 @@ fun AppSettingsScreen(
     )
 
     val cardBadgeDisabledMsg = stringResource(R.string.settings_card_badge_disabled_toast)
-    val clearMapsSuccessMsg = stringResource(R.string.settings_clear_maps_success)
     val dbCompactSuccessMsg = stringResource(R.string.settings_compact_db_success)
 
     LaunchedEffect(Unit) {
@@ -119,36 +126,62 @@ fun AppSettingsScreen(
                         )
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    // 3-CHOICE SELECTION DROPDOWN [1]
+                    val themeLabel = when (appTheme) {
+                        "Light" -> "Light Theme"
+                        "Dark" -> "Dark Theme"
+                        else -> "System Default"
+                    }
+
+                    ExposedDropdownMenuBox(
+                        expanded = themeDropdownExpanded,
+                        onExpandedChange = { themeDropdownExpanded = it }
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(stringResource(R.string.settings_force_dark), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(stringResource(R.string.settings_force_dark_desc), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                        }
-                        Switch(
-                            checked = darkThemeEnabled,
-                            onCheckedChange = { enabled ->
-                                darkThemeEnabled = enabled
-                                sharedPrefs.edit { putBoolean("force_dark_theme", enabled) }
-                            }
+                        OutlinedTextField(
+                            value = themeLabel,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("App Theme Configuration") },
+                            colors = m3TextFieldColors,
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = themeDropdownExpanded) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                         )
+
+                        ExposedDropdownMenu(
+                            expanded = themeDropdownExpanded,
+                            onDismissRequest = { themeDropdownExpanded = false }
+                        ) {
+                            listOf(
+                                "System" to "System Default",
+                                "Light" to "Light Theme",
+                                "Dark" to "Dark Theme"
+                            ).forEach { (value, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        appTheme = value
+                                        sharedPrefs.edit { putString("app_theme", value) }
+                                        themeDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
 
-            // Security & Privacy Category (ADDED)
+            // Security & Privacy Category
             Text("Security & Privacy", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onNavigateToBiometrics() } // Navigates directly on click
+                    .clickable { onNavigateToBiometrics() }
             ) {
                 Row(
                     modifier = Modifier.padding(16.dp),
@@ -244,34 +277,7 @@ fun AppSettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                scope.launch(Dispatchers.IO) {
-                                    try {
-                                        val mapsDir = File(context.filesDir, "offline_maps")
-                                        if (mapsDir.exists()) mapsDir.deleteRecursively()
-                                        withContext(Dispatchers.Main) {
-                                            Toast.makeText(context, clearMapsSuccessMsg, Toast.LENGTH_SHORT).show()
-                                        }
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
-                                }
-                            },
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(stringResource(R.string.settings_clear_maps), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(stringResource(R.string.settings_clear_maps_desc), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                        }
-                        Icon(Icons.Default.CleaningServices, contentDescription = stringResource(R.string.settings_clear_maps), tint = MaterialTheme.colorScheme.primary)
-                    }
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
+                    // Compact Local Database Row
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -287,7 +293,8 @@ fun AppSettingsScreen(
                                         e.printStackTrace()
                                     }
                                 }
-                            },
+                            }
+                            .padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -296,6 +303,24 @@ fun AppSettingsScreen(
                             Text(stringResource(R.string.settings_compact_db_desc), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                         }
                         Icon(Icons.Default.Storage, contentDescription = stringResource(R.string.settings_compact_db), tint = MaterialTheme.colorScheme.primary)
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    // Purge Database Row (ADDED with security warning checks) [1]
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showPurgeDialog = true }
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Purge Database", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.error)
+                            Text("Permanently erases all students, classes, filters, and sheets", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                        }
+                        Icon(Icons.Default.Delete, contentDescription = "Purge Database", tint = MaterialTheme.colorScheme.error)
                     }
                 }
             }
@@ -312,6 +337,71 @@ fun AppSettingsScreen(
                     lineHeight = 16.sp
                 )
             }
+        }
+
+        // DATABASE PURGE DOUBLE-VALIDATION DIALOG (ADDED) [1]
+        if (showPurgeDialog) {
+            AlertDialog(
+                onDismissRequest = {
+                    showPurgeDialog = false
+                    purgeInputText = ""
+                },
+                title = { Text("Purge Database?", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error) },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "Warning: This action is irreversible. This will permanently delete all student profiles, behavior logs, classrooms, filters, attendance sheets, and gradebook evaluation records. To confirm, type \"delete\" in the box below.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedTextField(
+                            value = purgeInputText,
+                            onValueChange = { purgeInputText = it },
+                            label = { Text("Type \"delete\" to confirm") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showPurgeDialog = false
+                            purgeInputText = ""
+                            scope.launch(Dispatchers.IO) {
+                                try {
+                                    val db = AppDatabase.getDatabase(context)
+                                    db.clearAllTables() // Deletes all records in all Room tables transaction-safely
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "Database successfully purged!", Toast.LENGTH_LONG).show()
+                                    }
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            }
+                        },
+                        // Enabled only if the user inputs exactly "delete" (case-insensitive) [1]
+                        enabled = purgeInputText.trim().lowercase() == "delete",
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Purge All Data")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showPurgeDialog = false
+                            purgeInputText = ""
+                        }
+                    ) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
         }
     }
 }

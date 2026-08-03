@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -61,7 +62,7 @@ fun ViewAllScreen(
     onOpenGradebook: () -> Unit,
     onOpenClassrooms: () -> Unit,
     onOpenQueryBuilder: () -> Unit,
-    onOpenSeatingChart: (String) -> Unit, // ADDED: Seating chart navigation callback
+    onOpenSeatingChart: (String) -> Unit,
     viewModel: StudentListViewModel = viewModel()
 ) {
     val students by viewModel.students.collectAsState()
@@ -133,13 +134,21 @@ fun ViewAllScreen(
             ModalDrawerSheet(
                 drawerContainerColor = MaterialTheme.colorScheme.surfaceContainer,
                 drawerTonalElevation = 4.dp,
-                modifier = Modifier.width(280.dp)
+                drawerShape = RectangleShape,
+                modifier = Modifier
+                    .width(280.dp)
+                    .navigationBarsPadding()
             ) {
-                Column(modifier = Modifier.fillMaxHeight()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()) // RESOLVED: Makes drawer list fully scrollable [1, 2]
+                        .padding(vertical = 12.dp)
+                ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 24.dp, top = 28.dp, bottom = 12.dp)
+                            .padding(start = 24.dp, top = 16.dp, bottom = 12.dp)
                     ) {
                         Text(stringResource(R.string.drawer_proctor_portal), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                         Text(stringResource(R.string.drawer_school_name), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -310,10 +319,11 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
-                    Spacer(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.height(16.dp)) // Replaced weight(1f) to avoid infinite scroll conflicts [2]
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
+                    // RECYCLE BIN AT THE VERY BOTTOM
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Delete, contentDescription = null) },
                         label = { Text(stringResource(R.string.menu_recycle_bin)) },
@@ -327,7 +337,6 @@ fun ViewAllScreen(
                         colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
                 }
             }
         }
@@ -403,7 +412,6 @@ fun ViewAllScreen(
                             }
                         },
                         actions = {
-                            // Seating Chart launcher icon displayed when inside a Classroom detail view
                             if (selectedClassroomForView != null && selectedClassroomForView != "All") {
                                 IconButton(onClick = { onOpenSeatingChart(selectedClassroomForView!!) }) {
                                     Icon(
@@ -488,10 +496,10 @@ fun ViewAllScreen(
 
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(16.dp),
+                        // RESOLVED: Increased bottom margin safely clear of the bottom NavigationBar [1]
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // All classrooms Master Selection Card
                         item {
                             Card(
                                 modifier = Modifier
@@ -518,7 +526,6 @@ fun ViewAllScreen(
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         }
 
-                        // Specific Classroom Cards (Dynamically populated from Student database records)
                         if (distinctClassrooms.isEmpty()) {
                             item {
                                 Box(

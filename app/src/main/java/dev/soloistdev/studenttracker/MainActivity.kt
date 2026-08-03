@@ -1,12 +1,12 @@
 package dev.soloistdev.studenttracker
 
 import android.content.Context
-import android.content.Intent // Resolved: Explicit Intent import
+import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.isSystemInDarkTheme // RESOLVED: System dark mode check import
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -43,7 +43,9 @@ class MainActivity : FragmentActivity() {
             val sharedPrefs = remember { context.getSharedPreferences("app_settings", Context.MODE_PRIVATE) }
 
             var dynamicColorEnabled by remember { mutableStateOf(sharedPrefs.getBoolean("dynamic_colors", true)) }
-            var forceDarkThemeEnabled by remember { mutableStateOf(sharedPrefs.getBoolean("force_dark_theme", true)) }
+
+            // UPDATED: Standardized string state defaults to "System"
+            var appTheme by remember { mutableStateOf(sharedPrefs.getString("app_theme", "System") ?: "System") }
 
             DisposableEffect(sharedPrefs) {
                 val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -51,8 +53,9 @@ class MainActivity : FragmentActivity() {
                         "dynamic_colors" -> {
                             dynamicColorEnabled = sharedPrefs.getBoolean("dynamic_colors", true)
                         }
-                        "force_dark_theme" -> {
-                            forceDarkThemeEnabled = sharedPrefs.getBoolean("force_dark_theme", true)
+                        "app_theme" -> {
+                            // Automatically triggers compose invalidation and redraws the UI
+                            appTheme = sharedPrefs.getString("app_theme", "System") ?: "System"
                         }
                     }
                 }
@@ -62,7 +65,12 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
-            val darkThemeMode = if (forceDarkThemeEnabled) true else isSystemInDarkTheme()
+            // RESOLVED: Maps 3-state parameters to theme configs [1]
+            val darkThemeMode = when (appTheme) {
+                "Light" -> false
+                "Dark" -> true
+                else -> isSystemInDarkTheme() // Natively follows android system configurations
+            }
 
             StudentTrackerTheme(
                 darkTheme = darkThemeMode,
@@ -78,9 +86,8 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    // Resolved: Intercepts and sets incoming background deep-links so the NavHost can read them in real-time [1]
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setIntent(intent) // Re-sets the active activity intent [1]
+        setIntent(intent)
     }
 }
