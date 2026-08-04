@@ -15,28 +15,6 @@ import androidx.navigation.navArgument
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.security.PdfGeneratorHelper
 import kotlinx.coroutines.launch
-
-// Explicit screen imports to guarantee compile-time visibility across build configurations
-import dev.soloistdev.studenttracker.ui.SecurityGateScreen
-import dev.soloistdev.studenttracker.ui.ViewAllScreen
-import dev.soloistdev.studenttracker.ui.StudentProfileScreen
-import dev.soloistdev.studenttracker.ui.AddEditStudentScreen
-import dev.soloistdev.studenttracker.ui.TemplateManagerScreen
-import dev.soloistdev.studenttracker.ui.RecycleBinScreen
-import dev.soloistdev.studenttracker.ui.SavedFiltersScreen
-import dev.soloistdev.studenttracker.ui.MessageTemplatesScreen
-import dev.soloistdev.studenttracker.ui.BiometricsPrivacyScreen
-import dev.soloistdev.studenttracker.ui.SyncScreen
-import dev.soloistdev.studenttracker.ui.AttendanceScreen
-import dev.soloistdev.studenttracker.ui.AppSettingsScreen
-import dev.soloistdev.studenttracker.ui.StudentImportScreen
-import dev.soloistdev.studenttracker.ui.GradebookScreen
-import dev.soloistdev.studenttracker.ui.ClassroomsScreen
-import dev.soloistdev.studenttracker.ui.QueryBuilderScreen
-import dev.soloistdev.studenttracker.ui.QueryResultsScreen
-import dev.soloistdev.studenttracker.ui.QueryViewModel
-import dev.soloistdev.studenttracker.ui.SeatingChartScreen // ADDED: Seating Chart Screen import
-
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
@@ -108,11 +86,6 @@ fun AppNavigation() {
                         navController.navigate(ScreenRoute.RECYCLE_BIN)
                     }
                 },
-                onOpenSync = {
-                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
-                        navController.navigate(ScreenRoute.SYNC)
-                    }
-                },
                 onOpenSettings = {
                     if (navController.currentDestination?.route == "view_all") {
                         navController.navigate(ScreenRoute.APP_SETTINGS)
@@ -143,7 +116,7 @@ fun AppNavigation() {
                         navController.navigate(ScreenRoute.QUERY_BUILDER)
                     }
                 },
-                onOpenSeatingChart = { className -> // ADDED: Binds seating chart navigation transaction safely
+                onOpenSeatingChart = { className -> // Binds seating chart navigation transaction safely
                     if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
                         navController.navigate("seating_chart/$className")
                     }
@@ -257,16 +230,6 @@ fun AppNavigation() {
 
         composable(ScreenRoute.BIOMETRICS_PRIVACY) {
             BiometricsPrivacyScreen(
-                onBack = {
-                    if (navController.previousBackStackEntry != null) {
-                        navController.popBackStack()
-                    }
-                }
-            )
-        }
-
-        composable(ScreenRoute.SYNC) {
-            SyncScreen(
                 onBack = {
                     if (navController.previousBackStackEntry != null) {
                         navController.popBackStack()
@@ -425,7 +388,7 @@ fun AppNavigation() {
             )
         }
 
-        // ADDED: Composable destination binding for the Interactive 2D Seating Chart Screen [1]
+        // Composable destination binding for the Interactive 2D Seating Chart Screen [1]
         composable(
             route = ScreenRoute.SEATING_CHART,
             arguments = listOf(navArgument("className") { type = NavType.StringType })
@@ -455,7 +418,6 @@ object ScreenRoute {
     const val RECYCLE_BIN = "recycle_bin"
     const val SAVED_FILTERS = "saved_filters"
     const val BIOMETRICS_PRIVACY = "biometrics_privacy"
-    const val SYNC = "sync"
     const val ATTENDANCE = "attendance?recordId={recordId}&dateMillis={dateMillis}"
     const val APP_SETTINGS = "app_settings"
     const val IMPORT_STUDENT = "import_student?id={id}&first={first}&last={last}&gender={gender}&birthday={birthday}&address={address}&contact={contact}&guardians={guardians}&custom={custom}&class={class}"
@@ -469,5 +431,5 @@ object ScreenRoute {
     const val QUERY_BUILDER = "query_builder"
     const val QUERY_RESULTS = "query_results"
 
-    const val SEATING_CHART = "seating_chart/{className}" // ADDED: Declares the Seating Chart endpoint identifier
+    const val SEATING_CHART = "seating_chart/{className}" // Declares the Seating Chart endpoint identifier
 }

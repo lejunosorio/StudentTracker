@@ -43,6 +43,162 @@ object JsonSyncEngine {
         val incomingIdToIdentityMap: Map<Int, String>
     )
 
+    // COMPLETE UNENCRYPTED JSON BACKUP EXPORTER (RE-ARCHITECTED) [1]
+    suspend fun exportBackupJson(context: Context, repository: StudentRepository) = withContext(Dispatchers.IO) {
+        try {
+            val activeRoster = repository.getAllActiveStudents()
+            val activeLogs = repository.getAllAttendanceLogs()
+            val classrooms = repository.getAllClassrooms()
+            val filters = repository.getAllSavedFilters()
+            val columns = repository.getAllAssessmentColumns()
+            val scores = repository.getAllAssessmentScores()
+
+            val sdfDate = SimpleDateFormat("MM-dd-yyyy", Locale.US)
+
+            val payloadObj = JSONObject().apply {
+                // 1. Classrooms
+                val classroomsArr = JSONArray()
+                classrooms.forEach { c ->
+                    classroomsArr.put(JSONObject().apply {
+                        put("name", c.name)
+                        put("start", c.startTime)
+                        put("end", c.endTime)
+                    })
+                }
+                put("classrooms", classroomsArr)
+
+                // 2. Students & Relational Behavior Logs
+                val studentsArr = JSONArray()
+                activeRoster.forEach { s ->
+                    val behaviorIncidents = repository.getIncidentsForStudent(s.id)
+                    val behaviorArr = JSONArray()
+                    behaviorIncidents.forEach { b ->
+                        behaviorArr.put(JSONObject().apply {
+                            put("title", b.title)
+                            put("category", b.category)
+                            put("description", b.description)
+                            put("date", sdfDate.format(Date(b.incidentDate)))
+                        })
+                    }
+
+                    studentsArr.put(JSONObject().apply {
+                        put("firstName", s.firstName)
+                        put("lastName", s.lastName)
+                        put("gender", s.gender)
+                        put("birthday", sdfDate.format(Date(s.birthday)))
+                        put("address", s.address)
+                        put("contactNumber", s.contactNumber)
+                        put("classRoom", s.className)
+                        put("guardiansJson", JSONArray(s.guardiansJson))
+                        put("customDataJson", JSONObject(s.customDataJson))
+                        put("behaviorIncidents", behaviorArr)
+                    })
+                }
+                put("students", studentsArr)
+
+                // 3. Saved Filters
+                val filtersArr = JSONArray()
+                filters.forEach { f ->
+                    filtersArr.put(JSONObject().apply {
+                        put("name", f.filterName)
+                        put("field", f.fieldName)
+                        put("comparison", f.comparison)
+                        put("value", f.value1)
+                        put("value2", f.value2)
+                        put("displayOrder", f.displayOrder)
+                    })
+                }
+                put("savedFilters", filtersArr)
+
+                // 4. Attendance Sheets
+                val attendanceRecords = repository.getAllAttendanceRecords()
+                val attendanceArr = JSONArray()
+                attendanceRecords.forEach { r ->
+                    val recordLogs = repository.getLogsForRecord(r.id)
+                    val rosterStudentIds = recordLogs.map { it.studentId }.distinct()
+                    val roster = activeRoster.filter { it.id in rosterStudentIds }
+
+                    attendanceArr.put(JSONObject().apply {
+                        put("name", r.name)
+                        put("startDate", sdfDate.format(Date(r.startDate)))
+                        put("endDate", sdfDate.format(Date(r.endDate)))
+
+                        val participantsArr = JSONArray()
+                        roster.forEach { student ->
+                            val studentLogs = recordLogs.filter { it.studentId == student.id }
+                            val attendanceObj = JSONObject()
+                            studentLogs.forEach { log ->
+                                attendanceObj.put(sdfDate.format(Date(log.dateMillis)), log.status)
+                            }
+
+                            participantsArr.put(JSONObject().apply {
+                                put("studentIdentifier", "${student.lastName}_${student.firstName}_${student.className}")
+                                put("attendance", attendanceObj)
+                            })
+                        }
+                        put("participants", participantsArr)
+                    })
+                }
+                put("attendanceRecord", attendanceArr)
+
+                // 5. Gradebook Sheets
+                val gradebookArr = JSONArray()
+                columns.forEach { col ->
+                    val colScores = repository.getScoresForColumn(col.id)
+                    val rosterIds = colScores.map { it.studentId }.distinct()
+                    val roster = activeRoster.filter { it.id in rosterIds }
+
+                    gradebookArr.put(JSONObject().apply {
+                        put("name", col.name)
+                        put("maxPoints", col.maxPoints)
+                        put("examDate", sdfDate.format(Date(col.examDate)))
+                        put("checkDate", sdfDate.format(Date(col.checkDate)))
+
+                        val gradesArr = JSONArray()
+                        roster.forEach { student ->
+                            val matchedScore = colScores.find { it.studentId == student.id }
+                            gradesArr.put(JSONObject().apply {
+                                put("studentIdentifier", "${student.lastName}_${student.firstName}_${student.className}")
+                                put("score", matchedScore?.score ?: "")
+                            })
+                        }
+                        put("grades", gradesArr)
+                    })
+                }
+                put("gradeBook", gradebookArr)
+            }
+
+            val cacheDir = File(context.cacheDir, "backups").apply { mkdirs() }
+            val backupFile = File(cacheDir, "student_tracker_backup.json")
+            if (backupFile.exists()) backupFile.delete()
+
+            FileOutputStream(backupFile).use { fos ->
+                fos.write(payloadObj.toString().toByteArray(Charsets.UTF_8))
+                fos.flush()
+            }
+
+            backupFile.deleteOnExit()
+
+            val fileUri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                backupFile
+            )
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_STREAM, fileUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            withContext(Dispatchers.Main) {
+                context.startActivity(Intent.createChooser(shareIntent, "Share JSON Backup"))
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     suspend fun evaluateMerge(
         context: Context,
         uri: Uri,
@@ -249,65 +405,6 @@ object JsonSyncEngine {
         }
     }
 
-    suspend fun exportSecureBackup(context: Context, students: List<StudentEntity>) = withContext(Dispatchers.IO) {
-        val array = JSONArray()
-        students.forEach { student ->
-            val obj = JSONObject().apply {
-                put("firstName", student.firstName)
-                put("lastName", student.lastName)
-                put("gender", student.gender)
-                put("birthday", student.birthday)
-                put("address", student.address)
-                put("contactNumber", student.contactNumber)
-                put("picturePath", student.picturePath)
-                put("guardiansJson", student.guardiansJson)
-                put("customDataJson", student.customDataJson)
-                put("class", student.className)
-            }
-            array.put(obj)
-        }
-
-        val cacheDir = File(context.cacheDir, "backups").apply { mkdirs() }
-        val tempPlainFile = File(cacheDir, "temp_backup.json")
-        FileOutputStream(tempPlainFile).use { it.write(array.toString().toByteArray()) }
-
-        val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-        val finalFile = File(cacheDir, "student_tracker_backup.enc")
-        if (finalFile.exists()) finalFile.delete()
-
-        val encryptedFile = EncryptedFile.Builder(
-            finalFile,
-            context,
-            masterKeyAlias,
-            EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
-        ).build()
-
-        val encryptedOutputStream = encryptedFile.openFileOutput()
-        val fileInputStream = FileInputStream(tempPlainFile)
-        try {
-            fileInputStream.copyTo(encryptedOutputStream)
-        } finally {
-            fileInputStream.close()
-            encryptedOutputStream.close()
-        }
-        tempPlainFile.delete()
-
-        val fileUri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            finalFile
-        )
-
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "application/octet-stream"
-            putExtra(Intent.EXTRA_STREAM, fileUri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-
-        context.startActivity(Intent.createChooser(shareIntent, "Share Encrypted Backup"))
-    }
-
-    // Standardized functions returning the parsed counts as ImportResult
     suspend fun importSecureBackup(context: Context, uri: Uri, repository: StudentRepository): ImportResult? = withContext(Dispatchers.IO) {
         try {
             verifyFileSizeLimit(context, uri)
@@ -337,7 +434,6 @@ object JsonSyncEngine {
 
             val decryptedString = String(content, Charsets.UTF_8).trim()
 
-            // Backwards compatibility check
             val payloadObj = if (decryptedString.startsWith("{")) {
                 JSONObject(decryptedString)
             } else {
@@ -351,7 +447,6 @@ object JsonSyncEngine {
         }
     }
 
-    // Standardized functions returning the parsed counts as ImportResult
     suspend fun importUnencryptedBackup(context: Context, uri: Uri, repository: StudentRepository): ImportResult? = withContext(Dispatchers.IO) {
         try {
             verifyFileSizeLimit(context, uri)
@@ -362,7 +457,6 @@ object JsonSyncEngine {
 
             val jsonString = String(content, Charsets.UTF_8).trim()
 
-            // Backwards compatibility check
             val payloadObj = if (jsonString.startsWith("{")) {
                 JSONObject(jsonString)
             } else {
@@ -413,7 +507,6 @@ object JsonSyncEngine {
             validClassroomNames.add(it.name.trim())
         }
 
-        // Auto-discover custom fields and templates silently
         val existingTemplateNames = repository.getAllFormTemplates().map { it.fieldName }.toSet()
         val discoveredTemplates = mutableSetOf<String>()
 
@@ -442,7 +535,6 @@ object JsonSyncEngine {
                 else -> "{}"
             }
 
-            // Silent key discovery
             try {
                 val customJson = JSONObject(resolvedCustomDataJson)
                 val keys = customJson.keys()
@@ -533,7 +625,7 @@ object JsonSyncEngine {
                     filterName = name,
                     fieldName = field,
                     comparison = comp,
-                    value1 = fObj.optString("value", fObj.optString("value1", "")),
+                    value1 = fObj.optString("value1", fObj.optString("value", "")),
                     value2 = fObj.optString("value2", ""),
                     displayOrder = fObj.optInt("displayOrder", i)
                 )

@@ -25,6 +25,7 @@ sqliteKtx = "2.7.0"
 uiText = "1.11.4"
 identityJvm = "202411.1"
 zxing = "3.5.3"
+foundation = "1.11.4"
 
 [libraries]
 android-database-sqlcipher = { module = "net.zetetic:android-database-sqlcipher", version.ref = "androidDatabaseSqlcipher" }
@@ -62,6 +63,7 @@ rootbeer-lib = { module = "com.scottyab:rootbeer-lib", version.ref = "rootbeerLi
 androidx-compose-ui-text = { group = "androidx.compose.ui", name = "ui-text", version.ref = "uiText" }
 identity-jvm = { group = "com.android.identity", name = "identity-jvm", version.ref = "identityJvm" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

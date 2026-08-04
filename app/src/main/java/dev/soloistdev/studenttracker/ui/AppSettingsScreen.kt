@@ -1,7 +1,10 @@
 package dev.soloistdev.studenttracker.ui
 
 import android.content.Context
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -9,7 +12,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete // RESOLVED: Delete icon import
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
@@ -28,10 +33,11 @@ import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.AppDatabase
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
+import dev.soloistdev.studenttracker.data.JsonSyncEngine
+import dev.soloistdev.studenttracker.data.ImportResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,7 +53,6 @@ fun AppSettingsScreen(
 
     var dynamicColorsEnabled by remember { mutableStateOf(sharedPrefs.getBoolean("dynamic_colors", true)) }
 
-    // State flow tracking three-choice dropdown
     var appTheme by remember { mutableStateOf(sharedPrefs.getString("app_theme", "System") ?: "System") }
     var themeDropdownExpanded by remember { mutableStateOf(false) }
 
@@ -55,9 +60,15 @@ fun AppSettingsScreen(
     var availableTemplates by remember { mutableStateOf<List<FormTemplateEntity>>(emptyList()) }
     var dropdownExpanded by remember { mutableStateOf(false) }
 
-    // Database Purging Local States (ADDED) [1]
     var showPurgeDialog by remember { mutableStateOf(false) }
     var purgeInputText by remember { mutableStateOf("") }
+
+    var showImportConfirmDialog by remember { mutableStateOf(false) }
+    var selectedImportUri by remember { mutableStateOf<Uri?>(null) }
+
+    var showLoadingPopup by remember { mutableStateOf(false) }
+    var isImportDone by remember { mutableStateOf(false) }
+    var importResult by remember { mutableStateOf<ImportResult?>(null) }
 
     val m3TextFieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -70,6 +81,15 @@ fun AppSettingsScreen(
 
     val cardBadgeDisabledMsg = stringResource(R.string.settings_card_badge_disabled_toast)
     val dbCompactSuccessMsg = stringResource(R.string.settings_compact_db_success)
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let { selectedUri ->
+            selectedImportUri = selectedUri
+            showImportConfirmDialog = true
+        }
+    }
 
     LaunchedEffect(Unit) {
         availableTemplates = repository.getAllFormTemplates()
@@ -128,7 +148,7 @@ fun AppSettingsScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    // 3-CHOICE SELECTION DROPDOWN [1]
+                    // 3-CHOICE SELECTION DROPDOWN
                     val themeLabel = when (appTheme) {
                         "Light" -> "Light Theme"
                         "Dark" -> "Dark Theme"
@@ -268,7 +288,7 @@ fun AppSettingsScreen(
                 }
             }
 
-            // Storage and Local Maintenance Category
+            // Storage, Backup & Database Category
             Text(stringResource(R.string.settings_storage_database), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
             Card(
@@ -277,7 +297,49 @@ fun AppSettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
-                    // Compact Local Database Row
+                    // 1. Export JSON Backup Action
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                scope.launch {
+                                    JsonSyncEngine.exportBackupJson(context, repository)
+                                }
+                            }
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Export Database (JSON)", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Saves all student directories, classes, and evaluations as a local JSON file.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                        }
+                        Icon(Icons.Default.Save, contentDescription = "Export Backup", tint = MaterialTheme.colorScheme.primary)
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    // 2. Import JSON Backup Action
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                filePickerLauncher.launch("application/json") // Restricted strictly to JSON format [1]
+                            }
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Import Database (JSON)", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Restores all student profiles, behavior logs, and records from a JSON backup.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                        }
+                        Icon(Icons.Default.Download, contentDescription = "Import Backup", tint = MaterialTheme.colorScheme.primary)
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    // 3. Compact Local Database Row
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -307,7 +369,7 @@ fun AppSettingsScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    // Purge Database Row (ADDED with security warning checks) [1]
+                    // 4. Purge Database Row
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -339,7 +401,7 @@ fun AppSettingsScreen(
             }
         }
 
-        // DATABASE PURGE DOUBLE-VALIDATION DIALOG (ADDED) [1]
+        // DATABASE PURGE DIALOG
         if (showPurgeDialog) {
             AlertDialog(
                 onDismissRequest = {
@@ -374,7 +436,7 @@ fun AppSettingsScreen(
                             scope.launch(Dispatchers.IO) {
                                 try {
                                     val db = AppDatabase.getDatabase(context)
-                                    db.clearAllTables() // Deletes all records in all Room tables transaction-safely
+                                    db.clearAllTables()
                                     withContext(Dispatchers.Main) {
                                         Toast.makeText(context, "Database successfully purged!", Toast.LENGTH_LONG).show()
                                     }
@@ -383,7 +445,6 @@ fun AppSettingsScreen(
                                 }
                             }
                         },
-                        // Enabled only if the user inputs exactly "delete" (case-insensitive) [1]
                         enabled = purgeInputText.trim().lowercase() == "delete",
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
@@ -398,6 +459,89 @@ fun AppSettingsScreen(
                         }
                     ) {
                         Text(stringResource(R.string.action_cancel))
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
+        }
+
+        // DIRECT DATABASE IMPORT CONFIRMATION DIALOG
+        if (showImportConfirmDialog && selectedImportUri != null) {
+            val importUri = selectedImportUri!!
+            AlertDialog(
+                onDismissRequest = { showImportConfirmDialog = false },
+                title = { Text("Restore Database?", fontWeight = FontWeight.Bold) },
+                text = { Text("Are you sure you want to restore your database from this JSON backup? This will import all Classrooms, Students, Behavior Logs, Attendance Records, and Gradebooks.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showImportConfirmDialog = false
+                            isImportDone = false
+                            showLoadingPopup = true // Reveals dynamic restoration tracker
+
+                            scope.launch {
+                                val result = JsonSyncEngine.importUnencryptedBackup(context, importUri, repository)
+                                importResult = result
+                                isImportDone = true
+                            }
+                        }
+                    ) {
+                        Text(stringResource(R.string.action_yes))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showImportConfirmDialog = false }) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
+        }
+
+        // DATABASE RESTORATION PROGRESS POPUP
+        if (showLoadingPopup) {
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text(if (isImportDone) "Restoration Complete" else "Importing Data", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (!isImportDone) {
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                        } else {
+                            val res = importResult
+                            if (res != null) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    horizontalAlignment = Alignment.Start
+                                ) {
+                                    Text("Classrooms Loaded: ${res.classroomsCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("Students Loaded: ${res.studentsCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("Saved Filters Loaded: ${res.filtersCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("Attendance Sheets: ${res.attendanceCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("Gradebooks Loaded: ${res.gradebookCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                }
+                            } else {
+                                Text("Failed to parse the backup payload. Verify your JSON schema.", color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    if (isImportDone) {
+                        Button(
+                            onClick = {
+                                showLoadingPopup = false
+                                importResult = null
+                                isImportDone = false
+                            }
+                        ) {
+                            Text("Done")
+                        }
                     }
                 },
                 shape = RoundedCornerShape(28.dp)

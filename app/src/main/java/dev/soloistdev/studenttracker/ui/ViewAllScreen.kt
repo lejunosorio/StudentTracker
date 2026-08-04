@@ -1,6 +1,8 @@
 package dev.soloistdev.studenttracker.ui
 
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult // RESOLVED: Launcher import
+import androidx.activity.result.contract.ActivityResultContracts // RESOLVED: Contracts import
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -20,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -43,6 +46,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.soloistdev.studenttracker.R
+import dev.soloistdev.studenttracker.data.ImportResult // RESOLVED: ImportResult import
+import dev.soloistdev.studenttracker.data.JsonSyncEngine // RESOLVED: Sync engine import
+import dev.soloistdev.studenttracker.data.StudentRepository // RESOLVED: Repository import
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -55,7 +61,6 @@ fun ViewAllScreen(
     onOpenTemplates: () -> Unit,
     onOpenMap: () -> Unit,
     onOpenRecycleBin: () -> Unit,
-    onOpenSync: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenAttendance: () -> Unit,
     onOpenAttendanceWithArgs: (Int, Long) -> Unit,
@@ -78,6 +83,75 @@ fun ViewAllScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val repository = remember { StudentRepository(context) }
+
+    // ==========================================
+    // CLASSROOMS BOARD CONTROLLERS & DATA MERGES (DECLARED FIRST) [1]
+    // ==========================================
+    // null = State A (Classrooms Board), non-null = State B (Directory List)
+    var selectedClassroomForView by remember { mutableStateOf<String?>(null) }
+
+    // Dynamically compile a distinct, sorted list of registered classrooms from the student database
+    val distinctClassrooms = remember(students) {
+        students.map { it.student.className }.filter { it.isNotBlank() }.distinct().sorted()
+    }
+
+    fun getStudentCountForClass(className: String): Int {
+        return students.count { it.student.className == className }
+    }
+
+    val filteredDirectoryStudents = remember(students, selectedClassroomForView) {
+        if (selectedClassroomForView == null || selectedClassroomForView == "All") {
+            students
+        } else {
+            students.filter { it.student.className == selectedClassroomForView }
+        }
+    }
+
+    // ==========================================
+    // STARTUP EMPTY ONBOARDING DIALOG STATES (ADDED) [1]
+    // ==========================================
+    var showOnboardingDialog by remember { mutableStateOf(false) }
+    var hasCheckedOnboarding by remember { mutableStateOf(false) }
+
+    // Collects initial database loading indicator state flow [1]
+    val isInitialLoadCompleted by viewModel.isInitialLoadCompleted.collectAsState()
+
+    // Dynamic loading popups
+    var showLoadingPopup by remember { mutableStateOf(false) }
+    var isImportDone by remember { mutableStateOf(false) }
+    var importResult by remember { mutableStateOf<ImportResult?>(null) }
+    var loadingStatusText by remember { mutableStateOf("") }
+
+    // Check on startup if database roster is empty (RESOLVED: direct database query prevents race conditions) [1]
+    LaunchedEffect(isInitialLoadCompleted) {
+        if (isInitialLoadCompleted && !hasCheckedOnboarding) {
+            val dbStudents = repository.getAllActiveStudents() // Direct, safe background query
+            if (dbStudents.isEmpty() && !isSelectionMode && selectedClassroomForView == null) {
+                showOnboardingDialog = true
+            }
+            hasCheckedOnboarding = true
+        }
+    }
+
+    // Direct local JSON file picker [1]
+    val onboardingFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let { selectedUri ->
+            showOnboardingDialog = false
+            isImportDone = false
+            loadingStatusText = "Restoring roster entities..."
+            showLoadingPopup = true // Reveals dynamic restoration progress popup
+
+            scope.launch {
+                val result = JsonSyncEngine.importUnencryptedBackup(context, selectedUri, repository)
+                importResult = result
+                isImportDone = true
+                viewModel.loadData() // Reloads directory layout on complete
+            }
+        }
+    }
 
     var showFilterSheet by remember { mutableStateOf(false) }
     var showSortSheet by remember { mutableStateOf(false) }
@@ -107,27 +181,6 @@ fun ViewAllScreen(
 
     var showBulkEditSheet by remember { mutableStateOf(false) }
 
-    // ==========================================
-    // CLASSROOMS BOARD CONTROLLERS & DATA MERGES
-    // ==========================================
-    var selectedClassroomForView by remember { mutableStateOf<String?>(null) }
-
-    val distinctClassrooms = remember(students) {
-        students.map { it.student.className }.filter { it.isNotBlank() }.distinct().sorted()
-    }
-
-    fun getStudentCountForClass(className: String): Int {
-        return students.count { it.student.className == className }
-    }
-
-    val filteredDirectoryStudents = remember(students, selectedClassroomForView) {
-        if (selectedClassroomForView == null || selectedClassroomForView == "All") {
-            students
-        } else {
-            students.filter { it.student.className == selectedClassroomForView }
-        }
-    }
-
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -142,7 +195,7 @@ fun ViewAllScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(rememberScrollState()) // RESOLVED: Makes drawer list fully scrollable [1, 2]
+                        .verticalScroll(rememberScrollState())
                         .padding(vertical = 12.dp)
                 ) {
                     Column(
@@ -292,20 +345,6 @@ fun ViewAllScreen(
                     )
 
                     NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.Refresh, contentDescription = null) },
-                        label = { Text(stringResource(R.string.menu_backup_sync)) },
-                        selected = false,
-                        onClick = {
-                            scope.launch {
-                                drawerState.close()
-                                onOpenSync()
-                            }
-                        },
-                        colors = drawerItemColors,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
-                    )
-
-                    NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Settings, contentDescription = null) },
                         label = { Text(stringResource(R.string.menu_app_settings)) },
                         selected = false,
@@ -319,11 +358,10 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp)) // Replaced weight(1f) to avoid infinite scroll conflicts [2]
+                    Spacer(modifier = Modifier.height(16.dp))
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // RECYCLE BIN AT THE VERY BOTTOM
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Delete, contentDescription = null) },
                         label = { Text(stringResource(R.string.menu_recycle_bin)) },
@@ -376,7 +414,7 @@ fun ViewAllScreen(
                             IconButton(onClick = { showBulkDeleteConfirmDialog = true }) {
                                 Icon(
                                     imageVector = Icons.Default.Delete,
-                                    contentDescription = stringResource(R.string.action_delete),
+                                    contentDescription = "Action Delete",
                                     tint = MaterialTheme.colorScheme.error
                                 )
                             }
@@ -496,7 +534,6 @@ fun ViewAllScreen(
 
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        // RESOLVED: Increased bottom margin safely clear of the bottom NavigationBar [1]
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -576,7 +613,6 @@ fun ViewAllScreen(
                         .fillMaxSize()
                         .padding(paddingValues)
                 ) {
-                    // Search Row
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1048,6 +1084,12 @@ fun ViewAllScreen(
                 },
                 title = { Text("New Grading Sheet", fontWeight = FontWeight.Bold) },
                 text = {
+                    val gradebookNoticeText = if (isSelectionMode) {
+                        "Notice: ${activeTargetRosterIds.size} selected students will be added to this gradebook sheet."
+                    } else {
+                        "Notice: All ${activeTargetRosterIds.size} students in this view will be added to this gradebook sheet."
+                    }
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1055,11 +1097,6 @@ fun ViewAllScreen(
                             .imePadding(),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        val gradebookNoticeText = if (isSelectionMode) {
-                            "Notice: ${activeTargetRosterIds.size} selected students will be added to this gradebook sheet."
-                        } else {
-                            "Notice: All ${activeTargetRosterIds.size} students in this view will be added to this gradebook sheet."
-                        }
                         Text(
                             text = gradebookNoticeText,
                             fontSize = 12.sp,
@@ -1215,6 +1252,93 @@ fun ViewAllScreen(
                     }) { Text(stringResource(R.string.action_ok)) }
                 }
             ) { DatePicker(state = pickerState, showModeToggle = false) }
+        }
+
+        // ON-LAUNCH EMPTY STATE ONBOARDING DIALOG [1]
+        if (showOnboardingDialog) {
+            AlertDialog(
+                onDismissRequest = { showOnboardingDialog = false },
+                title = { Text("Welcome to Student Tracker", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("No student records found in your secure local database. Choose an action to begin setting up your roster:")
+
+                        Button(
+                            onClick = { onboardingFilePicker.launch("application/json") },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Import JSON Backup")
+                        }
+
+                        Button(
+                            onClick = {
+                                showOnboardingDialog = false
+                                onAddStudent(-1) // Redirects to add student form
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                        ) {
+                            Text("Add Student manually")
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showOnboardingDialog = false }) {
+                        Text("Just Browse App")
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
+        }
+
+        // DATABASE ONBOARDING RESTORATION PROGRESS POPUP [1]
+        if (showLoadingPopup) {
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text(if (isImportDone) "Restoration Complete" else "Importing Data", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (!isImportDone) {
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                        } else {
+                            val res = importResult
+                            if (res != null) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    horizontalAlignment = Alignment.Start
+                                ) {
+                                    Text("Classrooms Loaded: ${res.classroomsCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("Students Loaded: ${res.studentsCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("Saved Filters Loaded: ${res.filtersCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("Attendance Sheets: ${res.attendanceCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("Gradebooks Loaded: ${res.gradebookCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                }
+                            } else {
+                                Text("Failed to parse the backup payload. Verify your JSON schema.", color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    if (isImportDone) {
+                        Button(
+                            onClick = {
+                                showLoadingPopup = false
+                                importResult = null
+                                isImportDone = false
+                            }
+                        ) {
+                            Text("Done")
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
         }
     }
 }

@@ -296,8 +296,7 @@ fun SyncScreen(onBack: () -> Unit) {
                     IconButton(
                         onClick = {
                             scope.launch {
-                                val list = repository.getAllActiveStudents()
-                                JsonSyncEngine.exportSecureBackup(context, list)
+                                JsonSyncEngine.exportBackupJson(context, repository)
                             }
                         },
                         colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -426,7 +425,7 @@ fun SyncScreen(onBack: () -> Unit) {
             }
         }
 
-        // CONFIRMATION DIALOG PRIOR TO FULL RESTORATION
+        // UNIFIED RESTORATION CONFIRMATION DIALOG (RESTORES ALL DATA STRUCTURES)
         if (showImportConfirmDialog && selectedImportUri != null) {
             val importUri = selectedImportUri!!
             AlertDialog(
@@ -442,15 +441,7 @@ fun SyncScreen(onBack: () -> Unit) {
                             showLoadingPopup = true // Reveals dynamic loading dialog
 
                             scope.launch {
-                                val fileName = getFileName(context, importUri)
-                                val isEncrypted = fileName?.endsWith(".enc", ignoreCase = true) == true
-
-                                val result = if (isEncrypted) {
-                                    JsonSyncEngine.importSecureBackup(context, importUri, repository)
-                                } else {
-                                    JsonSyncEngine.importUnencryptedBackup(context, importUri, repository)
-                                }
-
+                                val result = JsonSyncEngine.importUnencryptedBackup(context, importUri, repository)
                                 importResult = result
                                 isImportDone = true // Triggers Done button action block
                             }
@@ -498,7 +489,7 @@ fun SyncScreen(onBack: () -> Unit) {
                                     Text("Gradebooks Loaded: ${res.gradebookCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                                 }
                             } else {
-                                Text("Failed to decrypt or parse the backup payload. Verify your encryption key.", color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
+                                Text("Failed to decrypt or parse the backup payload. Verify your JSON schema.", color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
                             }
                         }
                     }

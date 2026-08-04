@@ -49,6 +49,10 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
     private val _selectedStudentIds = MutableStateFlow<Set<Int>>(emptySet())
     val selectedStudentIds: StateFlow<Set<Int>> = _selectedStudentIds
 
+    // ADDED: Tracks when the initial Room database disk seek completes [1]
+    private val _isInitialLoadCompleted = MutableStateFlow(false)
+    val isInitialLoadCompleted: StateFlow<Boolean> = _isInitialLoadCompleted
+
     private val sharedPrefs = application.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
 
     val students: StateFlow<List<StudentUiState>> = combine(
@@ -75,7 +79,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                     "Gender" -> if (student.gender == "F") "Female" else "Male"
                     "Home Address" -> student.address
                     "Student Contact" -> student.contactNumber
-                    "Class", "Classroom" -> student.className // UPDATED: "Classroom" key mapping
+                    "Class", "Classroom" -> student.className
                     "Age" -> {
                         val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
                         age.toString()
@@ -154,6 +158,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
     fun loadStudents() {
         viewModelScope.launch {
             _rawStudents.value = repository.getAllActiveStudents()
+            _isInitialLoadCompleted.value = true // RESOLVED: Sets loader state to true on disk read finish [1]
         }
     }
 
@@ -344,6 +349,39 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun createManualGradebookRecord(
+        name: String,
+        selectedIds: List<Int>,
+        maxPoints: Double,
+        examDate: Long,
+        checkDate: Long,
+        onCreated: (Int) -> Unit
+    ) {
+        viewModelScope.launch {
+            val column = dev.soloistdev.studenttracker.data.AssessmentColumnEntity(
+                name = name.trim(),
+                maxPoints = maxPoints,
+                examDate = examDate,
+                checkDate = checkDate,
+                savedFilterId = 0
+            )
+            val columnId = repository.insertAssessmentColumn(column).toInt()
+
+            selectedIds.forEach { studentId ->
+                repository.insertAssessmentScore(
+                    dev.soloistdev.studenttracker.data.AssessmentScoreEntity(
+                        columnId = columnId,
+                        studentId = studentId,
+                        score = ""
+                    )
+                )
+            }
+
+            clearSelection()
+            onCreated(columnId)
+        }
+    }
+
     private fun applyComparison(fieldValue: String, filter: FilterState): Boolean {
         val value1 = filter.value1.trim()
         val value2 = filter.value2.trim()
@@ -401,41 +439,6 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                 } else false
             }
             else -> true
-        }
-    }
-
-    fun createManualGradebookRecord(
-        name: String,
-        selectedIds: List<Int>,
-        maxPoints: Double,
-        examDate: Long,
-        checkDate: Long,
-        onCreated: (Int) -> Unit
-    ) {
-        viewModelScope.launch {
-            // Build the primary grading sheet column
-            val column = dev.soloistdev.studenttracker.data.AssessmentColumnEntity(
-                name = name.trim(),
-                maxPoints = maxPoints,
-                examDate = examDate,
-                checkDate = checkDate,
-                savedFilterId = 0
-            )
-            val columnId = repository.insertAssessmentColumn(column).toInt()
-
-            // Pre-populate grading score slots for each matched participant
-            selectedIds.forEach { studentId ->
-                repository.insertAssessmentScore(
-                    dev.soloistdev.studenttracker.data.AssessmentScoreEntity(
-                        columnId = columnId,
-                        studentId = studentId,
-                        score = ""
-                    )
-                )
-            }
-
-            clearSelection()
-            onCreated(columnId)
         }
     }
 }
