@@ -8,7 +8,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
-import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
@@ -16,6 +15,8 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 import java.io.File
 import java.io.FileOutputStream
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.set
 
 object QrCodeGenerator {
 
@@ -25,11 +26,11 @@ object QrCodeGenerator {
             val bitMatrix = writer.encode(text, BarcodeFormat.QR_CODE, size, size)
             val width = bitMatrix.width
             val height = bitMatrix.height
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+            val bitmap = createBitmap(width, height, Bitmap.Config.RGB_565)
 
             for (x in 0 until width) {
                 for (y in 0 until height) {
-                    bitmap.setPixel(x, y, if (bitMatrix.get(x, y)) Color.BLACK else Color.WHITE)
+                    bitmap[x, y] = if (bitMatrix.get(x, y)) Color.BLACK else Color.WHITE
                 }
             }
             bitmap
@@ -46,7 +47,7 @@ object QrCodeGenerator {
         // Allocate 70px of extra height at the bottom for the name label
         val extraHeight = 70
         val totalHeight = size + extraHeight
-        val compositeBitmap = Bitmap.createBitmap(size, totalHeight, Bitmap.Config.ARGB_8888)
+        val compositeBitmap = createBitmap(size, totalHeight)
 
         val canvas = Canvas(compositeBitmap)
         canvas.drawColor(Color.WHITE) // Draw a solid white background

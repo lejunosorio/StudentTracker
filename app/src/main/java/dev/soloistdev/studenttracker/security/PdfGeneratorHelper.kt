@@ -13,8 +13,6 @@ import androidx.core.content.FileProvider
 import dev.soloistdev.studenttracker.data.AppDatabase
 import dev.soloistdev.studenttracker.data.Guardian
 import dev.soloistdev.studenttracker.data.StudentEntity
-import dev.soloistdev.studenttracker.data.AssessmentColumnEntity // ADDED: Room entity imports
-import dev.soloistdev.studenttracker.data.AssessmentScoreEntity  // ADDED: Room entity imports
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject

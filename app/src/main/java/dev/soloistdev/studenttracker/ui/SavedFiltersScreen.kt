@@ -1,8 +1,6 @@
 package dev.soloistdev.studenttracker.ui
 
-import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -19,8 +17,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.CalendarToday
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Comment
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EventAvailable
@@ -51,6 +47,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
+import androidx.core.net.toUri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -446,7 +443,7 @@ fun SavedFiltersScreen(
                                     } else {
                                         val separator = if (android.os.Build.MANUFACTURER.equals("Samsung", ignoreCase = true)) ";" else ","
                                         val numbers = targetPhones.joinToString(separator)
-                                        val smsUri = Uri.parse("smsto:$numbers")
+                                        val smsUri = "smsto:$numbers".toUri()
                                         val smsIntent = Intent(Intent.ACTION_SENDTO, smsUri).apply {
                                             putExtra("sms_body", textBody)
                                         }
@@ -454,6 +451,7 @@ fun SavedFiltersScreen(
                                             context.startActivity(smsIntent)
                                             showBulkSmsDialog = false
                                         } catch (e: Exception) {
+                                            e.printStackTrace()
                                             Toast.makeText(context, R.string.notify_error_intent_failed, Toast.LENGTH_LONG).show()
                                         }
                                     }

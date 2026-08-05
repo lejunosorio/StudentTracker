@@ -41,6 +41,7 @@ class SavedFiltersViewModel(application: android.app.Application) : AndroidViewM
                         val json = JSONObject(student.customDataJson)
                         json.optString(activeBadgeField, "").trim().ifEmpty { null }
                     } catch (e: Exception) {
+                        e.printStackTrace()
                         null
                     }
                 } else null

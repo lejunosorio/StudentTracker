@@ -1,10 +1,8 @@
 package dev.soloistdev.studenttracker.ui
 
-import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -33,7 +31,6 @@ import androidx.compose.ui.unit.sp
 import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -187,12 +184,16 @@ fun QueryBuilderScreen(
                                             expanded = cExpanded,
                                             onDismissRequest = { cExpanded = false }
                                         ) {
-                                            val ops = if (rule.field == "Classroom") {
-                                                listOf("equal", "not equal", "empty", "not empty")
-                                            } else if (rule.field == "Age") {
-                                                listOf("equal", "greater than", "less than", "In between")
-                                            } else {
-                                                listOf("contains", "does not contain", "equal", "not equal")
+                                            val ops = when (rule.field) {
+                                                "Classroom" -> {
+                                                    listOf("equal", "not equal", "empty", "not empty")
+                                                }
+                                                "Age" -> {
+                                                    listOf("equal", "greater than", "less than", "In between")
+                                                }
+                                                else -> {
+                                                    listOf("contains", "does not contain", "equal", "not equal")
+                                                }
                                             }
                                             ops.forEach { option ->
                                                 DropdownMenuItem(
