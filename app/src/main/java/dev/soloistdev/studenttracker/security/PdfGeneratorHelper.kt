@@ -87,9 +87,12 @@ object PdfGeneratorHelper {
         val encodedContact = Uri.encode(student.contactNumber)
         val encodedGuardians = Uri.encode(student.guardiansJson)
         val encodedCustom = Uri.encode(student.customDataJson)
-        val encodedClass = Uri.encode(student.className)
+        val encodedClass = Uri.encode(student.classNamesJson)
 
-        // Fully serializes classroom cohort and seating positions to reconstruct records cleanly on import scans
+        // Resolves primary coordinates mapped inside our deep link payload
+        val primaryClass = student.getClassNamesList().firstOrNull() ?: ""
+        val primaryCoords = student.getSeatingCoordinates(primaryClass) ?: Pair(-1f, -1f)
+
         val qrPayload = "studenttracker://student?id=${student.id}" +
                 "&first=$encodedFirst" +
                 "&last=$encodedLast" +
@@ -100,8 +103,8 @@ object PdfGeneratorHelper {
                 "&guardians=$encodedGuardians" +
                 "&custom=$encodedCustom" +
                 "&class=$encodedClass" +
-                "&seatingX=${student.seatingX}" +
-                "&seatingY=${student.seatingY}"
+                "&seatingX=${primaryCoords.first}" +
+                "&seatingY=${primaryCoords.second}"
 
         val qrBitmap = QrCodeGenerator.generateQrCode(qrPayload, size = 80)
         if (qrBitmap != null) {
@@ -134,15 +137,16 @@ object PdfGeneratorHelper {
         canvas1.drawLine(40f, yPosition, 250f, yPosition, dividerPaint)
         yPosition += 25f
 
-        // Draw Classroom Info details
-        canvas1.drawText("Assigned Cohort: ${student.className.ifEmpty { "Floating Student (No assigned classroom)" }}", 40f, yPosition, textPaint)
+        // Displays comma-separated list representing all assigned classroom cohorts
+        val classStringList = student.getClassNamesList().joinToString(", ")
+        canvas1.drawText("Assigned Cohorts: ${classStringList.ifEmpty { "Floating Student (No assigned classroom)" }}", 40f, yPosition, textPaint)
 
-        if (student.seatingX >= 0f && student.seatingY >= 0f) {
+        val coords = student.getSeatingCoordinates(primaryClass)
+        if (primaryClass.isNotEmpty() && coords != null && coords.first >= 0f && coords.second >= 0f) {
             yPosition += 20f
-            // Translates coordinates to standard Row/Column locations for direct visibility
-            val gridRow = ((student.seatingY * 10).toInt()) + 1
-            val gridCol = ((student.seatingX * 10).toInt()) + 1
-            canvas1.drawText("Seating Position: Row $gridRow, Col $gridCol", 40f, yPosition, textPaint)
+            val gridRow = ((coords.second * 10).toInt()) + 1
+            val gridCol = ((coords.first * 10).toInt()) + 1
+            canvas1.drawText("Seating position in $primaryClass: Row $gridRow, Col $gridCol", 40f, yPosition, textPaint)
 
             // Render a mini visual seating chart layout of the classroom map parallel to the text block
             val gridLeft = 380f
@@ -176,19 +180,22 @@ object PdfGeneratorHelper {
 
             // Plot existing classmates in the same cohort as smaller neutral dots
             val classmates = db.studentDao().getAllActiveStudents()
-                .filter { classmate -> classmate.className == student.className && !classmate.isDeleted && classmate.id != student.id && classmate.seatingX >= 0f }
+                .filter { classmate -> classmate.getClassNamesList().contains(primaryClass) && !classmate.isDeleted && classmate.id != student.id }
 
             paint.color = Color.rgb(180, 180, 185)
             paint.style = Paint.Style.FILL
             classmates.forEach { classmate ->
-                val cx = gridLeft + 10f + (classmate.seatingX * (gridRight - gridLeft - 20f))
-                val cy = gridTop + 15f + (classmate.seatingY * (gridBottom - gridTop - 25f))
-                canvas1.drawCircle(cx, cy, 3.5f, paint)
+                val classmateCoords = classmate.getSeatingCoordinates(primaryClass)
+                if (classmateCoords != null && classmateCoords.first >= 0f && classmateCoords.second >= 0f) {
+                    val cx = gridLeft + 10f + (classmateCoords.first * (gridRight - gridLeft - 20f))
+                    val cy = gridTop + 15f + (classmateCoords.second * (gridBottom - gridTop - 25f))
+                    canvas1.drawCircle(cx, cy, 3.5f, paint)
+                }
             }
 
             // Highlights the primary student with a bold M3-thematic indicator
-            val studentCx = gridLeft + 10f + (student.seatingX * (gridRight - gridLeft - 20f))
-            val studentCy = gridTop + 15f + (student.seatingY * (gridBottom - gridTop - 25f))
+            val studentCx = gridLeft + 10f + (coords.first * (gridRight - gridLeft - 20f))
+            val studentCy = gridTop + 15f + (coords.second * (gridBottom - gridTop - 25f))
 
             paint.color = Color.rgb(103, 80, 164) // Highlight color
             canvas1.drawCircle(studentCx, studentCy, 6f, paint)
@@ -201,7 +208,7 @@ object PdfGeneratorHelper {
             paint.style = Paint.Style.FILL
         } else {
             yPosition += 20f
-            canvas1.drawText("Seating Status: Floating (Seating coordinate unassigned)", 40f, yPosition, textPaint)
+            canvas1.drawText("Seating Status: Floating (Seating coordinate unassigned in $primaryClass)", 40f, yPosition, textPaint)
         }
 
         yPosition += 35f

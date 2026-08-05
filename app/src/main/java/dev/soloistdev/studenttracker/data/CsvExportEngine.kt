@@ -13,7 +13,7 @@ import java.util.*
 
 object CsvExportEngine {
 
-    // Programmatically clear all old temporary .csv files under cacheDir/csv_exports to mitigate local state leaks [1]
+    // Programmatically clear all old temporary .csv files under cacheDir/csv_exports to mitigate local state leaks
     fun clearCsvCache(context: Context) {
         try {
             val cacheDir = File(context.cacheDir, "csv_exports")
@@ -30,14 +30,14 @@ object CsvExportEngine {
     }
 
     suspend fun exportRosterToCsv(context: Context, students: List<StudentEntity>) = withContext(Dispatchers.IO) {
-        // Safe-purge prior spreadsheets to eliminate stale plain-text PII [1]
+        // Safe-purge prior spreadsheets to eliminate stale plain-text PII
         clearCsvCache(context)
 
         val db = AppDatabase.getDatabase(context)
         val templates = db.studentDao().getAllFormTemplates()
 
         // 1. Build Header: Core attributes + custom templates
-        val coreHeader = "Last Name,First Name,Gender,Birthday,Address,Student Contact,Guardian Name,Guardian Contact"
+        val coreHeader = "Last Name,First Name,Gender,Birthday,Address,Student Contact,Classrooms,Guardian Name,Guardian Contact"
         val dynamicHeader = if (templates.isNotEmpty()) {
             "," + templates.joinToString(",") { it.fieldName.replace("_", " ") }
         } else ""
@@ -58,7 +58,12 @@ object CsvExportEngine {
             val cleanAddress = student.address.replace(",", " ")
             val cleanGuardian = primaryName.replace(",", " ")
 
-            val coreRow = "${student.lastName},${student.firstName},${student.gender},$birthdayStr,$cleanAddress,${student.contactNumber},$cleanGuardian,$primaryContact"
+            // Serializes multiple classroom associations into a quoted semicolon-separated CSV list
+            val classList = student.getClassNamesList()
+            val classStr = if (classList.isEmpty()) "" else classList.joinToString("; ").replace("\"", "\"\"")
+            val cleanClassStr = "\"$classStr\""
+
+            val coreRow = "${student.lastName},${student.firstName},${student.gender},$birthdayStr,$cleanAddress,${student.contactNumber},$cleanClassStr,$cleanGuardian,$primaryContact"
 
             val dynamicRow = if (templates.isNotEmpty()) {
                 "," + templates.joinToString(",") { template ->
@@ -78,7 +83,7 @@ object CsvExportEngine {
             fos.flush()
         }
 
-        // Mark file for cleanup on VM exit [1]
+        // Mark file for cleanup on VM exit
         csvFile.deleteOnExit()
 
         val fileUri = FileProvider.getUriForFile(

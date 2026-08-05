@@ -23,14 +23,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource // Resolved: Explicit resource accessor import [1]
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import dev.soloistdev.studenttracker.R // Resolved: Explicit R file import [1]
+import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.security.ImageCompressor
 import java.text.SimpleDateFormat
 import java.util.*
@@ -61,7 +61,6 @@ fun AddEditStudentScreen(
         unfocusedTextColor = MaterialTheme.colorScheme.onSurface
     )
 
-    // Resource strings collected safely for verification checks
     val validationErrorMessage = stringResource(R.string.validation_error_fields)
     val errorSavingImageMessage = stringResource(R.string.error_saving_image)
 
@@ -104,8 +103,10 @@ fun AddEditStudentScreen(
                 },
                 actions = {
                     TextButton(onClick = {
+                        // Requiring at least one registered classroom group on saving
                         if (viewModel.firstName.isBlank() || viewModel.lastName.isBlank() ||
-                            viewModel.birthday == null || viewModel.guardiansStateList.isEmpty()) {
+                            viewModel.birthday == null || viewModel.guardiansStateList.isEmpty() ||
+                            viewModel.selectedClassrooms.isEmpty()) {
                             Toast.makeText(context, validationErrorMessage, Toast.LENGTH_LONG).show()
                         } else {
                             showSaveDialog = true
@@ -192,7 +193,7 @@ fun AddEditStudentScreen(
             var classDropdownExpanded by remember { mutableStateOf(false) }
 
             Text(
-                text = "Classroom Cohort Selection *",
+                text = "Classroom Cohort Selections * (Select all that apply)",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
@@ -201,8 +202,14 @@ fun AddEditStudentScreen(
                 expanded = classDropdownExpanded,
                 onExpandedChange = { classDropdownExpanded = it }
             ) {
+                val selectedText = if (viewModel.selectedClassrooms.isEmpty()) {
+                    "No Classrooms Selected"
+                } else {
+                    viewModel.selectedClassrooms.joinToString(", ")
+                }
+
                 OutlinedTextField(
-                    value = viewModel.className.ifEmpty { "Select Classroom" },
+                    value = selectedText,
                     onValueChange = {},
                     readOnly = true,
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = classDropdownExpanded) },
@@ -223,11 +230,22 @@ fun AddEditStudentScreen(
                         )
                     } else {
                         classrooms.forEach { classroom ->
+                            val isSelected = viewModel.selectedClassrooms.contains(classroom.name)
                             DropdownMenuItem(
-                                text = { Text("${classroom.name} (${classroom.startTime} - ${classroom.endTime})") },
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Checkbox(
+                                            checked = isSelected,
+                                            onCheckedChange = null // Managed dynamically via item click
+                                        )
+                                        Text("${classroom.name} (${classroom.startTime} - ${classroom.endTime})")
+                                    }
+                                },
                                 onClick = {
-                                    viewModel.className = classroom.name
-                                    classDropdownExpanded = false
+                                    viewModel.toggleClassroomSelection(classroom.name)
                                 }
                             )
                         }
@@ -345,7 +363,7 @@ fun AddEditStudentScreen(
             OutlinedButton(
                 onClick = { showAddGuardianDialog = true },
                 modifier = Modifier.fillMaxWidth(),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
                 shape = RoundedCornerShape(20.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -420,8 +438,8 @@ fun AddEditStudentScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .verticalScroll(rememberScrollState()) // Resolved: Scrollable layout prevents visual cutoffs [1]
-                            .imePadding() // Resolved: Dynamic padding adjustment based on system IME/Keyboard [1]
+                            .verticalScroll(rememberScrollState())
+                            .imePadding()
                     ) {
                         OutlinedTextField(
                             value = newGuardianName,

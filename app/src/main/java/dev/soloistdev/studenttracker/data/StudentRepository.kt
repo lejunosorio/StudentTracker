@@ -138,7 +138,6 @@ class StudentRepository(private val context: Context) {
         studentDao.insertAttendanceLog(log)
     }
 
-    // Resolved: Update status with active system timestamp [1]
     suspend fun updateAttendanceStatus(recordId: Int, dateMillis: Long, studentId: Int, status: String) = withContext(Dispatchers.IO) {
         studentDao.updateAttendanceStatus(recordId, dateMillis, studentId, status, System.currentTimeMillis())
     }
@@ -214,7 +213,8 @@ class StudentRepository(private val context: Context) {
         studentDao.softDeleteClassroom(classroomId)
     }
 
-    suspend fun updateStudentSeating(studentId: Int, x: Float, y: Float) = withContext(Dispatchers.IO) {
-        studentDao.updateStudentSeating(studentId, x, y)
+    // Performs updates to seating chart coordinates mapped explicitly per classroom
+    suspend fun updateStudentSeating(studentId: Int, className: String, x: Float, y: Float) = withContext(Dispatchers.IO) {
+        studentDao.updateStudentSeatingForClass(studentId, className, x, y)
     }
 }

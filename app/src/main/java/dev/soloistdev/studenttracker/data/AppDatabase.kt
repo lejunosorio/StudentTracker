@@ -24,7 +24,7 @@ import java.io.IOException
         AssessmentScoreEntity::class,
         ClassroomEntity::class
     ],
-    version = 15, // Upgraded version path matching current entity structures
+    version = 16, // Version 16: Multi-class and seating upgrade
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -35,7 +35,6 @@ abstract class AppDatabase : RoomDatabase() {
         private var INSTANCE: AppDatabase? = null
 
         // --- MIGRATION 13 TO 14 ---
-        // Safely introduces soft-deletion flags to existing operational schemas
         val MIGRATION_13_14 = object : Migration(13, 14) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 safeAddColumn(db, "form_templates", "isDeleted", "INTEGER NOT NULL DEFAULT 0")
@@ -45,15 +44,12 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         // --- MIGRATION 14 TO 15 ---
-        // Creates classrooms table, coordinates seating matrices, and sets up grading structures
         val MIGRATION_14_15 = object : Migration(14, 15) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // 1. Add Classroom attributes and float-coordinate columns to student directory
                 safeAddColumn(db, "students", "className", "TEXT NOT NULL DEFAULT ''")
                 safeAddColumn(db, "students", "seatingX", "REAL NOT NULL DEFAULT -1.0")
                 safeAddColumn(db, "students", "seatingY", "REAL NOT NULL DEFAULT -1.0")
 
-                // 2. Build the classrooms planning table
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS `classrooms` (
                         `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -65,7 +61,6 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 """.trimIndent())
 
-                // 3. Build academic assessment column records
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS `assessment_columns` (
                         `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -79,7 +74,6 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 """.trimIndent())
 
-                // 4. Build relational grade evaluation score matrices with foreign constraints
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS `assessment_scores` (
                         `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -92,23 +86,63 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 """.trimIndent())
 
-                // 5. Establish indexing to optimize relational student queries
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_assessment_scores_studentId` ON `assessment_scores` (`studentId`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_assessment_scores_columnId` ON `assessment_scores` (`columnId`)")
             }
         }
 
-        // Defensive column addition helper executing safe operations to bypass database crashes
-        private fun safeAddColumn(
-            db: SupportSQLiteDatabase,
-            tableName: String,
-            columnName: String,
-            typeAndDefault: String
-        ) {
+        // --- MIGRATION 15 TO 16 ---
+        // Performs the SQLite Table Recreation Pattern to cleanly drop obsolete columns and back-fill JSON sets
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. Rename the current dirty table
+                db.execSQL("ALTER TABLE `students` RENAME TO `students_old`")
+
+                // 2. Create the fresh table matching Room's exact expected 14-column schema
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `students` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `firstName` TEXT NOT NULL,
+                        `lastName` TEXT NOT NULL,
+                        `gender` TEXT NOT NULL,
+                        `birthday` INTEGER NOT NULL,
+                        `address` TEXT NOT NULL DEFAULT '',
+                        `contactNumber` TEXT NOT NULL DEFAULT '',
+                        `picturePath` TEXT NOT NULL DEFAULT '',
+                        `guardiansJson` TEXT NOT NULL DEFAULT '[]',
+                        `customDataJson` TEXT NOT NULL DEFAULT '{}',
+                        `isDeleted` INTEGER NOT NULL DEFAULT 0,
+                        `lastModified` INTEGER NOT NULL DEFAULT 0,
+                        `classNamesJson` TEXT NOT NULL DEFAULT '[]',
+                        `seatingJson` TEXT NOT NULL DEFAULT '{}'
+                    )
+                """.trimIndent())
+
+                // 3. Migrate and back-fill data into structured JSON formats inside a single transaction
+                db.execSQL("""
+                    INSERT INTO `students` (
+                        `id`, `firstName`, `lastName`, `gender`, `birthday`, 
+                        `address`, `contactNumber`, `picturePath`, `guardiansJson`, 
+                        `customDataJson`, `isDeleted`, `lastModified`, `classNamesJson`, `seatingJson`
+                    )
+                    SELECT 
+                        `id`, `firstName`, `lastName`, `gender`, `birthday`, 
+                        `address`, `contactNumber`, `picturePath`, `guardiansJson`, 
+                        `customDataJson`, `isDeleted`, `lastModified`,
+                        (CASE WHEN `className` IS NOT NULL AND `className` != '' THEN '["' || replace(`className`, '"', '\"') || '"]' ELSE '[]' END),
+                        (CASE WHEN `className` IS NOT NULL AND `className` != '' AND `seatingX` >= 0 AND `seatingY` >= 0 THEN '{"' || replace(`className`, '"', '\"') || '":{"x":' || `seatingX` || ',"y":' || `seatingY` || '}}' ELSE '{}' END)
+                    FROM `students_old`
+                """.trimIndent())
+
+                // 4. Safely drop the old table
+                db.execSQL("DROP TABLE `students_old`")
+            }
+        }
+
+        private fun safeAddColumn(db: SupportSQLiteDatabase, tableName: String, columnName: String, typeAndDefault: String) {
             try {
                 db.execSQL("ALTER TABLE `$tableName` ADD COLUMN `$columnName` $typeAndDefault")
             } catch (e: Exception) {
-                // Column likely exists from previous testing; logged for analysis without throwing an exception
                 android.util.Log.w("AppDatabase", "Column $columnName may already exist in table $tableName: ${e.message}")
             }
         }
@@ -125,8 +159,8 @@ abstract class AppDatabase : RoomDatabase() {
                         "student_tracker_secure_db"
                     )
                         .openHelperFactory(factory)
-                        .addMigrations(MIGRATION_13_14, MIGRATION_14_15)
-                        .fallbackToDestructiveMigration() // Retained as an absolute backup if migrations fail
+                        .addMigrations(MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                        .fallbackToDestructiveMigration()
                         .build().also {
                             it.openHelper.writableDatabase
                         }

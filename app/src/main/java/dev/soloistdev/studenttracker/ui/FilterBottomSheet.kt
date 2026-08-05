@@ -1,6 +1,5 @@
 package dev.soloistdev.studenttracker.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,7 +30,7 @@ fun FilterBottomSheet(
     onApplyFilter: (FilterState) -> Unit,
     onResetFilter: () -> Unit,
     onDismiss: () -> Unit,
-    hideClassroomFilter: Boolean = false // ADDED: Hides Classroom from filter fields list in classroom view
+    hideClassroomFilter: Boolean = false
 ) {
     var tempField by remember { mutableStateOf(activeFilter?.field ?: "Age") }
     var tempComparison by remember { mutableStateOf(activeFilter?.comparison ?: "In between") }
@@ -47,7 +46,6 @@ fun FilterBottomSheet(
     var showDatePicker1 by remember { mutableStateOf(false) }
     var showDatePicker2 by remember { mutableStateOf(false) }
 
-    // Dynamic field list creation
     val coreFields = remember(hideClassroomFilter) {
         if (hideClassroomFilter) {
             listOf("First Name", "Last Name", "Gender", "Birthday", "Address", "Age")
@@ -64,7 +62,8 @@ fun FilterBottomSheet(
 
     fun getFieldType(field: String): String {
         return when (field) {
-            "First Name", "Last Name", "Home Address", "Classroom" -> "TEXT"
+            "First Name", "Last Name", "Home Address" -> "TEXT"
+            "Classroom", "Class" -> "CLASSROOM" // Isolated field type
             "Gender" -> "GENDER"
             "Age" -> "NUMBER"
             "Birthday" -> "DATE"
@@ -78,7 +77,7 @@ fun FilterBottomSheet(
     val currentSelectedType = getFieldType(tempField)
     val isRangeMode = tempComparison == "In between"
     val isGenderMode = currentSelectedType == "GENDER"
-    val isClassroomMode = tempField == "Classroom"
+    val isClassroomMode = currentSelectedType == "CLASSROOM"
     val isBirthdayMode = tempField == "Birthday"
 
     val val1Num = tempVal1.toDoubleOrNull()
@@ -143,7 +142,7 @@ fun FilterBottomSheet(
                                     option == "Birthday" -> "exact_birthday"
                                     newType == "NUMBER" -> "In between"
                                     newType == "GENDER" -> "equal"
-                                    option == "Classroom" -> "equal"
+                                    newType == "CLASSROOM" -> "member of" // Enforces multi-class membership constraints
                                     else -> "contains"
                                 }
                                 tempVal1 = if (newType == "GENDER") "Female" else ""
@@ -174,7 +173,7 @@ fun FilterBottomSheet(
                     ) {
                         val operatorsList = when {
                             currentSelectedType == "NUMBER" -> listOf("equal", "greater than", "less than", "In between")
-                            isClassroomMode -> listOf("equal", "not equal", "empty", "not empty")
+                            isClassroomMode -> listOf("member of", "not member of") // Restricts strictly to class membership
                             else -> listOf("contains", "does not contain", "equal", "not equal")
                         }
 

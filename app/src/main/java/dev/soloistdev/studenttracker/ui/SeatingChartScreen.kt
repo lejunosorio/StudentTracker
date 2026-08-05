@@ -72,7 +72,10 @@ fun SeatingChartScreen(
     fun refreshStudents() {
         scope.launch {
             val list = repository.getAllActiveStudents()
-            students = list.filter { it.className == className }
+            // Filter students who are members of this classroom
+            students = list.filter { student ->
+                student.getClassNamesList().contains(className)
+            }
         }
     }
 
@@ -80,25 +83,37 @@ fun SeatingChartScreen(
         refreshStudents()
     }
 
-    val placedStudents = remember(students) { students.filter { it.seatingX >= 0f && it.seatingY >= 0f } }
-    val unplacedStudents = remember(students) { students.filter { it.seatingX < 0f || it.seatingY < 0f } }
+    // Filter placed/unplaced students according to active classroom coordinate configurations
+    val placedStudents = remember(students) {
+        students.filter { student ->
+            val coords = student.getSeatingCoordinates(className)
+            coords != null && coords.first >= 0f && coords.second >= 0f
+        }
+    }
+    val unplacedStudents = remember(students) {
+        students.filter { student ->
+            val coords = student.getSeatingCoordinates(className)
+            coords == null || coords.first < 0f || coords.second < 0f
+        }
+    }
 
     var canvasSize by remember { mutableStateOf(Offset.Zero) }
 
-    // DYNAMIC PIXEL-LEVEL & RELATIONAL GRID OVERLAP CALCULATIONS [1, 2]
+    // DYNAMIC PIXEL-LEVEL & RELATIONAL GRID OVERLAP CALCULATIONS
     val overlappingStudentIds = remember(placedStudents, canvasSize, activeGridCols, activeGridRows) {
         val set = mutableSetOf<Int>()
         if (canvasSize.x > 0 && canvasSize.y > 0 && placedStudents.isNotEmpty()) {
             if (activeGridCols > 0 && activeGridRows > 0) {
-                // GRID MODE: Overlap only if multiple students are assigned to the exact same cell coordinate (r, c) [1]
                 placedStudents.forEachIndexed { i, studentA ->
-                    val cA = round(studentA.seatingX * activeGridCols - 0.5f).toInt()
-                    val rA = round(studentA.seatingY * activeGridRows - 0.5f).toInt()
+                    val coordsA = studentA.getSeatingCoordinates(className) ?: Pair(-1f, -1f)
+                    val cA = round(coordsA.first * activeGridCols - 0.5f).toInt()
+                    val rA = round(coordsA.second * activeGridRows - 0.5f).toInt()
 
                     for (j in i + 1 until placedStudents.size) {
                         val studentB = placedStudents[j]
-                        val cB = round(studentB.seatingX * activeGridCols - 0.5f).toInt()
-                        val rB = round(studentB.seatingY * activeGridRows - 0.5f).toInt()
+                        val coordsB = studentB.getSeatingCoordinates(className) ?: Pair(-1f, -1f)
+                        val cB = round(coordsB.first * activeGridCols - 0.5f).toInt()
+                        val rB = round(coordsB.second * activeGridRows - 0.5f).toInt()
 
                         if (cA == cB && rA == rB) {
                             set.add(studentA.id)
@@ -107,15 +122,16 @@ fun SeatingChartScreen(
                     }
                 }
             } else {
-                // FREEFORM MODE: Overlap if physical circle boundaries collide (distance < 48dp) [1]
                 val diameterPx = with(density) { 48.dp.toPx() }
                 placedStudents.forEachIndexed { i, studentA ->
-                    val ax = studentA.seatingX * canvasSize.x
-                    val ay = studentA.seatingY * canvasSize.y
+                    val coordsA = studentA.getSeatingCoordinates(className) ?: Pair(-1f, -1f)
+                    val ax = coordsA.first * canvasSize.x
+                    val ay = coordsA.second * canvasSize.y
                     for (j in i + 1 until placedStudents.size) {
                         val studentB = placedStudents[j]
-                        val bx = studentB.seatingX * canvasSize.x
-                        val by = studentB.seatingY * canvasSize.y
+                        val coordsB = studentB.getSeatingCoordinates(className) ?: Pair(-1f, -1f)
+                        val bx = coordsB.first * canvasSize.x
+                        val by = coordsB.second * canvasSize.y
 
                         val dist = sqrt((ax - bx) * (ax - bx) + (ay - by) * (ay - by))
                         if (dist < diameterPx) {
@@ -133,15 +149,15 @@ fun SeatingChartScreen(
         if (activeGridCols > 0 && activeGridRows > 0 && canvasSize.x > 0) {
             val cellWidthDp = (canvasSize.x / activeGridCols) / density.density
             val cellHeightDp = (canvasSize.y / activeGridRows) / density.density
-            // Dynamically scales circle diameter based on grid density [2]
+            // Dynamically scales circle diameter based on grid density
             val dynamicSize = (minOf(cellWidthDp, cellHeightDp) * 0.85f).coerceIn(24f, 48f)
             dynamicSize.dp
         } else {
-            48.dp // Default size for free form layouts
+            48.dp
         }
     }
 
-    // ADAPTIVE TYPOGRAPHY ENGINE [1, 2]
+    // ADAPTIVE TYPOGRAPHY ENGINE
     val fontSizeSp = remember(nodeSizeDp) {
         if (nodeSizeDp < 32.dp) 10.sp else if (nodeSizeDp < 40.dp) 12.sp else 14.sp
     }
@@ -204,7 +220,8 @@ fun SeatingChartScreen(
                                         .width(100.dp)
                                         .clickable {
                                             scope.launch {
-                                                repository.updateStudentSeating(student.id, 0.5f, 0.5f)
+                                                // Places student inside selected class coordinate layout
+                                                repository.updateStudentSeating(student.id, className, 0.5f, 0.5f)
                                                 refreshStudents()
                                             }
                                         },
@@ -308,8 +325,11 @@ fun SeatingChartScreen(
 
                     // Draw Placed Student Nodes
                     placedStudents.forEach { student ->
-                        var localOffsetX by remember(student.id, student.seatingX) { mutableFloatStateOf(student.seatingX) }
-                        var localOffsetY by remember(student.id, student.seatingY) { mutableFloatStateOf(student.seatingY) }
+                        val currentCoordinates = remember(student.id, student.seatingJson) {
+                            student.getSeatingCoordinates(className) ?: Pair(0.5f, 0.5f)
+                        }
+                        var localOffsetX by remember(student.id, currentCoordinates) { mutableFloatStateOf(currentCoordinates.first) }
+                        var localOffsetY by remember(student.id, currentCoordinates) { mutableFloatStateOf(currentCoordinates.second) }
 
                         val leftOffset = (localOffsetX * maxWidth.value).dp
                         val topOffset = (localOffsetY * maxHeight.value).dp
@@ -321,8 +341,8 @@ fun SeatingChartScreen(
 
                         Box(
                             modifier = Modifier
-                                .offset(x = leftOffset - (nodeSizeDp / 2), y = topOffset - (nodeSizeDp / 2)) // UPDATED: Centers correctly based on dynamic size [1, 2]
-                                .size(nodeSizeDp) // UPDATED: Dynamic sizing applied [1, 2]
+                                .offset(x = leftOffset - (nodeSizeDp / 2), y = topOffset - (nodeSizeDp / 2))
+                                .size(nodeSizeDp)
                                 .clip(CircleShape)
                                 .background(nodeContainerColor)
                                 .then(if (nodeBorderStroke != null) Modifier.border(nodeBorderStroke, CircleShape) else Modifier)
@@ -353,12 +373,12 @@ fun SeatingChartScreen(
                                                 localOffsetY = snappedY
 
                                                 scope.launch {
-                                                    repository.updateStudentSeating(student.id, snappedX, snappedY)
+                                                    repository.updateStudentSeating(student.id, className, snappedX, snappedY)
                                                     refreshStudents()
                                                 }
                                             } else {
                                                 scope.launch {
-                                                    repository.updateStudentSeating(student.id, localOffsetX, localOffsetY)
+                                                    repository.updateStudentSeating(student.id, className, localOffsetX, localOffsetY)
                                                     refreshStudents()
                                                 }
                                             }
@@ -372,7 +392,7 @@ fun SeatingChartScreen(
                                 text = initials,
                                 color = nodeContentColor,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = fontSizeSp // UPDATED: Adaptive typography applied [1, 2]
+                                fontSize = fontSizeSp
                             )
                         }
                     }
@@ -410,7 +430,8 @@ fun SeatingChartScreen(
                         OutlinedButton(
                             onClick = {
                                 scope.launch {
-                                    repository.updateStudentSeating(student.id, -1f, -1f)
+                                    // Removes seating coordinates bound specifically to this classroom
+                                    repository.updateStudentSeating(student.id, className, -1f, -1f)
                                     refreshStudents()
                                     showActionSheet = false
                                     selectedStudentForAction = null
@@ -547,14 +568,13 @@ fun SeatingChartScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        // 1. FREEFORM / DRAFT OPTION
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
                                     scope.launch {
                                         students.forEach { s ->
-                                            repository.updateStudentSeating(s.id, -1f, -1f)
+                                            repository.updateStudentSeating(s.id, className, -1f, -1f)
                                         }
                                         activeGridRows = 0
                                         activeGridCols = 0
@@ -571,7 +591,6 @@ fun SeatingChartScreen(
                             }
                         }
 
-                        // 2. CEILING PERFECT SQUARE OPTION
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -585,7 +604,7 @@ fun SeatingChartScreen(
                                                 val c = index % s
                                                 val x = (c + 0.5f) / s.toFloat()
                                                 val y = (r + 0.5f) / s.toFloat()
-                                                repository.updateStudentSeating(student.id, x, y)
+                                                repository.updateStudentSeating(student.id, className, x, y)
                                             }
                                             activeGridRows = s
                                             activeGridCols = s
@@ -605,7 +624,6 @@ fun SeatingChartScreen(
                             }
                         }
 
-                        // 3. CUSTOM R x C GRID OPTION
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -674,11 +692,11 @@ fun SeatingChartScreen(
                             } else {
                                 scope.launch {
                                     students.forEachIndexed { index, student ->
-                                        val r = index / c
-                                        val c = index % c
-                                        val x = (c + 0.5f) / c.toFloat()
-                                        val y = (r + 0.5f) / r.toFloat()
-                                        repository.updateStudentSeating(student.id, x, y)
+                                        val rowIdx = index / c
+                                        val colIdx = index % c
+                                        val x = (colIdx + 0.5f) / c.toFloat()
+                                        val y = (rowIdx + 0.5f) / r.toFloat()
+                                        repository.updateStudentSeating(student.id, className, x, y)
                                     }
                                     activeGridRows = r
                                     activeGridCols = c

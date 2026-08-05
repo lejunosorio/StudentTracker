@@ -15,6 +15,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import org.json.JSONArray
 
 @Composable
 fun AppNavigation() {
@@ -311,6 +312,25 @@ fun AppNavigation() {
             val seatingX = backStackEntry.arguments?.getFloat("seatingX") ?: -1f
             val seatingY = backStackEntry.arguments?.getFloat("seatingY") ?: -1f
 
+            val resolvedClassNamesJson = if (className.startsWith("[") && className.endsWith("]")) {
+                className
+            } else {
+                if (className.isNotEmpty()) "[\"$className\"]" else "[]"
+            }
+
+            val resolvedSeatingJson = if (className.startsWith("[") && className.endsWith("]")) {
+                val firstClass = try {
+                    JSONArray(className).optString(0, "")
+                } catch (e: Exception) { "" }
+                if (firstClass.isNotEmpty() && seatingX >= 0f && seatingY >= 0f) {
+                    "{\"$firstClass\":{\"x\":$seatingX,\"y\":$seatingY}}"
+                } else "{}"
+            } else {
+                if (className.isNotEmpty() && seatingX >= 0f && seatingY >= 0f) {
+                    "{\"$className\":{\"x\":$seatingX,\"y\":$seatingY}}"
+                } else "{}"
+            }
+
             StudentImportScreen(
                 tempStudent = StudentEntity(
                     firstName = first,
@@ -321,9 +341,8 @@ fun AppNavigation() {
                     contactNumber = contact,
                     guardiansJson = guardians,
                     customDataJson = custom,
-                    className = className,
-                    seatingX = seatingX,
-                    seatingY = seatingY
+                    classNamesJson = resolvedClassNamesJson,
+                    seatingJson = resolvedSeatingJson
                 ),
                 onDismiss = {
                     navController.navigate(ScreenRoute.VIEW_ALL) {

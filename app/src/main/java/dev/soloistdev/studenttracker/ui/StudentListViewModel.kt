@@ -4,25 +4,14 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import dev.soloistdev.studenttracker.data.FormTemplateEntity
-import dev.soloistdev.studenttracker.data.Guardian
-import dev.soloistdev.studenttracker.data.StudentEntity
-import dev.soloistdev.studenttracker.data.StudentRepository
+import dev.soloistdev.studenttracker.data.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
-
-data class FilterState(
-    val id: String = UUID.randomUUID().toString(),
-    val field: String = "",
-    val comparison: String = "contains",
-    val value1: String = "",
-    val value2: String = "",
-    val isPinned: Boolean = false
-)
 
 class StudentListViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = StudentRepository(application)
@@ -49,7 +38,6 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
     private val _selectedStudentIds = MutableStateFlow<Set<Int>>(emptySet())
     val selectedStudentIds: StateFlow<Set<Int>> = _selectedStudentIds
 
-    // ADDED: Tracks when the initial Room database disk seek completes [1]
     private val _isInitialLoadCompleted = MutableStateFlow(false)
     val isInitialLoadCompleted: StateFlow<Boolean> = _isInitialLoadCompleted
 
@@ -63,11 +51,12 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
             rawList
         } else {
             rawList.filter { student ->
+                val classes = student.getClassNamesList()
                 student.firstName.contains(query, ignoreCase = true) ||
                         student.lastName.contains(query, ignoreCase = true) ||
                         student.address.contains(query, ignoreCase = true) ||
                         student.contactNumber.contains(query, ignoreCase = true) ||
-                        student.className.contains(query, ignoreCase = true)
+                        classes.any { it.contains(query, ignoreCase = true) }
             }
         }
 
@@ -79,7 +68,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                     "Gender" -> if (student.gender == "F") "Female" else "Male"
                     "Home Address" -> student.address
                     "Student Contact" -> student.contactNumber
-                    "Class", "Classroom" -> student.className
+                    "Class", "Classroom" -> student.classNamesJson // Passes JSON array string to applyComparison
                     "Age" -> {
                         val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
                         age.toString()
@@ -158,7 +147,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
     fun loadStudents() {
         viewModelScope.launch {
             _rawStudents.value = repository.getAllActiveStudents()
-            _isInitialLoadCompleted.value = true // RESOLVED: Sets loader state to true on disk read finish [1]
+            _isInitialLoadCompleted.value = true
         }
     }
 
@@ -385,6 +374,26 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
     private fun applyComparison(fieldValue: String, filter: FilterState): Boolean {
         val value1 = filter.value1.trim()
         val value2 = filter.value2.trim()
+
+        // Evaluates multiple class names utilizing contains (member of) or does not contain (not member of) logic
+        if (filter.field == "Class" || filter.field == "Classroom") {
+            val studentClasses = try {
+                val array = JSONArray(fieldValue)
+                val list = mutableListOf<String>()
+                for (i in 0 until array.length()) {
+                    list.add(array.getString(i).lowercase())
+                }
+                list
+            } catch (e: Exception) {
+                listOf(fieldValue.lowercase())
+            }
+            val targetClass = value1.lowercase()
+            return when (filter.comparison) {
+                "member_of", "contains", "equal" -> studentClasses.contains(targetClass)
+                "not_member_of", "does not contain", "not equal" -> !studentClasses.contains(targetClass)
+                else -> true
+            }
+        }
 
         if (filter.field == "Birthday") {
             val studentBirthday = fieldValue.toLongOrNull() ?: return false

@@ -1,8 +1,8 @@
 package dev.soloistdev.studenttracker.ui
 
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult // RESOLVED: Launcher import
-import androidx.activity.result.contract.ActivityResultContracts // RESOLVED: Contracts import
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -13,8 +13,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ManageSearch
@@ -46,9 +46,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.soloistdev.studenttracker.R
-import dev.soloistdev.studenttracker.data.ImportResult // RESOLVED: ImportResult import
-import dev.soloistdev.studenttracker.data.JsonSyncEngine // RESOLVED: Sync engine import
-import dev.soloistdev.studenttracker.data.StudentRepository // RESOLVED: Repository import
+import dev.soloistdev.studenttracker.data.ImportResult
+import dev.soloistdev.studenttracker.data.JsonSyncEngine
+import dev.soloistdev.studenttracker.data.StudentRepository
+import dev.soloistdev.studenttracker.data.AttendanceRecordEntity
+import dev.soloistdev.studenttracker.data.AttendanceLogEntity
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -85,36 +87,37 @@ fun ViewAllScreen(
     val context = LocalContext.current
     val repository = remember { StudentRepository(context) }
 
-    // ==========================================
-    // CLASSROOMS BOARD CONTROLLERS & DATA MERGES (DECLARED FIRST) [1]
-    // ==========================================
     // null = State A (Classrooms Board), non-null = State B (Directory List)
     var selectedClassroomForView by remember { mutableStateOf<String?>(null) }
 
-    // Dynamically compile a distinct, sorted list of registered classrooms from the student database
+    // Dynamically compile a distinct, sorted list of registered classrooms from the student database by flatMapping classroom list
     val distinctClassrooms = remember(students) {
-        students.map { it.student.className }.filter { it.isNotBlank() }.distinct().sorted()
+        students.flatMap { studentUi ->
+            studentUi.student.getClassNamesList()
+        }.filter { it.isNotBlank() }.distinct().sorted()
     }
 
+    // Counts students belonging to a classroom cohort
     fun getStudentCountForClass(className: String): Int {
-        return students.count { it.student.className == className }
+        return students.count { studentUi ->
+            studentUi.student.getClassNamesList().contains(className)
+        }
     }
 
+    // Filters students belonging to a classroom cohort
     val filteredDirectoryStudents = remember(students, selectedClassroomForView) {
         if (selectedClassroomForView == null || selectedClassroomForView == "All") {
             students
         } else {
-            students.filter { it.student.className == selectedClassroomForView }
+            students.filter { studentUi ->
+                studentUi.student.getClassNamesList().contains(selectedClassroomForView)
+            }
         }
     }
 
-    // ==========================================
-    // STARTUP EMPTY ONBOARDING DIALOG STATES (ADDED) [1]
-    // ==========================================
     var showOnboardingDialog by remember { mutableStateOf(false) }
     var hasCheckedOnboarding by remember { mutableStateOf(false) }
 
-    // Collects initial database loading indicator state flow [1]
     val isInitialLoadCompleted by viewModel.isInitialLoadCompleted.collectAsState()
 
     // Dynamic loading popups
@@ -123,10 +126,9 @@ fun ViewAllScreen(
     var importResult by remember { mutableStateOf<ImportResult?>(null) }
     var loadingStatusText by remember { mutableStateOf("") }
 
-    // Check on startup if database roster is empty (RESOLVED: direct database query prevents race conditions) [1]
     LaunchedEffect(isInitialLoadCompleted) {
         if (isInitialLoadCompleted && !hasCheckedOnboarding) {
-            val dbStudents = repository.getAllActiveStudents() // Direct, safe background query
+            val dbStudents = repository.getAllActiveStudents()
             if (dbStudents.isEmpty() && !isSelectionMode && selectedClassroomForView == null) {
                 showOnboardingDialog = true
             }
@@ -134,7 +136,6 @@ fun ViewAllScreen(
         }
     }
 
-    // Direct local JSON file picker [1]
     val onboardingFilePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -142,13 +143,13 @@ fun ViewAllScreen(
             showOnboardingDialog = false
             isImportDone = false
             loadingStatusText = "Restoring roster entities..."
-            showLoadingPopup = true // Reveals dynamic restoration progress popup
+            showLoadingPopup = true
 
             scope.launch {
                 val result = JsonSyncEngine.importUnencryptedBackup(context, selectedUri, repository)
                 importResult = result
                 isImportDone = true
-                viewModel.loadData() // Reloads directory layout on complete
+                viewModel.loadData()
             }
         }
     }
@@ -218,7 +219,6 @@ fun ViewAllScreen(
                         unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    // GROUP 1: DAILY PORTAL
                     Text(
                         text = "DAILY PORTAL",
                         fontSize = 11.sp,
@@ -281,7 +281,6 @@ fun ViewAllScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    // GROUP 2: CUSTOMIZATION
                     Text(
                         text = "CUSTOMIZATION",
                         fontSize = 11.sp,
@@ -306,14 +305,9 @@ fun ViewAllScreen(
 
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Bookmarks, contentDescription = null) },
-                        label = { Text(stringResource(R.string.menu_saved_filters)) },
+                        label = { Text(stringResource(R.string.menu_filters)) },
                         selected = false,
-                        onClick = {
-                            scope.launch {
-                                drawerState.close()
-                                onOpenMap()
-                            }
-                        },
+                        onClick = onOpenMap,
                         colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
@@ -335,7 +329,6 @@ fun ViewAllScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    // GROUP 3: SYSTEM UTILITIES & APP SETTINGS
                     Text(
                         text = "SYSTEM & SETTINGS",
                         fontSize = 11.sp,
@@ -516,9 +509,6 @@ fun ViewAllScreen(
             }
         ) { paddingValues ->
             if (selectedClassroomForView == null) {
-                // ==========================================
-                // STATE A: CLASSROOMS BOARD CARD MATRIX
-                // ==========================================
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -605,9 +595,6 @@ fun ViewAllScreen(
                     }
                 }
             } else {
-                // ==========================================
-                // STATE B: STUDENT LIST DIRECTORY VIEW
-                // ==========================================
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -741,7 +728,6 @@ fun ViewAllScreen(
                             )
                         }
                     } else {
-                        // Swipe-to-dismiss Student List Directory
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(bottom = 80.dp)
@@ -775,7 +761,7 @@ fun ViewAllScreen(
 
                                 SwipeToDismissBox(
                                     state = dismissState,
-                                    modifier = Modifier.animateItem().zIndex(if (isStudentSelected) 10f else 0f),
+                                    modifier = Modifier.zIndex(if (isStudentSelected) 10f else 0f),
                                     enableDismissFromStartToEnd = !isSelectionMode,
                                     enableDismissFromEndToStart = !isSelectionMode,
                                     backgroundContent = {
@@ -892,7 +878,6 @@ fun ViewAllScreen(
             )
         }
 
-        // Decoupled Bottom Sheet Overlays
         if (showFilterSheet) {
             FilterBottomSheet(
                 activeFilter = activeFilter,
@@ -924,7 +909,6 @@ fun ViewAllScreen(
             )
         }
 
-        // ATTENDANCE CREATION DIALOG (UPDATED WITH SELECTION ESTIMATE LABELS) [1]
         if (showCreateAttendanceDialog) {
             val m3TextFieldColors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -934,7 +918,7 @@ fun ViewAllScreen(
             )
 
             val activeTargetRosterIds = remember(filteredDirectoryStudents, selectedStudentIds, isSelectionMode) {
-                if (isSelectionMode) selectedStudentIds.toList() else filteredDirectoryStudents.map { it.student.id }
+                if (isSelectionMode) selectedStudentIds.toList() else filteredDirectoryStudents.map { studentUi -> studentUi.student.id }
             }
 
             AlertDialog(
@@ -982,7 +966,11 @@ fun ViewAllScreen(
                             onClick = { showStartPicker = true },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(8.dp),
-                            border = if (isDateRangeInvalid) BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) else ButtonDefaults.outlinedButtonBorder(enabled = true)
+                            border = if (isDateRangeInvalid) {
+                                BorderStroke(1.5.dp, MaterialTheme.colorScheme.error)
+                            } else {
+                                ButtonDefaults.outlinedButtonBorder(enabled = true)
+                            }
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -991,7 +979,12 @@ fun ViewAllScreen(
                             ) {
                                 val formattedStart = sdf.format(Date(startDateMillis))
                                 Text(stringResource(R.string.attendance_start_date_label, formattedStart), color = MaterialTheme.colorScheme.onSurface)
-                                Icon(Icons.Default.CalendarToday, contentDescription = "Select Start Date", tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                Icon(
+                                    imageVector = Icons.Default.CalendarToday,
+                                    contentDescription = "Select Start Date",
+                                    tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
                             }
                         }
 
@@ -999,7 +992,11 @@ fun ViewAllScreen(
                             onClick = { showEndPicker = true },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(8.dp),
-                            border = if (isDateRangeInvalid) BorderStroke(1.5.dp, MaterialTheme.colorScheme.error) else ButtonDefaults.outlinedButtonBorder(enabled = true)
+                            border = if (isDateRangeInvalid) {
+                                BorderStroke(1.5.dp, MaterialTheme.colorScheme.error)
+                            } else {
+                                ButtonDefaults.outlinedButtonBorder(enabled = true)
+                            }
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1008,7 +1005,12 @@ fun ViewAllScreen(
                             ) {
                                 val formattedEnd = sdf.format(Date(endDateMillis))
                                 Text(stringResource(R.string.attendance_end_date_label, formattedEnd), color = MaterialTheme.colorScheme.onSurface)
-                                Icon(Icons.Default.CalendarToday, contentDescription = "Select End Date", tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                Icon(
+                                    imageVector = Icons.Default.CalendarToday,
+                                    contentDescription = "Select End Date",
+                                    tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
                             }
                         }
 
@@ -1063,7 +1065,6 @@ fun ViewAllScreen(
             )
         }
 
-        // CREATE GRADEBOOK SHEET DIALOG (ADDED WITH SELECTION ESTIMATE LABELS) [1]
         if (showCreateGradebookDialog) {
             val m3TextFieldColors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -1073,7 +1074,7 @@ fun ViewAllScreen(
             )
 
             val activeTargetRosterIds = remember(filteredDirectoryStudents, selectedStudentIds, isSelectionMode) {
-                if (isSelectionMode) selectedStudentIds.toList() else filteredDirectoryStudents.map { it.student.id }
+                if (isSelectionMode) selectedStudentIds.toList() else filteredDirectoryStudents.map { studentUi -> studentUi.student.id }
             }
 
             AlertDialog(
@@ -1084,12 +1085,6 @@ fun ViewAllScreen(
                 },
                 title = { Text("New Grading Sheet", fontWeight = FontWeight.Bold) },
                 text = {
-                    val gradebookNoticeText = if (isSelectionMode) {
-                        "Notice: ${activeTargetRosterIds.size} selected students will be added to this gradebook sheet."
-                    } else {
-                        "Notice: All ${activeTargetRosterIds.size} students in this view will be added to this gradebook sheet."
-                    }
-
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1098,7 +1093,7 @@ fun ViewAllScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = gradebookNoticeText,
+                            text = "Notice: All ${activeTargetRosterIds.size} target students will be added to this gradebook sheet.",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.secondary,
@@ -1124,7 +1119,6 @@ fun ViewAllScreen(
 
                         val sdf = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
 
-                        // Exam Date selection button
                         Text(text = "Exam Date *", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         OutlinedButton(
                             onClick = { showExamDatePicker = true },
@@ -1141,7 +1135,6 @@ fun ViewAllScreen(
                             }
                         }
 
-                        // Evaluation Checking Date selection button
                         Text(text = "Checking Date *", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         OutlinedButton(
                             onClick = { showCheckDatePicker = true },
@@ -1254,7 +1247,6 @@ fun ViewAllScreen(
             ) { DatePicker(state = pickerState, showModeToggle = false) }
         }
 
-        // ON-LAUNCH EMPTY STATE ONBOARDING DIALOG [1]
         if (showOnboardingDialog) {
             AlertDialog(
                 onDismissRequest = { showOnboardingDialog = false },
@@ -1273,7 +1265,7 @@ fun ViewAllScreen(
                         Button(
                             onClick = {
                                 showOnboardingDialog = false
-                                onAddStudent(-1) // Redirects to add student form
+                                onAddStudent(-1)
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
@@ -1291,7 +1283,6 @@ fun ViewAllScreen(
             )
         }
 
-        // DATABASE ONBOARDING RESTORATION PROGRESS POPUP [1]
         if (showLoadingPopup) {
             AlertDialog(
                 onDismissRequest = {},

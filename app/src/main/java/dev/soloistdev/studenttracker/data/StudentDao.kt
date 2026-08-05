@@ -12,6 +12,9 @@ interface StudentDao {
     @Query("SELECT * FROM students WHERE isDeleted = 0 ORDER BY lastName ASC")
     fun getAllActiveStudents(): List<StudentEntity>
 
+    @Query("SELECT * FROM students WHERE id = :studentId")
+    fun getStudentById(studentId: Int): StudentEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertStudent(student: StudentEntity): Long
 
@@ -46,10 +49,6 @@ interface StudentDao {
 
     @Query("DELETE FROM form_templates WHERE id = :templateId")
     fun permanentDeleteFormTemplate(templateId: Int)
-
-
-    // --- MAP ARCHIVES QUERIES DELETED COMPLETELY ---
-    // [All queries referencing map_archives are removed from here]
 
 
     // --- SAVED FILTERS QUERIES ---
@@ -106,7 +105,6 @@ interface StudentDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertAttendanceLog(log: AttendanceLogEntity): Long
 
-    // Resolved: Update status alongside lastModified timestamp [1]
     @Query("UPDATE attendance_logs SET status = :status, lastModified = :lastModified WHERE recordId = :recordId AND dateMillis = :dateMillis AND studentId = :studentId")
     fun updateAttendanceStatus(recordId: Int, dateMillis: Long, studentId: Int, status: String, lastModified: Long): Int
 
@@ -164,6 +162,13 @@ interface StudentDao {
     @Query("UPDATE classrooms SET isDeleted = 1 WHERE id = :classroomId")
     fun softDeleteClassroom(classroomId: Int)
 
-    @Query("UPDATE students SET seatingX = :x, seatingY = :y WHERE id = :studentId")
-    fun updateStudentSeating(studentId: Int, x: Float, y: Float)
+    // Performs classroom-specific seating writes via an transaction
+    @Transaction
+    fun updateStudentSeatingForClass(studentId: Int, className: String, x: Float, y: Float) {
+        val student = getStudentById(studentId)
+        if (student != null) {
+            val updatedStudent = student.withUpdatedSeating(className, x, y)
+            insertStudent(updatedStudent)
+        }
+    }
 }

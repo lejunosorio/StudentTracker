@@ -1,5 +1,6 @@
 package dev.soloistdev.studenttracker.ui
 
+import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -15,7 +16,7 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 
-class SavedFiltersViewModel(application: android.app.Application) : AndroidViewModel(application) {
+class SavedFiltersViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = StudentRepository(application)
     private val sharedPrefs = application.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
 
@@ -61,7 +62,6 @@ class SavedFiltersViewModel(application: android.app.Application) : AndroidViewM
     private val _templates = MutableStateFlow<List<FormTemplateEntity>>(emptyList())
     val templates: StateFlow<List<FormTemplateEntity>> = _templates
 
-    // ADDED: StateFlow to observe message templates
     private val _messageTemplates = MutableStateFlow<List<MessageTemplateEntity>>(emptyList())
     val messageTemplates: StateFlow<List<MessageTemplateEntity>> = _messageTemplates
 
@@ -74,7 +74,7 @@ class SavedFiltersViewModel(application: android.app.Application) : AndroidViewM
             _filters.value = repository.getAllSavedFilters()
             _students.value = repository.getAllActiveStudents()
             _templates.value = repository.getAllFormTemplates()
-            _messageTemplates.value = repository.getAllMessageTemplates() // LOADED: Custom templates
+            _messageTemplates.value = repository.getAllMessageTemplates()
         }
     }
 

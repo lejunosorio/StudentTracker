@@ -15,6 +15,7 @@ import dev.soloistdev.studenttracker.data.StudentRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import org.json.JSONObject
 
 class AddEditViewModel(application: Application) : AndroidViewModel(application) {
@@ -28,7 +29,8 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
     var contactNumber by mutableStateOf("")
     var picturePath by mutableStateOf("")
 
-    var className by mutableStateOf("") // ADDED: Binds class data in edit fields
+    // Track selections of multiple classrooms via Compose state list
+    val selectedClassrooms = mutableStateListOf<String>()
 
     val guardiansStateList = mutableStateListOf<Guardian>()
     val customDataMap = mutableStateMapOf<String, String>()
@@ -44,6 +46,7 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
     fun loadStudentForEditing(studentId: Int) {
         customDataMap.clear()
         guardiansStateList.clear()
+        selectedClassrooms.clear()
 
         viewModelScope.launch {
             _classrooms.value = repository.getAllClassrooms()
@@ -67,7 +70,9 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                 address = student.address
                 contactNumber = student.contactNumber
                 picturePath = student.picturePath
-                className = student.className // UPDATED: Load className into editing textfield state
+
+                // Deserializes assigned classes into local selection array
+                selectedClassrooms.addAll(student.getClassNamesList())
 
                 val list = Guardian.listFromJsonString(student.guardiansJson)
                 guardiansStateList.addAll(list)
@@ -81,6 +86,14 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                     e.printStackTrace()
                 }
             }
+        }
+    }
+
+    fun toggleClassroomSelection(className: String) {
+        if (selectedClassrooms.contains(className)) {
+            selectedClassrooms.remove(className)
+        } else {
+            selectedClassrooms.add(className)
         }
     }
 
@@ -113,6 +126,27 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                 jsonObject.put(key, value.trim())
             }
 
+            val classesJsonArray = JSONArray().apply {
+                selectedClassrooms.forEach { put(it) }
+            }
+
+            // Retain seating configurations only for classrooms that remain active
+            val oldStudent = editingStudentId?.let { id -> repository.getAllActiveStudents().find { it.id == id } }
+            val oldSeatingJson = oldStudent?.seatingJson ?: "{}"
+            val updatedSeatingJson = try {
+                val oldObj = JSONObject(oldSeatingJson)
+                val updatedObj = JSONObject()
+                selectedClassrooms.forEach { activeClass ->
+                    if (oldObj.has(activeClass)) {
+                        updatedObj.put(activeClass, oldObj.getJSONObject(activeClass))
+                    }
+                }
+                updatedObj.toString()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                "{}"
+            }
+
             val student = StudentEntity(
                 id = editingStudentId ?: 0,
                 firstName = firstName.trim(),
@@ -124,7 +158,8 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                 picturePath = picturePath,
                 guardiansJson = Guardian.listToJsonString(guardiansStateList.toList()),
                 customDataJson = jsonObject.toString(),
-                className = className.trim() // UPDATED: Write className to Room
+                classNamesJson = classesJsonArray.toString(),
+                seatingJson = updatedSeatingJson
             )
             repository.insertStudent(student)
             _saveSuccess.value = true

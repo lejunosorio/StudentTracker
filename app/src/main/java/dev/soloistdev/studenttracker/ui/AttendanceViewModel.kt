@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -251,41 +252,31 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
 
                 val totalPRowNum = roster.size + 9
                 val totalP = logs.count { it.status == "PRESENT" && roster.any { r -> r.id == it.studentId } }
-                sheetData.append("<row r=\"$totalPRowNum\" ht=\"20\" customHeight=\"1\">")
-                sheetData.append(writeStringCell("A$totalPRowNum", "Total Present", 8))
-                sheetData.append("<c r=\"B$totalPRowNum\" s=\"0\"/>")
+                sheetData.append("<row r=\"B$totalPRowNum\" s=\"0\"/>")
                 sheetData.append(writeNumberCell("C$totalPRowNum", totalP, 3))
                 sheetData.append("</row>")
 
                 val totalARowNum = roster.size + 10
                 val totalA = logs.count { it.status == "ABSENT" && roster.any { r -> r.id == it.studentId } }
-                sheetData.append("<row r=\"$totalARowNum\" ht=\"20\" customHeight=\"1\">")
-                sheetData.append(writeStringCell("A$totalARowNum", "Total Absent", 8))
-                sheetData.append("<c r=\"B$totalARowNum\" s=\"0\"/>")
+                sheetData.append("<row r=\"B$totalARowNum\" s=\"0\"/>")
                 sheetData.append(writeNumberCell("C$totalARowNum", totalA, 4))
                 sheetData.append("</row>")
 
                 val totalERowNum = roster.size + 11
                 val totalE = logs.count { it.status == "EXCUSED" && roster.any { r -> r.id == it.studentId } }
-                sheetData.append("<row r=\"$totalERowNum\" ht=\"20\" customHeight=\"1\">")
-                sheetData.append(writeStringCell("A$totalERowNum", "Total Excused", 8))
-                sheetData.append("<c r=\"B$totalERowNum\" s=\"0\"/>")
+                sheetData.append("<row r=\"B$totalERowNum\" s=\"0\"/>")
                 sheetData.append(writeNumberCell("C$totalERowNum", totalE, 5))
                 sheetData.append("</row>")
 
                 val totalRRowNum = roster.size + 12
                 val totalR = logs.count { it.status == "REMOVED" && roster.any { r -> r.id == it.studentId } }
-                sheetData.append("<row r=\"$totalRRowNum\" ht=\"20\" customHeight=\"1\">")
-                sheetData.append(writeStringCell("A$totalRRowNum", "Total Removed", 8))
-                sheetData.append("<c r=\"B$totalRRowNum\" s=\"0\"/>")
+                sheetData.append("<row r=\"B$totalRRowNum\" s=\"0\"/>")
                 sheetData.append(writeNumberCell("C$totalRRowNum", totalR, 6))
                 sheetData.append("</row>")
 
                 val totalURowNum = roster.size + 13
                 val totalU = logs.count { it.status == "NOT_SET" && roster.any { r -> r.id == it.studentId } }
-                sheetData.append("<row r=\"$totalURowNum\" ht=\"20\" customHeight=\"1\">")
-                sheetData.append(writeStringCell("A$totalURowNum", "Total Unmarked", 8))
-                sheetData.append("<c r=\"B$totalURowNum\" s=\"0\"/>")
+                sheetData.append("<row r=\"B$totalURowNum\" s=\"0\"/>")
                 sheetData.append(writeNumberCell("C$totalURowNum", totalU, 7))
                 sheetData.append("</row>")
 
@@ -714,7 +705,7 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
             "Last Name" -> student.lastName
             "Gender" -> if (student.gender == "F") "Female" else "Male"
             "Address" -> student.address
-            "Class", "Classroom" -> student.className
+            "Class", "Classroom" -> student.classNamesJson // Updated to return multi-classroom array data
             "Age" -> {
                 val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
                 age.toString()
@@ -732,6 +723,29 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2: String): Boolean {
         val cleanVal = fieldVal.trim()
+
+        // Evaluates multiple class names utilizing contains (member of) or does not contain (not member of) logic
+        val isJsonArray = cleanVal.startsWith("[") && cleanVal.endsWith("]")
+        if (isJsonArray) {
+            val studentClasses = try {
+                val array = JSONArray(cleanVal)
+                val list = mutableListOf<String>()
+                for (i in 0 until array.length()) {
+                    list.add(array.getString(i).lowercase())
+                }
+                list
+            } catch (e: Exception) {
+                e.printStackTrace()
+                emptyList<String>()
+            }
+            val targetClass = v1.lowercase()
+            return when (operator) {
+                "member_of", "member of", "contains", "equal" -> studentClasses.contains(targetClass)
+                "not_member_of", "not member of", "does not contain", "not equal" -> !studentClasses.contains(targetClass)
+                else -> true
+            }
+        }
+
         if (operator in listOf("birth_year", "birth_month", "birth_month_year", "exact_birthday")) {
             val studentBirthday = cleanVal.toLongOrNull() ?: return false
             val studentCal = Calendar.getInstance().apply { timeInMillis = studentBirthday }

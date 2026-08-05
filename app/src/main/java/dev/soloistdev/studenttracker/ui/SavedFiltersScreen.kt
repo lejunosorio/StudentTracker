@@ -41,6 +41,7 @@ import dev.soloistdev.studenttracker.data.MessageTemplateEntity
 import dev.soloistdev.studenttracker.data.SavedFilterEntity
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
+import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -597,7 +598,7 @@ fun SavedFiltersScreen(
                         },
                         enabled = attendanceRecordName.isNotBlank() && !isDateRangeInvalid
                     ) {
-                        Text(stringResource(R.string.action_create))
+                        Text("Create")
                     }
                 },
                 dismissButton = {
@@ -678,7 +679,7 @@ fun FilterDialogForm(
 
     val isBirthdayMode = field == "Birthday"
     val isGenderMode = field == "Gender"
-    val isClassroomMode = field == "Classroom"
+    val isClassroomMode = field == "Classroom" || field == "Class"
     val isRangeMode = comparison == "In between"
 
     val val1Num = val1.toDoubleOrNull()
@@ -730,7 +731,7 @@ fun FilterDialogForm(
                                     comparison = when (option) {
                                         "Birthday" -> "exact_birthday"
                                         "Gender" -> "equal"
-                                        "Classroom" -> "equal"
+                                        "Classroom", "Class" -> "member of" // Enforces default multi-class search operator
                                         "Age" -> "In between"
                                         else -> "contains"
                                     }
@@ -756,7 +757,7 @@ fun FilterDialogForm(
                         DropdownMenu(expanded = compExpanded, onDismissRequest = { compExpanded = false }) {
                             val operatorsList = when (field) {
                                 "Age" -> listOf("equal", "greater than", "less than", "In between")
-                                "Classroom" -> listOf("equal", "not equal", "empty", "not empty")
+                                "Classroom", "Class" -> listOf("member of", "not member of") // Restricts strictly to membership
                                 else -> listOf("contains", "does not contain", "equal", "not equal")
                             }
                             operatorsList.forEach { option ->
@@ -1047,7 +1048,7 @@ private fun getFieldValue(student: StudentEntity, field: String): String {
         "Gender" -> if (student.gender == "F") "Female" else "Male"
         "Address", "Home Address" -> student.address
         "Student Contact" -> student.contactNumber
-        "Class", "Classroom" -> student.className
+        "Class", "Classroom" -> student.classNamesJson // Corrected to return multi-classroom array data
         "Age" -> {
             val currentYear = Calendar.getInstance().get(Calendar.YEAR)
             val birthCal = Calendar.getInstance().apply { timeInMillis = student.birthday }
@@ -1079,6 +1080,28 @@ private fun applyComparison(fieldValue: String, filter: FilterState): Boolean {
 
 private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2: String): Boolean {
     val cleanVal = fieldVal.trim()
+
+    // Resolves both visual queries and legacy exact operators seamlessly
+    val isJsonArray = cleanVal.startsWith("[") && cleanVal.endsWith("]")
+    if (isJsonArray) {
+        val studentClasses = try {
+            val array = JSONArray(cleanVal)
+            val list = mutableListOf<String>()
+            for (i in 0 until array.length()) {
+                list.add(array.getString(i).lowercase())
+            }
+            list
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList<String>()
+        }
+        val targetClass = v1.lowercase()
+        return when (operator) {
+            "member of", "equal", "contains" -> studentClasses.contains(targetClass)
+            "not member of", "not equal", "does not contain" -> !studentClasses.contains(targetClass)
+            else -> true
+        }
+    }
 
     if (operator in listOf("birth_year", "birth_month", "birth_month_year", "exact_birthday")) {
         val studentBirthday = cleanVal.toLongOrNull() ?: return false
@@ -1134,7 +1157,6 @@ private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2
     }
 }
 
-// Helper function to generate date lists for attendance sheets
 private fun generateDateList(startDate: Long, endDate: Long): List<Long> {
     val dates = mutableListOf<Long>()
     val startCal = Calendar.getInstance().apply {

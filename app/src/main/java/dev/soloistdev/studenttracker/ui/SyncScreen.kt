@@ -234,7 +234,10 @@ fun SyncScreen(onBack: () -> Unit) {
                                                                 put("guardiansJson", s.guardiansJson)
                                                                 put("customDataJson", s.customDataJson)
                                                                 put("lastModified", s.lastModified)
-                                                                put("classRoom", s.className)
+                                                                // Serializes multi-classroom listings for P2P backups
+                                                                put("classRoom", s.getClassNamesList().firstOrNull() ?: "")
+                                                                put("classNamesJson", JSONArray(s.classNamesJson))
+                                                                put("seatingJson", JSONObject(s.seatingJson))
                                                             })
                                                         }
                                                         put("students", studentsArr)
@@ -459,7 +462,7 @@ fun SyncScreen(onBack: () -> Unit) {
             )
         }
 
-        // DYNAMIC DATABASE RESTORATION PROGRESS POPUP
+        // DATABASE RESTORATION PROGRESS POPUP
         if (showLoadingPopup) {
             AlertDialog(
                 onDismissRequest = {},

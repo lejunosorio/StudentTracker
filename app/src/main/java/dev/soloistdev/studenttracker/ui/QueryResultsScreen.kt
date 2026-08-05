@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.*
+import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
@@ -188,7 +189,7 @@ fun QueryResultsScreen(
             }
         }
 
-        // SAVE QUERY AS FILTER DIALOG [1]
+        // SAVE QUERY AS FILTER DIALOG
         if (showSaveFilterDialog) {
             var filterName by remember { mutableStateOf("") }
             AlertDialog(
@@ -579,7 +580,6 @@ fun QueryResultsScreen(
     }
 }
 
-// Inline helper functions mirroring StudentListViewModel logic
 private fun getFieldValue(student: StudentEntity, field: String): String {
     return when (field) {
         "First Name" -> student.firstName
@@ -587,7 +587,7 @@ private fun getFieldValue(student: StudentEntity, field: String): String {
         "Gender" -> if (student.gender == "F") "Female" else "Male"
         "Address", "Home Address" -> student.address
         "Student Contact" -> student.contactNumber
-        "Class", "Classroom" -> student.className
+        "Class", "Classroom" -> student.classNamesJson // Corrected to return multi-classroom array data
         "Age" -> {
             val currentYear = Calendar.getInstance().get(Calendar.YEAR)
             val birthCal = Calendar.getInstance().apply { timeInMillis = student.birthday }
@@ -615,6 +615,28 @@ private fun getFieldValue(student: StudentEntity, field: String): String {
 
 private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2: String): Boolean {
     val cleanVal = fieldVal.trim()
+
+    // Resolves both visual queries and legacy exact operators seamlessly
+    val isJsonArray = cleanVal.startsWith("[") && cleanVal.endsWith("]")
+    if (isJsonArray) {
+        val studentClasses = try {
+            val array = JSONArray(cleanVal)
+            val list = mutableListOf<String>()
+            for (i in 0 until array.length()) {
+                list.add(array.getString(i).lowercase())
+            }
+            list
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList<String>()
+        }
+        val targetClass = v1.lowercase()
+        return when (operator) {
+            "member of", "equal", "contains" -> studentClasses.contains(targetClass)
+            "not member of", "not equal", "does not contain" -> !studentClasses.contains(targetClass)
+            else -> true
+        }
+    }
 
     if (operator in listOf("birth_year", "birth_month", "birth_month_year", "exact_birthday")) {
         val studentBirthday = cleanVal.toLongOrNull() ?: return false

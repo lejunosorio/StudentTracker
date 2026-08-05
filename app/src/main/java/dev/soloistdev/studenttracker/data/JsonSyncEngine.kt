@@ -43,7 +43,7 @@ object JsonSyncEngine {
         val incomingIdToIdentityMap: Map<Int, String>
     )
 
-    // COMPLETE UNENCRYPTED JSON BACKUP EXPORTER (RE-ARCHITECTED) [1]
+    // COMPLETE UNENCRYPTED JSON BACKUP EXPORTER (RE-ARCHITECTED)
     suspend fun exportBackupJson(context: Context, repository: StudentRepository) = withContext(Dispatchers.IO) {
         try {
             val activeRoster = repository.getAllActiveStudents()
@@ -88,7 +88,10 @@ object JsonSyncEngine {
                         put("birthday", sdfDate.format(Date(s.birthday)))
                         put("address", s.address)
                         put("contactNumber", s.contactNumber)
-                        put("classRoom", s.className)
+                        // Backward compatibility: legacy single class string
+                        put("classRoom", s.getClassNamesList().firstOrNull() ?: "")
+                        put("classNamesJson", JSONArray(s.classNamesJson))
+                        put("seatingJson", JSONObject(s.seatingJson))
                         put("guardiansJson", JSONArray(s.guardiansJson))
                         put("customDataJson", JSONObject(s.customDataJson))
                         put("behaviorIncidents", behaviorArr)
@@ -132,7 +135,7 @@ object JsonSyncEngine {
                             }
 
                             participantsArr.put(JSONObject().apply {
-                                put("studentIdentifier", "${student.lastName}_${student.firstName}_${student.className}")
+                                put("studentIdentifier", "${student.lastName}_${student.firstName}_${student.getClassNamesList().firstOrNull() ?: ""}")
                                 put("attendance", attendanceObj)
                             })
                         }
@@ -158,7 +161,7 @@ object JsonSyncEngine {
                         roster.forEach { student ->
                             val matchedScore = colScores.find { it.studentId == student.id }
                             gradesArr.put(JSONObject().apply {
-                                put("studentIdentifier", "${student.lastName}_${student.firstName}_${student.className}")
+                                put("studentIdentifier", "${student.lastName}_${student.firstName}_${student.getClassNamesList().firstOrNull() ?: ""}")
                                 put("score", matchedScore?.score ?: "")
                             })
                         }
@@ -261,7 +264,6 @@ object JsonSyncEngine {
 
         val bdaySdf = SimpleDateFormat("MM-dd-yyyy", Locale.US)
 
-        // Reconciles incoming payload classes to prevent data-loss on clean merges
         val incomingClassrooms = mutableSetOf<String>()
         val classroomsArr = payloadObj?.optJSONArray("classrooms")
         if (classroomsArr != null) {
@@ -288,9 +290,32 @@ object JsonSyncEngine {
                 incomingIdToIdentityMap[incomingId] = identity
             }
 
-            // Boundary validation check: Nullify className if the class profile is unregistered
-            val rawClass = sObj.optString("Classroom", sObj.optString("classRoom", sObj.optString("class", ""))).trim()
-            val validatedClass = if (validClassrooms.contains(rawClass)) rawClass else ""
+            // Fallback Parsing for Multi-Class list
+            val classNamesJsonRaw = sObj.opt("classNamesJson")
+            val resolvedClassNamesJson = when (classNamesJsonRaw) {
+                is JSONArray -> classNamesJsonRaw.toString()
+                is String -> classNamesJsonRaw
+                else -> {
+                    val rawClass = sObj.optString("Classroom", sObj.optString("classRoom", sObj.optString("class", ""))).trim()
+                    val validatedClass = if (validClassrooms.contains(rawClass)) rawClass else ""
+                    if (validatedClass.isNotEmpty()) "[\"$validatedClass\"]" else "[]"
+                }
+            }
+
+            // Fallback Parsing for Multi-Class Seating coordinates
+            val seatingJsonRaw = sObj.opt("seatingJson")
+            val resolvedSeatingJson = when (seatingJsonRaw) {
+                is JSONObject -> seatingJsonRaw.toString()
+                is String -> seatingJsonRaw
+                else -> {
+                    val rawClass = sObj.optString("Classroom", sObj.optString("classRoom", sObj.optString("class", ""))).trim()
+                    val oldX = sObj.optDouble("seatingX", -1.0).toFloat()
+                    val oldY = sObj.optDouble("seatingY", -1.0).toFloat()
+                    if (rawClass.isNotEmpty() && oldX >= 0f && oldY >= 0f) {
+                        "{\"$rawClass\":{\"x\":$oldX,\"y\":$oldY}}"
+                    } else "{}"
+                }
+            }
 
             val student = StudentEntity(
                 firstName = first,
@@ -303,7 +328,8 @@ object JsonSyncEngine {
                 guardiansJson = sObj.optString("guardiansJson", "[]"),
                 customDataJson = sObj.optString("customDataJson", "{}"),
                 lastModified = lastMod,
-                className = validatedClass
+                classNamesJson = resolvedClassNamesJson,
+                seatingJson = resolvedSeatingJson
             )
 
             val localMatch = localStudents.find {
@@ -546,9 +572,32 @@ object JsonSyncEngine {
                 }
             } catch (_: Exception) {}
 
-            // Relational classroom bound validations
-            val rawClass = sObj.optString("Classroom", sObj.optString("classRoom", sObj.optString("class", ""))).trim()
-            val validatedClass = if (validClassroomNames.contains(rawClass)) rawClass else ""
+            // Fallback Parsing for Multi-Class list during direct restore operations
+            val classNamesJsonRaw = sObj.opt("classNamesJson")
+            val resolvedClassNamesJson = when (classNamesJsonRaw) {
+                is JSONArray -> classNamesJsonRaw.toString()
+                is String -> classNamesJsonRaw
+                else -> {
+                    val rawClass = sObj.optString("Classroom", sObj.optString("classRoom", sObj.optString("class", ""))).trim()
+                    val validatedClass = if (validClassroomNames.contains(rawClass)) rawClass else ""
+                    if (validatedClass.isNotEmpty()) "[\"$validatedClass\"]" else "[]"
+                }
+            }
+
+            // Fallback Parsing for Multi-Class Seating during direct restore operations
+            val seatingJsonRaw = sObj.opt("seatingJson")
+            val resolvedSeatingJson = when (seatingJsonRaw) {
+                is JSONObject -> seatingJsonRaw.toString()
+                is String -> seatingJsonRaw
+                else -> {
+                    val rawClass = sObj.optString("Classroom", sObj.optString("classRoom", sObj.optString("class", ""))).trim()
+                    val oldX = sObj.optDouble("seatingX", -1.0).toFloat()
+                    val oldY = sObj.optDouble("seatingY", -1.0).toFloat()
+                    if (rawClass.isNotEmpty() && oldX >= 0f && oldY >= 0f) {
+                        "{\"$rawClass\":{\"x\":$oldX,\"y\":$oldY}}"
+                    } else "{}"
+                }
+            }
 
             val student = StudentEntity(
                 firstName = first,
@@ -561,12 +610,15 @@ object JsonSyncEngine {
                 guardiansJson = resolvedGuardiansJson,
                 customDataJson = resolvedCustomDataJson,
                 isDeleted = false,
-                className = validatedClass
+                classNamesJson = resolvedClassNamesJson,
+                seatingJson = resolvedSeatingJson
             )
             val newStudentId = repository.insertStudent(student).toInt()
             studentsLoaded++
 
-            val identifier = "${last}_${first}_${student.className}"
+            // Establish mapping identifier representing the first classroom cohort cleanly
+            val firstClass = student.getClassNamesList().firstOrNull() ?: ""
+            val identifier = "${last}_${first}_${firstClass}"
             studentIdentifierToIdMap[identifier] = newStudentId
 
             val behaviorArr = sObj.optJSONArray("behaviorIncidents")

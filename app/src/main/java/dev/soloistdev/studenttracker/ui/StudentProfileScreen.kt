@@ -242,7 +242,10 @@ fun StudentProfileScreen(
                     val encodedContact = Uri.encode(currentStudent.contactNumber)
                     val encodedGuardians = Uri.encode(currentStudent.guardiansJson)
                     val encodedCustom = Uri.encode(currentStudent.customDataJson)
-                    val encodedClass = Uri.encode(currentStudent.className)
+                    val encodedClass = Uri.encode(currentStudent.classNamesJson)
+
+                    val firstClass = currentStudent.getClassNamesList().firstOrNull() ?: ""
+                    val coords = currentStudent.getSeatingCoordinates(firstClass) ?: Pair(-1f, -1f)
 
                     "studenttracker://student?id=${currentStudent.id}" +
                             "&first=$encodedFirst" +
@@ -254,8 +257,8 @@ fun StudentProfileScreen(
                             "&guardians=$encodedGuardians" +
                             "&custom=$encodedCustom" +
                             "&class=$encodedClass" +
-                            "&seatingX=${currentStudent.seatingX}" +
-                            "&seatingY=${currentStudent.seatingY}"
+                            "&seatingX=${coords.first}" +
+                            "&seatingY=${coords.second}"
                 }
 
                 Card(
