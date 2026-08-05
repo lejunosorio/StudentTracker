@@ -233,7 +233,7 @@ fun StudentProfileScreen(
                     )
                 }
 
-                // EXPANDABLE DIGITAL ID PROFILE QR CODE CARD
+                // EXPANDABLE DIGITAL ID PROFILE QR CODE CARD (Enforces classroom assignment and seating positions)
                 var qrExpanded by remember { mutableStateOf(false) }
                 val qrPayload = remember(currentStudent) {
                     val encodedFirst = Uri.encode(currentStudent.firstName)
@@ -242,6 +242,7 @@ fun StudentProfileScreen(
                     val encodedContact = Uri.encode(currentStudent.contactNumber)
                     val encodedGuardians = Uri.encode(currentStudent.guardiansJson)
                     val encodedCustom = Uri.encode(currentStudent.customDataJson)
+                    val encodedClass = Uri.encode(currentStudent.className)
 
                     "studenttracker://student?id=${currentStudent.id}" +
                             "&first=$encodedFirst" +
@@ -251,7 +252,10 @@ fun StudentProfileScreen(
                             "&address=$encodedAddress" +
                             "&contact=$encodedContact" +
                             "&guardians=$encodedGuardians" +
-                            "&custom=$encodedCustom"
+                            "&custom=$encodedCustom" +
+                            "&class=$encodedClass" +
+                            "&seatingX=${currentStudent.seatingX}" +
+                            "&seatingY=${currentStudent.seatingY}"
                 }
 
                 Card(
@@ -556,10 +560,7 @@ fun StudentProfileScreen(
                                     ) {
                                         Text(phone, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-                                        // Dynamic Communication Actions Row
                                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-
-                                            // SMS Alert Trigger button
                                             IconButton(
                                                 onClick = {
                                                     selectedGuardianForNotification = guardian
@@ -577,10 +578,9 @@ fun StudentProfileScreen(
                                                 )
                                             }
 
-                                            // Direct Dialer Dial Trigger button
                                             IconButton(
                                                 onClick = {
-                                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
+                                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${phone}"))
                                                     context.startActivity(intent)
                                                 },
                                                 colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
@@ -588,7 +588,7 @@ fun StudentProfileScreen(
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.Call,
-                                                    contentDescription = "Call $phone",
+                                                    contentDescription = "Call phone",
                                                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                                     modifier = Modifier.size(18.dp)
                                                 )
@@ -605,7 +605,6 @@ fun StudentProfileScreen(
             CircularProgressIndicator()
         }
 
-        // DYNAMIC NATIVE NOTIFICATION DISPATCHER DIALOG
         if (showNotificationDialog && selectedGuardianForNotification != null && student != null) {
             val targetStudent = student!!
             val targetGuardian = selectedGuardianForNotification!!
@@ -645,7 +644,6 @@ fun StudentProfileScreen(
 
             val isBehaviorTemplateDisabled = incidents.isEmpty()
 
-            // Swapped to basic Dialog for absolute layout control
             androidx.compose.ui.window.Dialog(
                 onDismissRequest = { showNotificationDialog = false }
             ) {
@@ -685,7 +683,6 @@ fun StudentProfileScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
 
-                        // Segmented choice row ensuring zero wrapping
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -704,7 +701,7 @@ fun StudentProfileScreen(
                                     shape = RoundedCornerShape(8.dp),
                                     border = BorderStroke(1.dp, if (isEnabled) borderColor else borderColor.copy(alpha = 0.2f)),
                                     color = if (isEnabled) containerColor else Color.Transparent,
-                                    modifier = Modifier.weight(1f) // Evenly-weighted columns
+                                    modifier = Modifier.weight(1f)
                                 ) {
                                     Box(
                                         modifier = Modifier.padding(vertical = 10.dp),
@@ -736,7 +733,6 @@ fun StudentProfileScreen(
                             )
                         }
 
-                        // Message Preview Console
                         Text(
                             text = stringResource(R.string.notify_preview_label),
                             fontSize = 12.sp,
@@ -768,7 +764,6 @@ fun StudentProfileScreen(
 
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        // Explicit horizontal action row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.End,
@@ -807,7 +802,6 @@ fun StudentProfileScreen(
             }
         }
 
-        // ADD BEHAVIOR INCIDENT DIALOG
         if (showAddIncidentDialog) {
             var incidentTitle by remember { mutableStateOf("") }
             var selectedCategory by remember { mutableStateOf("Positive") }

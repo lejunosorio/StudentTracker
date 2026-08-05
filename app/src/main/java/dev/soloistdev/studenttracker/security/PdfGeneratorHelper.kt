@@ -41,6 +41,9 @@ object PdfGeneratorHelper {
     suspend fun generateAndShareStudentPdf(context: Context, student: StudentEntity) = withContext(Dispatchers.IO) {
         clearPdfCache(context)
 
+        // Enforce database scope resolution across all pages to ensure proper compilation
+        val db = AppDatabase.getDatabase(context)
+
         val pdfDocument = PdfDocument()
         val textPaint = Paint().apply {
             color = Color.BLACK
@@ -84,7 +87,9 @@ object PdfGeneratorHelper {
         val encodedContact = Uri.encode(student.contactNumber)
         val encodedGuardians = Uri.encode(student.guardiansJson)
         val encodedCustom = Uri.encode(student.customDataJson)
+        val encodedClass = Uri.encode(student.className)
 
+        // Fully serializes classroom cohort and seating positions to reconstruct records cleanly on import scans
         val qrPayload = "studenttracker://student?id=${student.id}" +
                 "&first=$encodedFirst" +
                 "&last=$encodedLast" +
@@ -93,7 +98,10 @@ object PdfGeneratorHelper {
                 "&address=$encodedAddress" +
                 "&contact=$encodedContact" +
                 "&guardians=$encodedGuardians" +
-                "&custom=$encodedCustom"
+                "&custom=$encodedCustom" +
+                "&class=$encodedClass" +
+                "&seatingX=${student.seatingX}" +
+                "&seatingY=${student.seatingY}"
 
         val qrBitmap = QrCodeGenerator.generateQrCode(qrPayload, size = 80)
         if (qrBitmap != null) {
@@ -119,6 +127,84 @@ object PdfGeneratorHelper {
             yPosition += 25f
         }
         yPosition += 15f
+
+        // Classroom & Seating Section
+        canvas1.drawText("CLASSROOM & SEATING MAP", 40f, yPosition, sectionTitlePaint)
+        yPosition += 10f
+        canvas1.drawLine(40f, yPosition, 250f, yPosition, dividerPaint)
+        yPosition += 25f
+
+        // Draw Classroom Info details
+        canvas1.drawText("Assigned Cohort: ${student.className.ifEmpty { "Floating Student (No assigned classroom)" }}", 40f, yPosition, textPaint)
+
+        if (student.seatingX >= 0f && student.seatingY >= 0f) {
+            yPosition += 20f
+            // Translates coordinates to standard Row/Column locations for direct visibility
+            val gridRow = ((student.seatingY * 10).toInt()) + 1
+            val gridCol = ((student.seatingX * 10).toInt()) + 1
+            canvas1.drawText("Seating Position: Row $gridRow, Col $gridCol", 40f, yPosition, textPaint)
+
+            // Render a mini visual seating chart layout of the classroom map parallel to the text block
+            val gridLeft = 380f
+            val gridTop = yPosition - 35f
+            val gridRight = 530f
+            val gridBottom = yPosition + 45f
+
+            // Seating map background card container
+            paint.color = Color.rgb(245, 245, 247)
+            paint.style = Paint.Style.FILL
+            canvas1.drawRoundRect(gridLeft, gridTop, gridRight, gridBottom, 8f, 8f, paint)
+
+            paint.color = Color.rgb(218, 218, 222)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.5f
+            canvas1.drawRoundRect(gridLeft, gridTop, gridRight, gridBottom, 8f, 8f, paint)
+
+            // Classroom blackboard baseline representation bar
+            paint.style = Paint.Style.FILL
+            paint.color = Color.rgb(103, 80, 164) // Thematic deep violet
+            canvas1.drawRect(gridLeft + 35f, gridTop + 4f, gridRight - 35f, gridTop + 9f, paint)
+
+            val mapLabelPaint = Paint().apply {
+                color = Color.WHITE
+                textSize = 4.5f
+                isFakeBoldText = true
+                isAntiAlias = true
+                textAlign = Paint.Align.CENTER
+            }
+            canvas1.drawText("FRONT / BOARD", (gridLeft + gridRight) / 2f, gridTop + 8f, mapLabelPaint)
+
+            // Plot existing classmates in the same cohort as smaller neutral dots
+            val classmates = db.studentDao().getAllActiveStudents()
+                .filter { classmate -> classmate.className == student.className && !classmate.isDeleted && classmate.id != student.id && classmate.seatingX >= 0f }
+
+            paint.color = Color.rgb(180, 180, 185)
+            paint.style = Paint.Style.FILL
+            classmates.forEach { classmate ->
+                val cx = gridLeft + 10f + (classmate.seatingX * (gridRight - gridLeft - 20f))
+                val cy = gridTop + 15f + (classmate.seatingY * (gridBottom - gridTop - 25f))
+                canvas1.drawCircle(cx, cy, 3.5f, paint)
+            }
+
+            // Highlights the primary student with a bold M3-thematic indicator
+            val studentCx = gridLeft + 10f + (student.seatingX * (gridRight - gridLeft - 20f))
+            val studentCy = gridTop + 15f + (student.seatingY * (gridBottom - gridTop - 25f))
+
+            paint.color = Color.rgb(103, 80, 164) // Highlight color
+            canvas1.drawCircle(studentCx, studentCy, 6f, paint)
+
+            paint.color = Color.WHITE
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.2f
+            canvas1.drawCircle(studentCx, studentCy, 6f, paint)
+
+            paint.style = Paint.Style.FILL
+        } else {
+            yPosition += 20f
+            canvas1.drawText("Seating Status: Floating (Seating coordinate unassigned)", 40f, yPosition, textPaint)
+        }
+
+        yPosition += 35f
 
         // Custom Fields Section
         canvas1.drawText("CUSTOM METADATA", 40f, yPosition, sectionTitlePaint)
@@ -182,8 +268,7 @@ object PdfGeneratorHelper {
         canvas2.drawRect(40f, 80f, 555f, 82f, paint)
 
         // Read relational analytics from database
-        val db = AppDatabase.getDatabase(context)
-        val studentLogs = db.studentDao().getAllAttendanceLogs().filter { it.studentId == student.id }
+        val studentLogs = db.studentDao().getAllAttendanceLogs().filter { log -> log.studentId == student.id }
         val behaviorIncidents = db.studentDao().getIncidentsForStudent(student.id)
 
         // 1. Attendance Section (Top Half)
@@ -198,9 +283,9 @@ object PdfGeneratorHelper {
             canvas2.drawText("No attendance logs recorded for this student.", 40f, yPos2, textPaint)
             yPos2 += 65f
         } else {
-            val presentCount = studentLogs.count { it.status == "PRESENT" }
-            val absentCount = studentLogs.count { it.status == "ABSENT" }
-            val excusedCount = studentLogs.count { it.status == "EXCUSED" }
+            val presentCount = studentLogs.count { log -> log.status == "PRESENT" }
+            val absentCount = studentLogs.count { log -> log.status == "ABSENT" }
+            val excusedCount = studentLogs.count { log -> log.status == "EXCUSED" }
             val presentPct = (presentCount.toFloat() / totalLogs.toFloat()) * 100f
 
             canvas2.drawText("Total Attendance Sessions: $totalLogs", 40f, yPos2, textPaint)
@@ -274,9 +359,9 @@ object PdfGeneratorHelper {
             canvas2.drawCircle(440f, 380f, 60f, paint)
             yPos2 += 100f
         } else {
-            val positiveCount = behaviorIncidents.count { it.category == "Positive" }
-            val negativeCount = behaviorIncidents.count { it.category == "Negative" }
-            val neutralCount = behaviorIncidents.count { it.category == "Neutral" }
+            val positiveCount = behaviorIncidents.count { incident -> incident.category == "Positive" }
+            val negativeCount = behaviorIncidents.count { incident -> incident.category == "Negative" }
+            val neutralCount = behaviorIncidents.count { incident -> incident.category == "Neutral" }
 
             val positivePct = (positiveCount.toFloat() / totalIncidents.toFloat()) * 100f
             val negativePct = (negativeCount.toFloat() / totalIncidents.toFloat()) * 100f
@@ -327,7 +412,7 @@ object PdfGeneratorHelper {
             behaviorIncidents.take(3).forEach { incident ->
                 val dateStr = listSdf.format(Date(incident.incidentDate))
                 canvas2.drawText(
-                    "[$dateStr] ${incident.category.uppercase()} - ${incident.title}",
+                    "[${dateStr}] ${incident.category.uppercase()} - ${incident.title}",
                     40f,
                     logY,
                     Paint(textPaint).apply { isFakeBoldText = true }
@@ -343,7 +428,7 @@ object PdfGeneratorHelper {
         pdfDocument.finishPage(page2)
 
         // ==========================================
-        // PAGE 3: ACADEMIC PERFORMANCE & GRADE REPORT (ADDED)
+        // PAGE 3: ACADEMIC PERFORMANCE & GRADE REPORT
         // ==========================================
         val pageInfo3 = PdfDocument.PageInfo.Builder(595, 842, 3).create()
         val page3 = pdfDocument.startPage(pageInfo3)
@@ -356,7 +441,7 @@ object PdfGeneratorHelper {
 
         // Read relational Gradebook data from database
         val gradingColumns = db.studentDao().getAllAssessmentColumns()
-        val studentScores = db.studentDao().getAllAssessmentScores().filter { it.studentId == student.id }
+        val studentScores = db.studentDao().getAllAssessmentScores().filter { score -> score.studentId == student.id }
 
         if (gradingColumns.isEmpty()) {
             canvas3.drawText("No academic evaluations or tasks recorded.", 40f, 120f, textPaint)
@@ -384,7 +469,7 @@ object PdfGeneratorHelper {
                 }
 
                 // Match score
-                val matchingScore = studentScores.find { it.columnId == col.id }
+                val matchingScore = studentScores.find { score -> score.columnId == col.id }
                 val scoreStr = matchingScore?.score ?: "N/A"
 
                 // Accumulate statistics for summary calculation if score is numeric

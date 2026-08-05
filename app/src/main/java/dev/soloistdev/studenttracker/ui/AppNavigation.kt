@@ -1,5 +1,8 @@
 package dev.soloistdev.studenttracker.ui
 
+import dev.soloistdev.studenttracker.data.StudentEntity
+import dev.soloistdev.studenttracker.security.PdfGeneratorHelper
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -12,9 +15,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import dev.soloistdev.studenttracker.data.StudentEntity
-import dev.soloistdev.studenttracker.security.PdfGeneratorHelper
-import kotlinx.coroutines.launch
+
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
@@ -27,9 +28,8 @@ fun AppNavigation() {
     // Shared Query State ViewModel persisted across the Query sub-graph context
     val queryViewModel: QueryViewModel = viewModel()
 
-    // Standardized session gatekeeper to run ONLY on unlock transitions to prevent navigation high-jacks [1]
+    // Standardized session gatekeeper to run ONLY on unlock transitions to prevent navigation high-jacks
     LaunchedEffect(isUnlocked) {
-        // If the initial target destination is the deep-linked onboarding screen, bypass startup redirects [1]
         val initialRoute = navController.currentDestination?.route
         if (initialRoute?.startsWith("import_student") == true) {
             return@LaunchedEffect
@@ -111,12 +111,12 @@ fun AppNavigation() {
                         navController.navigate(ScreenRoute.CLASSROOMS)
                     }
                 },
-                onOpenQueryBuilder = { // Binds navigation transaction safely
+                onOpenQueryBuilder = {
                     if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
                         navController.navigate(ScreenRoute.QUERY_BUILDER)
                     }
                 },
-                onOpenSeatingChart = { className -> // Binds seating chart navigation transaction safely
+                onOpenSeatingChart = { className ->
                     if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
                         navController.navigate("seating_chart/$className")
                     }
@@ -146,7 +146,6 @@ fun AppNavigation() {
                     }
                 },
                 onSharePdf = { studentEntity ->
-                    // Launch the suspending PDF compilation inside the Compose-managed lifecycle scope [1]
                     scope.launch {
                         PdfGeneratorHelper.generateAndShareStudentPdf(context, studentEntity)
                     }
@@ -270,7 +269,7 @@ fun AppNavigation() {
                         navController.popBackStack()
                     }
                 },
-                onNavigateToBiometrics = { // Direct configuration callback mapping
+                onNavigateToBiometrics = {
                     if (navController.currentDestination?.route == ScreenRoute.APP_SETTINGS) {
                         navController.navigate(ScreenRoute.BIOMETRICS_PRIVACY)
                     }
@@ -290,11 +289,13 @@ fun AppNavigation() {
                 navArgument("contact") { type = NavType.StringType; defaultValue = "" },
                 navArgument("guardians") { type = NavType.StringType; defaultValue = "[]" },
                 navArgument("custom") { type = NavType.StringType; defaultValue = "{}" },
-                navArgument("class") { type = NavType.StringType; defaultValue = "" }
+                navArgument("class") { type = NavType.StringType; defaultValue = "" },
+                navArgument("seatingX") { type = NavType.FloatType; defaultValue = -1f },
+                navArgument("seatingY") { type = NavType.FloatType; defaultValue = -1f }
             ),
             deepLinks = listOf(
                 androidx.navigation.navDeepLink {
-                    uriPattern = "studenttracker://student?id={id}&first={first}&last={last}&gender={gender}&birthday={birthday}&address={address}&contact={contact}&guardians={guardians}&custom={custom}&class={class}"
+                    uriPattern = "studenttracker://student?id={id}&first={first}&last={last}&gender={gender}&birthday={birthday}&address={address}&contact={contact}&guardians={guardians}&custom={custom}&class={class}&seatingX={seatingX}&seatingY={seatingY}"
                 }
             )
         ) { backStackEntry ->
@@ -307,6 +308,8 @@ fun AppNavigation() {
             val guardians = backStackEntry.arguments?.getString("guardians") ?: "[]"
             val custom = backStackEntry.arguments?.getString("custom") ?: "{}"
             val className = backStackEntry.arguments?.getString("class") ?: ""
+            val seatingX = backStackEntry.arguments?.getFloat("seatingX") ?: -1f
+            val seatingY = backStackEntry.arguments?.getFloat("seatingY") ?: -1f
 
             StudentImportScreen(
                 tempStudent = StudentEntity(
@@ -318,7 +321,9 @@ fun AppNavigation() {
                     contactNumber = contact,
                     guardiansJson = guardians,
                     customDataJson = custom,
-                    className = className
+                    className = className,
+                    seatingX = seatingX,
+                    seatingY = seatingY
                 ),
                 onDismiss = {
                     navController.navigate(ScreenRoute.VIEW_ALL) {
@@ -353,7 +358,6 @@ fun AppNavigation() {
             )
         }
 
-        // Binds Shared QueryViewModel context to the condition builder Screen [1]
         composable(ScreenRoute.QUERY_BUILDER) {
             QueryBuilderScreen(
                 onBack = {
@@ -362,18 +366,17 @@ fun AppNavigation() {
                     }
                 },
                 onShowResults = {
-                    navController.navigate(ScreenRoute.QUERY_RESULTS) // Transitions to adjacent Results segment
+                    navController.navigate(ScreenRoute.QUERY_RESULTS)
                 },
                 viewModel = queryViewModel
             )
         }
 
-        // Binds Shared QueryViewModel context to the results segment [1]
         composable(ScreenRoute.QUERY_RESULTS) {
             QueryResultsScreen(
                 onBackToBuilder = {
                     if (navController.previousBackStackEntry != null) {
-                        navController.popBackStack() // Pops directly back preserving state
+                        navController.popBackStack()
                     }
                 },
                 onStudentClick = { id ->
@@ -388,7 +391,6 @@ fun AppNavigation() {
             )
         }
 
-        // Composable destination binding for the Interactive 2D Seating Chart Screen [1]
         composable(
             route = ScreenRoute.SEATING_CHART,
             arguments = listOf(navArgument("className") { type = NavType.StringType })
