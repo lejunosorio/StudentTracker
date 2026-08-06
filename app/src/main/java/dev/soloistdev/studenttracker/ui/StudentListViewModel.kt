@@ -68,7 +68,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                     "Gender" -> if (student.gender == "F") "Female" else "Male"
                     "Home Address" -> student.address
                     "Student Contact" -> student.contactNumber
-                    "Class", "Classroom" -> student.classNamesJson // Passes JSON array string to applyComparison
+                    "Class", "Classroom" -> student.classNamesJson
                     "Age" -> {
                         val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
                         age.toString()
@@ -371,11 +371,71 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    // Dynamic addition of students to a selected classroom cohort
+    fun addStudentsToClassroom(studentIds: List<Int>, className: String) {
+        viewModelScope.launch {
+            val activeStudents = repository.getAllActiveStudents()
+            studentIds.forEach { studentId ->
+                val targetStudent = activeStudents.find { it.id == studentId }
+                targetStudent?.let { currentStudent ->
+                    val currentClasses = currentStudent.getClassNamesList().toMutableList()
+                    if (!currentClasses.contains(className)) {
+                        currentClasses.add(className)
+                        val updatedClassesJson = JSONArray().apply {
+                            currentClasses.forEach { put(it) }
+                        }.toString()
+                        val updatedStudent = currentStudent.copy(
+                            classNamesJson = updatedClassesJson,
+                            lastModified = System.currentTimeMillis()
+                        )
+                        repository.insertStudent(updatedStudent)
+                    }
+                }
+            }
+            loadStudents()
+        }
+    }
+
+    // Dynamic removal of students from a selected classroom cohort
+    fun removeStudentsFromClassroom(studentIds: List<Int>, className: String) {
+        viewModelScope.launch {
+            val activeStudents = repository.getAllActiveStudents()
+            studentIds.forEach { studentId ->
+                val targetStudent = activeStudents.find { it.id == studentId }
+                targetStudent?.let { currentStudent ->
+                    val currentClasses = currentStudent.getClassNamesList().toMutableList()
+                    if (currentClasses.contains(className)) {
+                        currentClasses.remove(className)
+                        val updatedClassesJson = JSONArray().apply {
+                            currentClasses.forEach { put(it) }
+                        }.toString()
+
+                        // Clean seating coordinate configurations to prevent leaks
+                        val seatingObj = try {
+                            JSONObject(currentStudent.seatingJson)
+                        } catch (e: Exception) {
+                            JSONObject()
+                        }
+                        seatingObj.remove(className)
+
+                        val updatedStudent = currentStudent.copy(
+                            classNamesJson = updatedClassesJson,
+                            seatingJson = seatingObj.toString(),
+                            lastModified = System.currentTimeMillis()
+                        )
+                        repository.insertStudent(updatedStudent)
+                    }
+                }
+            }
+            clearSelection()
+            loadStudents()
+        }
+    }
+
     private fun applyComparison(fieldValue: String, filter: FilterState): Boolean {
         val value1 = filter.value1.trim()
         val value2 = filter.value2.trim()
 
-        // Evaluates multiple class names utilizing contains (member of) or does not contain (not member of) logic
         if (filter.field == "Class" || filter.field == "Classroom") {
             val studentClasses = try {
                 val array = JSONArray(fieldValue)

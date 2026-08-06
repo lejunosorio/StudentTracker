@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
@@ -157,6 +158,7 @@ fun ViewAllScreen(
     var showFilterSheet by remember { mutableStateOf(false) }
     var showSortSheet by remember { mutableStateOf(false) }
     var showBulkDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showRemoveFromClassConfirmDialog by remember { mutableStateOf(false) }
 
     // Attendance creation states
     var showCreateAttendanceDialog by remember { mutableStateOf(false) }
@@ -181,6 +183,7 @@ fun ViewAllScreen(
     val bulkDeleteSuccessMsg = stringResource(R.string.toast_moved_to_recycle_bin, stringResource(R.string.menu_students))
 
     var showBulkEditSheet by remember { mutableStateOf(false) }
+    var showAddStudentsToClassDialog by remember { mutableStateOf(false) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -383,33 +386,60 @@ fun ViewAllScreen(
                             }
                         },
                         actions = {
-                            IconButton(onClick = { showBulkEditSheet = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.EditNote,
-                                    contentDescription = stringResource(R.string.bulk_edit_title),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            IconButton(onClick = { showCreateGradebookDialog = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Book,
-                                    contentDescription = "Create Gradebook Sheet",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            IconButton(onClick = { showCreateAttendanceDialog = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.EventAvailable,
-                                    contentDescription = stringResource(R.string.attendance_new_record_title),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            IconButton(onClick = { showBulkDeleteConfirmDialog = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = "Action Delete",
-                                    tint = MaterialTheme.colorScheme.error
-                                )
+                            var actionsMenuExpanded by remember { mutableStateOf(false) }
+
+                            Box {
+                                IconButton(onClick = { actionsMenuExpanded = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "Selection Actions")
+                                }
+
+                                DropdownMenu(
+                                    expanded = actionsMenuExpanded,
+                                    onDismissRequest = { actionsMenuExpanded = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Create Attendance") },
+                                        leadingIcon = { Icon(Icons.Default.EventAvailable, null) },
+                                        onClick = {
+                                            actionsMenuExpanded = false
+                                            showCreateAttendanceDialog = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Create Gradebook") },
+                                        leadingIcon = { Icon(Icons.Default.Book, null) },
+                                        onClick = {
+                                            actionsMenuExpanded = false
+                                            showCreateGradebookDialog = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Edit Students") },
+                                        leadingIcon = { Icon(Icons.Default.EditNote, null) },
+                                        onClick = {
+                                            actionsMenuExpanded = false
+                                            showBulkEditSheet = true
+                                        }
+                                    )
+                                    if (selectedClassroomForView != null && selectedClassroomForView != "All") {
+                                        DropdownMenuItem(
+                                            text = { Text("Remove Student from Class") },
+                                            leadingIcon = { Icon(Icons.Default.PersonRemove, null, tint = MaterialTheme.colorScheme.error) },
+                                            onClick = {
+                                                actionsMenuExpanded = false
+                                                showRemoveFromClassConfirmDialog = true
+                                            }
+                                        )
+                                    }
+                                    DropdownMenuItem(
+                                        text = { Text("Delete Student") },
+                                        leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                                        onClick = {
+                                            actionsMenuExpanded = false
+                                            showBulkDeleteConfirmDialog = true
+                                        }
+                                    )
+                                }
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
@@ -474,9 +504,15 @@ fun ViewAllScreen(
                 }
             },
             floatingActionButton = {
-                if (!isSelectionMode && selectedClassroomForView == null) {
+                if (!isSelectionMode) {
                     FloatingActionButton(
-                        onClick = { onAddStudent(-1) },
+                        onClick = {
+                            if (selectedClassroomForView == null || selectedClassroomForView == "All") {
+                                onAddStudent(-1)
+                            } else {
+                                showAddStudentsToClassDialog = true
+                            }
+                        },
                         containerColor = MaterialTheme.colorScheme.primaryContainer,
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                         shape = RoundedCornerShape(16.dp)
@@ -824,7 +860,14 @@ fun ViewAllScreen(
                                     AlertDialog(
                                         onDismissRequest = { showDeleteConfirmDialog = false },
                                         title = { Text(stringResource(R.string.delete_member_title), fontWeight = FontWeight.Bold) },
-                                        text = { Text(stringResource(R.string.delete_member_confirmation, "${studentState.student.firstName} ${studentState.student.lastName}")) },
+                                        text = {
+                                            // Secure runtime string modification to bypass Android's broken format string exceptions
+                                            val rawDesc = stringResource(R.string.delete_member_confirmation)
+                                            val resolvedDesc = rawDesc
+                                                .replace("%1\${s}", "${studentState.student.firstName} ${studentState.student.lastName}")
+                                                .replace("%1\$s", "${studentState.student.firstName} ${studentState.student.lastName}")
+                                            Text(resolvedDesc)
+                                        },
                                         confirmButton = {
                                             Button(
                                                 onClick = {
@@ -878,6 +921,7 @@ fun ViewAllScreen(
             )
         }
 
+        // Decoupled Bottom Sheet Overlays
         if (showFilterSheet) {
             FilterBottomSheet(
                 activeFilter = activeFilter,
@@ -906,6 +950,116 @@ fun ViewAllScreen(
                     Toast.makeText(context, R.string.toast_bulk_edit_success, Toast.LENGTH_SHORT).show()
                 },
                 onDismiss = { showBulkEditSheet = false }
+            )
+        }
+
+        // Checklist Prompt Dialog adding students specifically to target classroom layouts
+        if (showAddStudentsToClassDialog && selectedClassroomForView != null && selectedClassroomForView != "All") {
+            val nonClassroomStudents = remember(students, selectedClassroomForView) {
+                students.filter { studentUi ->
+                    !studentUi.student.getClassNamesList().contains(selectedClassroomForView)
+                }
+            }
+            var checkedStudentIds by remember { mutableStateOf(emptySet<Int>()) }
+
+            AlertDialog(
+                onDismissRequest = {
+                    showAddStudentsToClassDialog = false
+                    checkedStudentIds = emptySet()
+                },
+                title = { Text("Enroll Students in $selectedClassroomForView", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 400.dp)
+                    ) {
+                        if (nonClassroomStudents.isEmpty()) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "All active directory students are already enrolled in this classroom cohort.",
+                                    textAlign = TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(nonClassroomStudents) { studentUi ->
+                                    val isChecked = checkedStudentIds.contains(studentUi.student.id)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                checkedStudentIds = if (isChecked) {
+                                                    checkedStudentIds - studentUi.student.id
+                                                } else {
+                                                    checkedStudentIds + studentUi.student.id
+                                                }
+                                            }
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Surface(
+                                                modifier = Modifier.size(36.dp).clip(CircleShape),
+                                                color = MaterialTheme.colorScheme.secondaryContainer
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                                    val initials = "${studentUi.student.lastName.take(1)}${studentUi.student.firstName.take(1)}".uppercase()
+                                                    Text(initials, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                            Text(
+                                                text = "${studentUi.student.lastName}, ${studentUi.student.firstName}",
+                                                fontWeight = FontWeight.Medium,
+                                                fontSize = 15.sp
+                                            )
+                                        }
+                                        Checkbox(
+                                            checked = isChecked,
+                                            onCheckedChange = null
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.addStudentsToClassroom(checkedStudentIds.toList(), selectedClassroomForView!!)
+                            showAddStudentsToClassDialog = false
+                            checkedStudentIds = emptySet()
+                            Toast.makeText(context, "Roster successfully enrolled!", Toast.LENGTH_SHORT).show()
+                        },
+                        enabled = checkedStudentIds.isNotEmpty()
+                    ) {
+                        Text("Add")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showAddStudentsToClassDialog = false
+                            checkedStudentIds = emptySet()
+                        }
+                    ) {
+                        Text("Close")
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
             )
         }
 
@@ -1085,6 +1239,12 @@ fun ViewAllScreen(
                 },
                 title = { Text("New Grading Sheet", fontWeight = FontWeight.Bold) },
                 text = {
+                    val gradebookNoticeText = if (isSelectionMode) {
+                        "Notice: ${activeTargetRosterIds.size} selected students will be added to this gradebook sheet."
+                    } else {
+                        "Notice: All ${activeTargetRosterIds.size} students in this view will be added to this gradebook sheet."
+                    }
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1326,6 +1486,33 @@ fun ViewAllScreen(
                         ) {
                             Text("Done")
                         }
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
+        }
+
+        // DATABASE BULK REMOVE FROM CLASS COHORT DIALOG
+        if (showRemoveFromClassConfirmDialog && selectedClassroomForView != null && selectedClassroomForView != "All") {
+            AlertDialog(
+                onDismissRequest = { showRemoveFromClassConfirmDialog = false },
+                title = { Text("Remove from Classroom?", fontWeight = FontWeight.Bold) },
+                text = { Text("Are you sure you want to remove these ${selectedStudentIds.size} selected students from $selectedClassroomForView? This will not delete them from other classes or the directory.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showRemoveFromClassConfirmDialog = false
+                            viewModel.removeStudentsFromClassroom(selectedStudentIds.toList(), selectedClassroomForView!!)
+                            Toast.makeText(context, "Students successfully removed from classroom.", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Remove")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showRemoveFromClassConfirmDialog = false }) {
+                        Text(stringResource(R.string.action_cancel))
                     }
                 },
                 shape = RoundedCornerShape(28.dp)
