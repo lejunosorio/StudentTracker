@@ -52,6 +52,7 @@ import dev.soloistdev.studenttracker.data.JsonSyncEngine
 import dev.soloistdev.studenttracker.data.StudentRepository
 import dev.soloistdev.studenttracker.data.AttendanceRecordEntity
 import dev.soloistdev.studenttracker.data.AttendanceLogEntity
+import dev.soloistdev.studenttracker.security.ClassPdfGeneratorHelper
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -481,6 +482,26 @@ fun ViewAllScreen(
                                         contentDescription = "Open Seating Chart Planner",
                                         tint = MaterialTheme.colorScheme.primary
                                     )
+                                }
+
+                                var isGeneratingClassReportPdf by remember { mutableStateOf(false) }
+                                IconButton(onClick = {
+                                    isGeneratingClassReportPdf = true
+                                    scope.launch {
+                                        // Generates the comprehensive class PDF report on-the-fly
+                                        ClassPdfGeneratorHelper.generateAndShareClassPdf(context, selectedClassroomForView!!)
+                                        isGeneratingClassReportPdf = false
+                                    }
+                                }) {
+                                    if (isGeneratingClassReportPdf) {
+                                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Description,
+                                            contentDescription = "Generate Classroom PDF Report",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
                             }
                             IconButton(onClick = { showCreateGradebookDialog = true }) {
