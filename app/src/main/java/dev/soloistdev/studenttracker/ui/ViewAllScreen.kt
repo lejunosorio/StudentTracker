@@ -50,8 +50,6 @@ import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.ImportResult
 import dev.soloistdev.studenttracker.data.JsonSyncEngine
 import dev.soloistdev.studenttracker.data.StudentRepository
-import dev.soloistdev.studenttracker.data.AttendanceRecordEntity
-import dev.soloistdev.studenttracker.data.AttendanceLogEntity
 import dev.soloistdev.studenttracker.security.ClassPdfGeneratorHelper
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -60,7 +58,7 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ViewAllScreen(
-    onAddStudent: (Int, String?) -> Unit, // Direct classroom cohort navigation parameter mapping
+    onAddStudent: (Int, String?) -> Unit,
     onStudentClick: (Int) -> Unit,
     onOpenTemplates: () -> Unit,
     onOpenMap: () -> Unit,
@@ -475,51 +473,69 @@ fun ViewAllScreen(
                             }
                         },
                         actions = {
-                            if (selectedClassroomForView != null && selectedClassroomForView != "All") {
-                                IconButton(onClick = { onOpenSeatingChart(selectedClassroomForView!!) }) {
-                                    Icon(
-                                        imageVector = Icons.Default.DirectionsBus,
-                                        contentDescription = "Open Seating Chart Planner",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
+                            var normalMenuExpanded by remember { mutableStateOf(false) }
+                            var isGeneratingClassReportPdf by remember { mutableStateOf(false) }
 
-                                var isGeneratingClassReportPdf by remember { mutableStateOf(false) }
-                                IconButton(onClick = {
-                                    isGeneratingClassReportPdf = true
-                                    scope.launch {
-                                        // Generates the comprehensive class PDF report on-the-fly
-                                        ClassPdfGeneratorHelper.generateAndShareClassPdf(context, selectedClassroomForView!!)
-                                        isGeneratingClassReportPdf = false
-                                    }
-                                }) {
+                            Box {
+                                IconButton(onClick = { normalMenuExpanded = true }) {
                                     if (isGeneratingClassReportPdf) {
                                         CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                                     } else {
-                                        Icon(
-                                            imageVector = Icons.Default.Description,
-                                            contentDescription = "Generate Classroom PDF Report",
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
+                                        Icon(Icons.Default.MoreVert, contentDescription = "More Actions")
                                     }
                                 }
-                            }
-                            IconButton(onClick = { showCreateGradebookDialog = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Book,
-                                    contentDescription = "Create Gradebook Sheet",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            IconButton(onClick = { showCreateAttendanceDialog = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.EventAvailable,
-                                    contentDescription = "Create Attendance Record",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            IconButton(onClick = { viewModel.loadData() }) {
-                                Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+
+                                DropdownMenu(
+                                    expanded = normalMenuExpanded,
+                                    onDismissRequest = { normalMenuExpanded = false }
+                                ) {
+                                    if (selectedClassroomForView != null && selectedClassroomForView != "All") {
+                                        DropdownMenuItem(
+                                            text = { Text("Assign seats") },
+                                            leadingIcon = { Icon(Icons.Default.DirectionsBus, null, tint = MaterialTheme.colorScheme.primary) },
+                                            onClick = {
+                                                normalMenuExpanded = false
+                                                onOpenSeatingChart(selectedClassroomForView!!)
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Export PDF") },
+                                            leadingIcon = { Icon(Icons.Default.Description, null, tint = MaterialTheme.colorScheme.primary) },
+                                            onClick = {
+                                                normalMenuExpanded = false
+                                                isGeneratingClassReportPdf = true
+                                                scope.launch {
+                                                    ClassPdfGeneratorHelper.generateAndShareClassPdf(context, selectedClassroomForView!!)
+                                                    isGeneratingClassReportPdf = false
+                                                }
+                                            }
+                                        )
+                                    }
+                                    DropdownMenuItem(
+                                        text = { Text("Create Gradebook") },
+                                        leadingIcon = { Icon(Icons.Default.Book, null, tint = MaterialTheme.colorScheme.primary) },
+                                        onClick = {
+                                            normalMenuExpanded = false
+                                            showCreateGradebookDialog = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Create Attendance record") },
+                                        leadingIcon = { Icon(Icons.Default.EventAvailable, null, tint = MaterialTheme.colorScheme.primary) },
+                                        onClick = {
+                                            normalMenuExpanded = false
+                                            showCreateAttendanceDialog = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Refresh") },
+                                        leadingIcon = { Icon(Icons.Default.Refresh, null) },
+                                        onClick = {
+                                            normalMenuExpanded = false
+                                            viewModel.loadData()
+                                        }
+                                    )
+                                }
                             }
                         }
                     )
@@ -886,8 +902,8 @@ fun ViewAllScreen(
                                             // Secure runtime string modification to bypass Android's broken format string exceptions
                                             val rawDesc = stringResource(R.string.delete_member_confirmation)
                                             val resolvedDesc = rawDesc
-                                                .replace("%1\${s}", "${studentState.student.firstName} ${studentState.student.lastName}")
-                                                .replace("%1\$s", "${studentState.student.firstName} ${studentState.student.lastName}")
+                                                .replace($$"%1${s}", "${studentState.student.firstName} ${studentState.student.lastName}")
+                                                .replace($$"%1$s", "${studentState.student.firstName} ${studentState.student.lastName}")
                                             Text(resolvedDesc)
                                         },
                                         confirmButton = {
