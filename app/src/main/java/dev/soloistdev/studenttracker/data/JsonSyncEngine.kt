@@ -43,8 +43,8 @@ object JsonSyncEngine {
         val incomingIdToIdentityMap: Map<Int, String>
     )
 
-    // COMPLETE UNENCRYPTED JSON BACKUP EXPORTER (RE-ARCHITECTED)
-    suspend fun exportBackupJson(context: Context, repository: StudentRepository) = withContext(Dispatchers.IO) {
+    // COMPLETE UNENCRYPTED JSON BACKUP EXPORTER (Allows customizable sharing filenames)
+    suspend fun exportBackupJson(context: Context, repository: StudentRepository, customFileName: String? = null) = withContext(Dispatchers.IO) {
         try {
             val activeRoster = repository.getAllActiveStudents()
             val activeLogs = repository.getAllAttendanceLogs()
@@ -82,6 +82,7 @@ object JsonSyncEngine {
                     }
 
                     studentsArr.put(JSONObject().apply {
+                        put("id", s.id)
                         put("firstName", s.firstName)
                         put("lastName", s.lastName)
                         put("gender", s.gender)
@@ -99,19 +100,8 @@ object JsonSyncEngine {
                 }
                 put("students", studentsArr)
 
-                // 3. Saved Filters
-                val filtersArr = JSONArray()
-                filters.forEach { f ->
-                    filtersArr.put(JSONObject().apply {
-                        put("name", f.filterName)
-                        put("field", f.fieldName)
-                        put("comparison", f.comparison)
-                        put("value", f.value1)
-                        put("value2", f.value2)
-                        put("displayOrder", f.displayOrder)
-                    })
-                }
-                put("savedFilters", filtersArr)
+                // 3. Saved Filters (can be empty or legacy)
+                put("savedFilters", JSONArray())
 
                 // 4. Attendance Sheets
                 val attendanceRecords = repository.getAllAttendanceRecords()
@@ -172,7 +162,8 @@ object JsonSyncEngine {
             }
 
             val cacheDir = File(context.cacheDir, "backups").apply { mkdirs() }
-            val backupFile = File(cacheDir, "student_tracker_backup.json")
+            val baseName = if (customFileName.isNullOrBlank()) "student_tracker_backup" else customFileName.trim()
+            val backupFile = File(cacheDir, "$baseName.json")
             if (backupFile.exists()) backupFile.delete()
 
             FileOutputStream(backupFile).use { fos ->
@@ -195,10 +186,149 @@ object JsonSyncEngine {
             }
 
             withContext(Dispatchers.Main) {
-                context.startActivity(Intent.createChooser(shareIntent, "Share JSON Backup"))
+                context.startActivity(Intent.createChooser(shareIntent, "Share $baseName"))
             }
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    // COHORT-SPECIFIC BACKUP EXPORTER: Filters database schemas relative strictly to the selected classroom cohort
+    suspend fun generateClassroomBackupJson(context: Context, repository: StudentRepository, className: String): File? = withContext(Dispatchers.IO) {
+        try {
+            val activeRoster = repository.getAllActiveStudents().filter { s -> s.getClassNamesList().contains(className) }
+            val classStudentIds = activeRoster.map { it.id }.toSet()
+
+            val activeLogs = repository.getAllAttendanceLogs().filter { l -> l.studentId in classStudentIds }
+            val activeScores = repository.getAllAssessmentScores().filter { sc -> sc.studentId in classStudentIds }
+
+            val columns = repository.getAllAssessmentColumns().filter { col ->
+                activeScores.any { sc -> sc.columnId == col.id }
+            }
+
+            val attendanceRecords = repository.getAllAttendanceRecords().filter { rec ->
+                activeLogs.any { l -> l.recordId == rec.id }
+            }
+
+            val classrooms = repository.getAllClassrooms().filter { c -> c.name == className }
+
+            val sdfDate = SimpleDateFormat("MM-dd-yyyy", Locale.US)
+
+            val payloadObj = JSONObject().apply {
+                // Classrooms
+                val classroomsArr = JSONArray()
+                classrooms.forEach { c ->
+                    classroomsArr.put(JSONObject().apply {
+                        put("name", c.name)
+                        put("start", c.startTime)
+                        put("end", c.endTime)
+                    })
+                }
+                put("classrooms", classroomsArr)
+
+                // Students & Behavior Logs
+                val studentsArr = JSONArray()
+                activeRoster.forEach { s ->
+                    val behaviorIncidents = repository.getIncidentsForStudent(s.id)
+                    val behaviorArr = JSONArray()
+                    behaviorIncidents.forEach { b ->
+                        behaviorArr.put(JSONObject().apply {
+                            put("title", b.title)
+                            put("category", b.category)
+                            put("description", b.description)
+                            put("date", sdfDate.format(Date(b.incidentDate)))
+                        })
+                    }
+
+                    studentsArr.put(JSONObject().apply {
+                        put("id", s.id)
+                        put("firstName", s.firstName)
+                        put("lastName", s.lastName)
+                        put("gender", s.gender)
+                        put("birthday", sdfDate.format(Date(s.birthday)))
+                        put("address", s.address)
+                        put("contactNumber", s.contactNumber)
+                        put("picturePath", s.picturePath)
+                        put("guardiansJson", s.guardiansJson)
+                        put("customDataJson", s.customDataJson)
+                        put("classNamesJson", s.classNamesJson)
+                        put("seatingJson", s.seatingJson)
+                        put("behaviorIncidents", behaviorArr)
+                    })
+                }
+                put("students", studentsArr)
+
+                // Saved Filters (can be empty or legacy)
+                put("savedFilters", JSONArray())
+
+                // Attendance Sheets
+                val attendanceArr = JSONArray()
+                attendanceRecords.forEach { r ->
+                    val recordLogs = activeLogs.filter { it.recordId == r.id }
+                    val roster = activeRoster.filter { it.id in recordLogs.map { l -> l.studentId } }
+
+                    attendanceArr.put(JSONObject().apply {
+                        put("name", r.name)
+                        put("startDate", sdfDate.format(Date(r.startDate)))
+                        put("endDate", sdfDate.format(Date(r.endDate)))
+
+                        val participantsArr = JSONArray()
+                        roster.forEach { student ->
+                            val studentLogs = recordLogs.filter { it.studentId == student.id }
+                            val attendanceObj = JSONObject()
+                            studentLogs.forEach { log ->
+                                attendanceObj.put(sdfDate.format(Date(log.dateMillis)), log.status)
+                            }
+
+                            participantsArr.put(JSONObject().apply {
+                                put("studentIdentifier", "${student.lastName}_${student.firstName}_${student.getClassNamesList().firstOrNull() ?: ""}")
+                                put("attendance", attendanceObj)
+                            })
+                        }
+                        put("participants", participantsArr)
+                    })
+                }
+                put("attendanceRecord", attendanceArr)
+
+                // Gradebook Sheets
+                val gradebookArr = JSONArray()
+                columns.forEach { col ->
+                    val colScores = activeScores.filter { it.columnId == col.id }
+                    val roster = activeRoster.filter { it.id in colScores.map { cs -> cs.studentId } }
+
+                    gradebookArr.put(JSONObject().apply {
+                        put("name", col.name)
+                        put("maxPoints", col.maxPoints)
+                        put("examDate", sdfDate.format(Date(col.examDate)))
+                        put("checkDate", sdfDate.format(Date(col.checkDate)))
+
+                        val gradesArr = JSONArray()
+                        roster.forEach { student ->
+                            val matchedScore = colScores.find { it.studentId == student.id }
+                            gradesArr.put(JSONObject().apply {
+                                put("studentIdentifier", "${student.lastName}_${student.firstName}_${student.getClassNamesList().firstOrNull() ?: ""}")
+                                put("score", matchedScore?.score ?: "")
+                            })
+                        }
+                        put("grades", gradesArr)
+                    })
+                }
+                put("gradeBook", gradebookArr)
+            }
+
+            val cacheDir = File(context.cacheDir, "backups").apply { mkdirs() }
+            val backupFile = File(cacheDir, "classroom_share_${className.replace(" ", "_")}.json")
+            if (backupFile.exists()) backupFile.delete()
+
+            FileOutputStream(backupFile).use { fos ->
+                fos.write(payloadObj.toString().toByteArray(Charsets.UTF_8))
+                fos.flush()
+            }
+
+            backupFile
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 
@@ -298,7 +428,7 @@ object JsonSyncEngine {
                 else -> {
                     val rawClass = sObj.optString("Classroom", sObj.optString("classRoom", sObj.optString("class", ""))).trim()
                     val validatedClass = if (validClassrooms.contains(rawClass)) rawClass else ""
-                    if (validatedClass.isNotEmpty()) "[\"$validatedClass\"]" else "[]"
+                    if (validatedClass.isNotEmpty()) "[\\\"" + validatedClass + "\\\"]" else "[]"
                 }
             }
 
@@ -312,7 +442,7 @@ object JsonSyncEngine {
                     val oldX = sObj.optDouble("seatingX", -1.0).toFloat()
                     val oldY = sObj.optDouble("seatingY", -1.0).toFloat()
                     if (rawClass.isNotEmpty() && oldX >= 0f && oldY >= 0f) {
-                        "{\"$rawClass\":{\"x\":$oldX,\"y\":$oldY}}"
+                        "{\\\"" + rawClass + "\\\":{\\\"x\\\":" + oldX + ",\\\"y\\\":" + oldY + "}}"
                     } else "{}"
                 }
             }
@@ -507,7 +637,7 @@ object JsonSyncEngine {
 
         val validClassroomNames = mutableSetOf<String>()
 
-        // 1. Classrooms
+        // Classrooms
         val classroomsArr = payloadObj.optJSONArray("classrooms")
         if (classroomsArr != null) {
             for (i in 0 until classroomsArr.length()) {
@@ -536,7 +666,7 @@ object JsonSyncEngine {
         val existingTemplateNames = repository.getAllFormTemplates().map { it.fieldName }.toSet()
         val discoveredTemplates = mutableSetOf<String>()
 
-        // 2. Students & Relational Behavior Logs
+        // Students & Behavior Logs
         val studentsArr = payloadObj.optJSONArray("students") ?: JSONArray()
         val studentIdentifierToIdMap = mutableMapOf<String, Int>()
 
@@ -580,7 +710,7 @@ object JsonSyncEngine {
                 else -> {
                     val rawClass = sObj.optString("Classroom", sObj.optString("classRoom", sObj.optString("class", ""))).trim()
                     val validatedClass = if (validClassroomNames.contains(rawClass)) rawClass else ""
-                    if (validatedClass.isNotEmpty()) "[\"$validatedClass\"]" else "[]"
+                    if (validatedClass.isNotEmpty()) "[\\\"" + validatedClass + "\\\"]" else "[]"
                 }
             }
 
@@ -594,7 +724,7 @@ object JsonSyncEngine {
                     val oldX = sObj.optDouble("seatingX", -1.0).toFloat()
                     val oldY = sObj.optDouble("seatingY", -1.0).toFloat()
                     if (rawClass.isNotEmpty() && oldX >= 0f && oldY >= 0f) {
-                        "{\"$rawClass\":{\"x\":$oldX,\"y\":$oldY}}"
+                        "{\\\"" + rawClass + "\\\":{\\\"x\\\":" + oldX + ",\\\"y\\\":" + oldY + "}}"
                     } else "{}"
                 }
             }
@@ -654,7 +784,7 @@ object JsonSyncEngine {
             )
         }
 
-        // 3. Saved Filters
+        // Saved Filters
         val filtersArr = payloadObj.optJSONArray("savedFilters")
         if (filtersArr != null) {
             for (i in 0 until filtersArr.length()) {
@@ -686,7 +816,7 @@ object JsonSyncEngine {
             }
         }
 
-        // 4. Attendance Sheets & Log matrix
+        // Attendance Sheets & Log matrix
         val attendanceArr = payloadObj.optJSONArray("attendanceRecord")
         if (attendanceArr != null) {
             for (i in 0 until attendanceArr.length()) {
@@ -738,7 +868,7 @@ object JsonSyncEngine {
             }
         }
 
-        // 5. Gradebook Sheets & Score matrix
+        // Gradebook Sheets & Score matrix
         val gradebookArr = payloadObj.optJSONArray("gradeBook")
         if (gradebookArr != null) {
             for (i in 0 until gradebookArr.length()) {

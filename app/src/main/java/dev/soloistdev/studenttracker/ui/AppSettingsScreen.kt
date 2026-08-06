@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,15 +37,19 @@ import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
 import dev.soloistdev.studenttracker.data.JsonSyncEngine
 import dev.soloistdev.studenttracker.data.ImportResult
+import dev.soloistdev.studenttracker.data.CsvExportEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppSettingsScreen(
     onBack: () -> Unit,
-    onNavigateToBiometrics: () -> Unit
+    onNavigateToBiometrics: () -> Unit,
+    onNavigateToSync: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -70,6 +76,11 @@ fun AppSettingsScreen(
     var isImportDone by remember { mutableStateOf(false) }
     var importResult by remember { mutableStateOf<ImportResult?>(null) }
 
+    // Filename prompt states
+    var showExportNameDialog by remember { mutableStateOf(false) }
+    var exportType by remember { mutableStateOf("") } // "JSON" or "CSV"
+    var exportFileNameInput by remember { mutableStateOf("") }
+
     val m3TextFieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = MaterialTheme.colorScheme.primary,
         unfocusedBorderColor = MaterialTheme.colorScheme.outline,
@@ -79,7 +90,7 @@ fun AppSettingsScreen(
         unfocusedTextColor = MaterialTheme.colorScheme.onSurface
     )
 
-    val cardBadgeDisabledMsg = stringResource(R.string.settings_card_badge_disabled_toast)
+    val cardBadgeDisabledMsg = stringResource(R.string.settings_card_badge_none)
     val dbCompactSuccessMsg = stringResource(R.string.settings_compact_db_success)
 
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -297,14 +308,32 @@ fun AppSettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
-                    // 1. Export JSON Backup Action
+                    // 1. Sync Data Row (Click to open SyncScreen)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onNavigateToSync() }
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Sync Data", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Share databases locally via P2P Wi-Fi", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                        }
+                        Icon(Icons.Default.Wifi, contentDescription = "Sync", tint = MaterialTheme.colorScheme.primary)
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    // 2. Export JSON Backup Action
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                scope.launch {
-                                    JsonSyncEngine.exportBackupJson(context, repository)
-                                }
+                                exportType = "JSON"
+                                exportFileNameInput = "student_tracker_backup_" + SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+                                showExportNameDialog = true
                             }
                             .padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -319,12 +348,34 @@ fun AppSettingsScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    // 2. Import JSON Backup Action
+                    // 3. Export CSV Spreadsheet Action
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                filePickerLauncher.launch("application/json") // Restricted strictly to JSON format [1]
+                                exportType = "CSV"
+                                exportFileNameInput = "student_roster_export_" + SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+                                showExportNameDialog = true
+                            }
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Export CSV Spreadsheet", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Decrypted spreadsheet row formatting compatible with Excel", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                        }
+                        Icon(Icons.Default.TableChart, contentDescription = "Export CSV", tint = MaterialTheme.colorScheme.primary)
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    // 4. Import JSON Backup Action
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                filePickerLauncher.launch("application/json") // Restricted strictly to JSON format
                             }
                             .padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -339,7 +390,7 @@ fun AppSettingsScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    // 3. Compact Local Database Row
+                    // 5. Compact Local Database Row
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -369,7 +420,7 @@ fun AppSettingsScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    // 4. Purge Database Row
+                    // 6. Purge Database Row
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -476,7 +527,6 @@ fun AppSettingsScreen(
                     Button(
                         onClick = {
                             showImportConfirmDialog = false
-                            isImportDone = false
                             showLoadingPopup = true // Reveals dynamic restoration tracker
 
                             scope.launch {
@@ -509,25 +559,26 @@ fun AppSettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        if (!isImportDone) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        } else {
-                            val res = importResult
-                            if (res != null) {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                    horizontalAlignment = Alignment.Start
-                                ) {
-                                    Text("Classrooms Loaded: ${res.classroomsCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                    Text("Students Loaded: ${res.studentsCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                    Text("Saved Filters Loaded: ${res.filtersCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                    Text("Attendance Sheets: ${res.attendanceCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                    Text("Gradebooks Loaded: ${res.gradebookCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                }
-                            } else {
-                                Text("Failed to parse the backup payload. Verify your JSON schema.", color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
+                        val res = importResult
+                        if (res != null) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalAlignment = Alignment.Start
+                            ) {
+                                val studentsCountText = res.studentsCount.toString()
+                                val savedFiltersCountText = res.filtersCount.toString()
+                                val attendanceRecordsCountText = res.attendanceCount.toString()
+                                val gradebookCountText = res.gradebookCount.toString()
+
+                                Text("Classrooms Loaded: ${res.classroomsCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("Students Loaded: $studentsCountText", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("Saved Filters Loaded: $savedFiltersCountText", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("Attendance Sheets: $attendanceRecordsCountText", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("Gradebooks Loaded: $gradebookCountText", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             }
+                        } else {
+                            Text("Failed to parse the backup payload. Verify your JSON schema.", color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
                         }
                     }
                 },
@@ -542,6 +593,68 @@ fun AppSettingsScreen(
                         ) {
                             Text("Done")
                         }
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
+        }
+
+        // DYNAMIC FILENAME PROMPT OVERLAY
+        if (showExportNameDialog) {
+            AlertDialog(
+                onDismissRequest = {
+                    showExportNameDialog = false
+                    exportFileNameInput = ""
+                },
+                title = { Text("Export $exportType File", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth().imePadding()
+                    ) {
+                        Text("Provide a custom filename for your exported $exportType backup. The file extension will be appended automatically.", fontSize = 13.sp)
+                        OutlinedTextField(
+                            value = exportFileNameInput,
+                            onValueChange = { input ->
+                                // Sanitizes filename inputs to prevent directory traversal injections
+                                exportFileNameInput = input.filter { it.isLetterOrDigit() || it == '_' || it == '-' }
+                            },
+                            label = { Text("Filename") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val finalName = exportFileNameInput.trim().ifEmpty {
+                                if (exportType == "JSON") "student_tracker_backup" else "student_roster_export"
+                            }
+                            showExportNameDialog = false
+                            exportFileNameInput = ""
+
+                            scope.launch {
+                                if (exportType == "JSON") {
+                                    JsonSyncEngine.exportBackupJson(context, repository, finalName)
+                                } else {
+                                    val list = repository.getAllActiveStudents()
+                                    CsvExportEngine.exportRosterToCsv(context, list, finalName)
+                                }
+                            }
+                        }
+                    ) {
+                        Text("Export")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showExportNameDialog = false
+                            exportFileNameInput = ""
+                        }
+                    ) {
+                        Text(stringResource(R.string.action_cancel))
                     }
                 },
                 shape = RoundedCornerShape(28.dp)

@@ -280,6 +280,21 @@ fun AppNavigation() {
                     if (navController.currentDestination?.route == ScreenRoute.APP_SETTINGS) {
                         navController.navigate(ScreenRoute.BIOMETRICS_PRIVACY)
                     }
+                },
+                onNavigateToSync = {
+                    if (navController.currentDestination?.route == ScreenRoute.APP_SETTINGS) {
+                        navController.navigate(ScreenRoute.SYNC)
+                    }
+                }
+            )
+        }
+
+        composable(ScreenRoute.SYNC) {
+            SyncScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
                 }
             )
         }
@@ -448,6 +463,7 @@ object ScreenRoute {
     const val ATTENDANCE = "attendance?recordId={recordId}&dateMillis={dateMillis}"
     const val APP_SETTINGS = "app_settings"
     const val IMPORT_STUDENT = "import_student?id={id}&first={first}&last={last}&gender={gender}&birthday={birthday}&address={address}&contact={contact}&guardians={guardians}&custom={custom}&class={class}&seatingX={seatingX}&seatingY={seatingY}"
+    const val SYNC = "sync" // Registered Running Sync route constant cleanly
 
     const val MESSAGE_TEMPLATES = "message_templates"
 

@@ -4,11 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,25 +12,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.soloistdev.studenttracker.R
-import dev.soloistdev.studenttracker.data.CsvExportEngine
 import dev.soloistdev.studenttracker.data.JsonSyncEngine
 import dev.soloistdev.studenttracker.data.ImportResult
 import dev.soloistdev.studenttracker.data.LocalSyncEngine
@@ -54,18 +43,11 @@ fun SyncScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     var showHelpDialog by remember { mutableStateOf(false) }
-    var showSampleFormat by remember { mutableStateOf(false) }
-    val rotationAngle by animateFloatAsState(targetValue = if (showSampleFormat) 180f else 0f)
 
-    // Database Restoration States
-    var showImportConfirmDialog by remember { mutableStateOf(false) }
-    var selectedImportUri by remember { mutableStateOf<Uri?>(null) }
-
-    // Dynamic Loading Dialog States
+    // Dynamic Loading Dialog States for incoming P2P transfers
     var showLoadingPopup by remember { mutableStateOf(false) }
-    var loadingStatusText by remember { mutableStateOf("") }
-    var importResult by remember { mutableStateOf<ImportResult?>(null) }
     var isImportDone by remember { mutableStateOf(false) }
+    var importResult by remember { mutableStateOf<ImportResult?>(null) }
 
     // P2P State Managers
     val localSyncEngine = remember { LocalSyncEngine(context) }
@@ -75,15 +57,6 @@ fun SyncScreen(onBack: () -> Unit) {
     DisposableEffect(Unit) {
         onDispose {
             localSyncEngine.stopActiveSession()
-        }
-    }
-
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        uri?.let { selectedUri ->
-            selectedImportUri = selectedUri
-            showImportConfirmDialog = true
         }
     }
 
@@ -234,7 +207,6 @@ fun SyncScreen(onBack: () -> Unit) {
                                                                 put("guardiansJson", s.guardiansJson)
                                                                 put("customDataJson", s.customDataJson)
                                                                 put("lastModified", s.lastModified)
-                                                                // Serializes multi-classroom listings for P2P backups
                                                                 put("classRoom", s.getClassNamesList().firstOrNull() ?: "")
                                                                 put("classNamesJson", JSONArray(s.classNamesJson))
                                                                 put("seatingJson", JSONObject(s.seatingJson))
@@ -280,186 +252,6 @@ fun SyncScreen(onBack: () -> Unit) {
                     }
                 }
             }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.sync_export_backup_title), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(stringResource(R.string.sync_export_backup_desc), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                    }
-                    IconButton(
-                        onClick = {
-                            scope.launch {
-                                JsonSyncEngine.exportBackupJson(context, repository)
-                            }
-                        },
-                        colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                    ) {
-                        Icon(Icons.Default.Lock, contentDescription = stringResource(R.string.sync_export_backup_title), tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                    }
-                }
-            }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.sync_export_csv_title), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(stringResource(R.string.sync_export_csv_desc), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                    }
-                    IconButton(
-                        onClick = {
-                            scope.launch {
-                                val list = repository.getAllActiveStudents()
-                                CsvExportEngine.exportRosterToCsv(context, list)
-                            }
-                        },
-                        colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                    ) {
-                        Icon(Icons.Default.TableChart, contentDescription = stringResource(R.string.sync_export_csv_title), tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                    }
-                }
-            }
-
-            Text(
-                text = stringResource(R.string.sync_database_restoration_title),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { filePickerLauncher.launch("*/*") },
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Row(
-                    modifier = Modifier.padding(24.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(Icons.Default.Download, contentDescription = stringResource(R.string.sync_import_backup_label), tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.sync_import_backup_label), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showSampleFormat = !showSampleFormat },
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(stringResource(R.string.sync_view_sample_json), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(stringResource(R.string.sync_view_sample_json_desc), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                        }
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "Toggle Sample Format",
-                            modifier = Modifier.rotate(rotationAngle)
-                        )
-                    }
-
-                    if (showSampleFormat) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        val sampleJson = """
-                        [
-                          {
-                            "firstName": "John",
-                            "lastName": "Doe",
-                            "gender": "M",
-                            "birthday": 1378598400000,
-                            "address": "123 Main Street, City",
-                            "guardiansJson": [
-                              {
-                                "name": "Jane Doe",
-                                "relationship": "Mother",
-                                "phones": ["555-0198"]
-                              }
-                            ],
-                            "customDataJson": "{\"Field_1\": \"Value_1\", \"Field_2\": \"Value_2\"}"
-                          }
-                        ]
-                        """.trimIndent()
-
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceContainerLow,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = sampleJson,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier
-                                    .padding(8.dp)
-                                    .horizontalScroll(rememberScrollState())
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // UNIFIED RESTORATION CONFIRMATION DIALOG (RESTORES ALL DATA STRUCTURES)
-        if (showImportConfirmDialog && selectedImportUri != null) {
-            val importUri = selectedImportUri!!
-            AlertDialog(
-                onDismissRequest = { showImportConfirmDialog = false },
-                title = { Text("Restore Database?", fontWeight = FontWeight.Bold) },
-                text = { Text("Are you sure you want to restore your database from this backup file? This will import all Classrooms, Students, Behavior Logs, Attendance Records, and Gradebooks.") },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showImportConfirmDialog = false
-                            loadingStatusText = "Restoring entities..."
-                            isImportDone = false
-                            showLoadingPopup = true // Reveals dynamic loading dialog
-
-                            scope.launch {
-                                val result = JsonSyncEngine.importUnencryptedBackup(context, importUri, repository)
-                                importResult = result
-                                isImportDone = true // Triggers Done button action block
-                            }
-                        }
-                    ) {
-                        Text(stringResource(R.string.action_yes))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showImportConfirmDialog = false }) {
-                        Text(stringResource(R.string.action_no))
-                    }
-                },
-                shape = RoundedCornerShape(28.dp)
-            )
         }
 
         // DATABASE RESTORATION PROGRESS POPUP
@@ -473,27 +265,21 @@ fun SyncScreen(onBack: () -> Unit) {
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        if (!isImportDone) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(loadingStatusText, fontSize = 14.sp, textAlign = TextAlign.Center)
-                        } else {
-                            val res = importResult
-                            if (res != null) {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                    horizontalAlignment = Alignment.Start
-                                ) {
-                                    Text("Classrooms Loaded: ${res.classroomsCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                    Text("Students Loaded: ${res.studentsCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                    Text("Saved Filters Loaded: ${res.filtersCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                    Text("Attendance Sheets: ${res.attendanceCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                    Text("Gradebooks Loaded: ${res.gradebookCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                }
-                            } else {
-                                Text("Failed to decrypt or parse the backup payload. Verify your JSON schema.", color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
+                        val res = importResult
+                        if (res != null) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalAlignment = Alignment.Start
+                            ) {
+                                Text("Classrooms Loaded: ${res.classroomsCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("Students Loaded: ${res.studentsCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("Saved Filters Loaded: ${res.filtersCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("Attendance Sheets: ${res.attendanceCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("Gradebooks Loaded: ${res.gradebookCount}", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             }
+                        } else {
+                            Text("Failed to parse the backup payload. Verify your JSON schema.", color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
                         }
                     }
                 },
@@ -524,39 +310,13 @@ fun SyncScreen(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = stringResource(R.string.sync_help_secure_backups_title),
+                            text = "Secure P2P Synchronization",
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
                             fontSize = 14.sp
                         )
                         Text(
-                            text = stringResource(R.string.sync_help_secure_backups_desc),
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            lineHeight = 18.sp
-                        )
-
-                        Text(
-                            text = stringResource(R.string.sync_help_plain_files_title),
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 14.sp
-                        )
-                        Text(
-                            text = stringResource(R.string.sync_help_plain_files_desc),
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            lineHeight = 18.sp
-                        )
-
-                        Text(
-                            text = stringResource(R.string.sync_help_security_warning_title),
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.error,
-                            fontSize = 14.sp
-                        )
-                        Text(
-                            text = stringResource(R.string.sync_help_security_warning_desc),
+                            text = "This screen allows you to synchronize database rosters wirelessly with another device on the same local network.",
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             lineHeight = 18.sp

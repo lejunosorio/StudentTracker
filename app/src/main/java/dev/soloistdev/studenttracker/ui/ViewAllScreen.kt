@@ -58,7 +58,7 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ViewAllScreen(
-    onAddStudent: (Int, String?) -> Unit,
+    onAddStudent: (Int, String?) -> Unit, // Direct classroom cohort navigation parameter mapping
     onStudentClick: (Int) -> Unit,
     onOpenTemplates: () -> Unit,
     onOpenMap: () -> Unit,
@@ -902,8 +902,8 @@ fun ViewAllScreen(
                                             // Secure runtime string modification to bypass Android's broken format string exceptions
                                             val rawDesc = stringResource(R.string.delete_member_confirmation)
                                             val resolvedDesc = rawDesc
-                                                .replace($$"%1${s}", "${studentState.student.firstName} ${studentState.student.lastName}")
-                                                .replace($$"%1$s", "${studentState.student.firstName} ${studentState.student.lastName}")
+                                                .replace("%1\${s}", "${studentState.student.firstName} ${studentState.student.lastName}")
+                                                .replace("%1\$s", "${studentState.student.firstName} ${studentState.student.lastName}")
                                             Text(resolvedDesc)
                                         },
                                         confirmButton = {

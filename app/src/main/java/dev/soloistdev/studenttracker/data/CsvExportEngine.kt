@@ -29,7 +29,7 @@ object CsvExportEngine {
         }
     }
 
-    suspend fun exportRosterToCsv(context: Context, students: List<StudentEntity>) = withContext(Dispatchers.IO) {
+    suspend fun exportRosterToCsv(context: Context, students: List<StudentEntity>, customFileName: String? = null) = withContext(Dispatchers.IO) {
         // Safe-purge prior spreadsheets to eliminate stale plain-text PII
         clearCsvCache(context)
 
@@ -76,7 +76,8 @@ object CsvExportEngine {
         }
 
         val cacheDir = File(context.cacheDir, "csv_exports").apply { mkdirs() }
-        val csvFile = File(cacheDir, "choir_roster_export.csv")
+        val baseName = if (customFileName.isNullOrBlank()) "choir_roster_export" else customFileName.trim()
+        val csvFile = File(cacheDir, "$baseName.csv")
 
         FileOutputStream(csvFile).use { fos ->
             fos.write(csvContent.toString().toByteArray(Charsets.UTF_8))
@@ -98,6 +99,6 @@ object CsvExportEngine {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
 
-        context.startActivity(Intent.createChooser(shareIntent, "Export Spreadsheet (CSV)"))
+        context.startActivity(Intent.createChooser(shareIntent, "Export Spreadsheet ($baseName)"))
     }
 }
