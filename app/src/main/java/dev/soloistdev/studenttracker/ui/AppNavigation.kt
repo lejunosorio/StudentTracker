@@ -62,9 +62,10 @@ fun AppNavigation() {
 
         composable(ScreenRoute.VIEW_ALL) {
             ViewAllScreen(
-                onAddStudent = { id ->
+                onAddStudent = { id, defaultClass ->
+                    val route = if (defaultClass != null) "add_edit/$id?defaultClass=$defaultClass" else "add_edit/$id"
                     if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
-                        navController.navigate("add_edit/$id")
+                        navController.navigate(route)
                     }
                 },
                 onStudentClick = { id ->
@@ -164,11 +165,16 @@ fun AppNavigation() {
 
         composable(
             route = ScreenRoute.ADD_EDIT,
-            arguments = listOf(navArgument("studentId") { type = NavType.IntType })
+            arguments = listOf(
+                navArgument("studentId") { type = NavType.IntType },
+                navArgument("defaultClass") { type = NavType.StringType; nullable = true; defaultValue = null }
+            )
         ) { backStackEntry ->
             val studentId = backStackEntry.arguments?.getInt("studentId") ?: -1
+            val defaultClass = backStackEntry.arguments?.getString("defaultClass")
             AddEditStudentScreen(
                 studentId = studentId,
+                defaultClass = defaultClass,
                 onBack = {
                     if (navController.previousBackStackEntry != null) {
                         navController.popBackStack()
@@ -434,14 +440,14 @@ object ScreenRoute {
     const val SECURITY_GATE = "security_gate"
     const val VIEW_ALL = "view_all"
     const val PROFILE = "profile/{studentId}"
-    const val ADD_EDIT = "add_edit/{studentId}"
+    const val ADD_EDIT = "add_edit/{studentId}?defaultClass={defaultClass}"
     const val TEMPLATES = "templates"
     const val RECYCLE_BIN = "recycle_bin"
     const val SAVED_FILTERS = "saved_filters"
     const val BIOMETRICS_PRIVACY = "biometrics_privacy"
     const val ATTENDANCE = "attendance?recordId={recordId}&dateMillis={dateMillis}"
     const val APP_SETTINGS = "app_settings"
-    const val IMPORT_STUDENT = "import_student?id={id}&first={first}&last={last}&gender={gender}&birthday={birthday}&address={address}&contact={contact}&guardians={guardians}&custom={custom}&class={class}"
+    const val IMPORT_STUDENT = "import_student?id={id}&first={first}&last={last}&gender={gender}&birthday={birthday}&address={address}&contact={contact}&guardians={guardians}&custom={custom}&class={class}&seatingX={seatingX}&seatingY={seatingY}"
 
     const val MESSAGE_TEMPLATES = "message_templates"
 
@@ -452,5 +458,5 @@ object ScreenRoute {
     const val QUERY_BUILDER = "query_builder"
     const val QUERY_RESULTS = "query_results"
 
-    const val SEATING_CHART = "seating_chart/{className}" // Declares the Seating Chart endpoint identifier
+    const val SEATING_CHART = "seating_chart/{className}"
 }

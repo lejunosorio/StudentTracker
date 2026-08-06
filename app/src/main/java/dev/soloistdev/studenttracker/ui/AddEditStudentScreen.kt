@@ -39,6 +39,7 @@ import java.util.*
 @Composable
 fun AddEditStudentScreen(
     studentId: Int,
+    defaultClass: String? = null, // Supports preselected classroom mappings on student creations
     onBack: () -> Unit,
     viewModel: AddEditViewModel = viewModel()
 ) {
@@ -78,7 +79,7 @@ fun AddEditStudentScreen(
     }
 
     LaunchedEffect(Unit) {
-        viewModel.loadStudentForEditing(studentId)
+        viewModel.loadStudentForEditing(studentId, defaultClass)
     }
 
     LaunchedEffect(saveSuccess) {
@@ -274,7 +275,7 @@ fun AddEditStudentScreen(
             ) {
                 FilterChip(
                     selected = viewModel.gender == "F",
-                    onClick = { viewModel.gender = "F" },
+                    onClick = { viewModel.gender == "F" },
                     label = { Text(stringResource(R.string.gender_female)) },
                     colors = chipColors
                 )

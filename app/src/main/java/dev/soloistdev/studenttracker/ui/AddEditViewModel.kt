@@ -43,7 +43,7 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
     private val _classrooms = MutableStateFlow<List<dev.soloistdev.studenttracker.data.ClassroomEntity>>(emptyList())
     val classrooms: StateFlow<List<dev.soloistdev.studenttracker.data.ClassroomEntity>> = _classrooms
 
-    fun loadStudentForEditing(studentId: Int) {
+    fun loadStudentForEditing(studentId: Int, defaultClass: String? = null) {
         customDataMap.clear()
         guardiansStateList.clear()
         selectedClassrooms.clear()
@@ -55,6 +55,10 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
             if (studentId == -1) {
                 templates.forEach { template ->
                     customDataMap[template.fieldName] = ""
+                }
+                // Pre-populates the target classroom cohort if specified during creation
+                if (!defaultClass.isNullOrBlank()) {
+                    selectedClassrooms.add(defaultClass)
                 }
                 return@launch
             }
@@ -143,7 +147,6 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                 }
                 updatedObj.toString()
             } catch (e: Exception) {
-                e.printStackTrace()
                 "{}"
             }
 

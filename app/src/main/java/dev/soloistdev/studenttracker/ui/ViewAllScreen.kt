@@ -59,7 +59,7 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ViewAllScreen(
-    onAddStudent: (Int) -> Unit,
+    onAddStudent: (Int, String?) -> Unit, // Direct classroom cohort navigation parameter mapping
     onStudentClick: (Int) -> Unit,
     onOpenTemplates: () -> Unit,
     onOpenMap: () -> Unit,
@@ -184,6 +184,7 @@ fun ViewAllScreen(
 
     var showBulkEditSheet by remember { mutableStateOf(false) }
     var showAddStudentsToClassDialog by remember { mutableStateOf(false) }
+    var showClassroomAddOptionsDialog by remember { mutableStateOf(false) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -308,7 +309,7 @@ fun ViewAllScreen(
 
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Bookmarks, contentDescription = null) },
-                        label = { Text(stringResource(R.string.menu_filters)) },
+                        label = { Text(stringResource(R.string.menu_saved_filters)) },
                         selected = false,
                         onClick = onOpenMap,
                         colors = drawerItemColors,
@@ -508,9 +509,9 @@ fun ViewAllScreen(
                     FloatingActionButton(
                         onClick = {
                             if (selectedClassroomForView == null || selectedClassroomForView == "All") {
-                                onAddStudent(-1)
+                                onAddStudent(-1, null)
                             } else {
-                                showAddStudentsToClassDialog = true
+                                showClassroomAddOptionsDialog = true
                             }
                         },
                         containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -783,7 +784,7 @@ fun ViewAllScreen(
                                     confirmValueChange = { dismissValue ->
                                         when (dismissValue) {
                                             SwipeToDismissBoxValue.StartToEnd -> {
-                                                currentOnAddStudent.value(studentState.student.id)
+                                                currentOnAddStudent.value(studentState.student.id, null)
                                                 false
                                             }
                                             SwipeToDismissBoxValue.EndToStart -> {
@@ -1425,7 +1426,7 @@ fun ViewAllScreen(
                         Button(
                             onClick = {
                                 showOnboardingDialog = false
-                                onAddStudent(-1)
+                                onAddStudent(-1, null)
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
@@ -1513,6 +1514,50 @@ fun ViewAllScreen(
                 dismissButton = {
                     TextButton(onClick = { showRemoveFromClassConfirmDialog = false }) {
                         Text(stringResource(R.string.action_cancel))
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
+        }
+
+        // Checklist options prompt selector inside single classrooms
+        if (showClassroomAddOptionsDialog && selectedClassroomForView != null && selectedClassroomForView != "All") {
+            AlertDialog(
+                onDismissRequest = { showClassroomAddOptionsDialog = false },
+                title = { Text("Add Students to Class", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Would you like to enroll an existing student from the directory or create a new student profile for this class?")
+
+                        Button(
+                            onClick = {
+                                showClassroomAddOptionsDialog = false
+                                showAddStudentsToClassDialog = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Enroll existing student to class")
+                        }
+
+                        Button(
+                            onClick = {
+                                showClassroomAddOptionsDialog = false
+                                onAddStudent(-1, selectedClassroomForView)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                        ) {
+                            Text("Add new student to class")
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showClassroomAddOptionsDialog = false }) {
+                        Text("Cancel")
                     }
                 },
                 shape = RoundedCornerShape(28.dp)
