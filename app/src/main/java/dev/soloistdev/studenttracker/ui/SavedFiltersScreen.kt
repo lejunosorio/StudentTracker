@@ -212,11 +212,12 @@ fun SavedFiltersScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(filters) { filter ->
-                            val criteriaDesc = if (filter.comparison == "In between") {
-                                "${filter.fieldName}: ${filter.value1} - ${filter.value2}"
-                            } else {
-                                "${filter.fieldName} ${filter.comparison} ${filter.value1}"
-                            }
+                            val criteriaDesc = filterSummaryLabel(
+                                filter.fieldName,
+                                filter.comparison,
+                                filter.value1,
+                                filter.value2
+                            )
 
                             Card(
                                 modifier = Modifier

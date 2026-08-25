@@ -4,7 +4,10 @@ import dev.soloistdev.studenttracker.data.Guardian
 import dev.soloistdev.studenttracker.data.StudentEntity
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 /**
  * Single source of truth for roster filtering.
@@ -168,4 +171,55 @@ fun generateDateList(startDate: Long, endDate: Long): List<Long> {
         startCal.add(Calendar.DAY_OF_YEAR, 1)
     }
     return dates
+}
+
+private val MONTH_NAMES = listOf(
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+)
+
+/**
+ * Renders a filter as a short, human-readable label for chips and list subtitles.
+ *
+ * What is stored is an internal token pair - comparison "birth_month" with value "1" - which is
+ * meaningless on screen. This turns it back into what the operator actually picked in the sheet,
+ * so a January birthday filter reads "Birthday: January" rather than "Birthday birth_month 1".
+ */
+fun filterSummaryLabel(field: String, comparison: String, value1: String, value2: String): String {
+    val label = field.replace("_", " ")
+    val v1 = value1.trim()
+    val v2 = value2.trim()
+
+    return when (comparison) {
+        "birth_year" -> "$label: $v1"
+        "birth_month" -> "$label: ${monthName(v1)}"
+        "birth_month_year" -> "$label: ${monthName(v1)} $v2".trimEnd()
+        "exact_birthday" -> "$label: ${formatBirthdayValue(v1)}"
+        "In between" -> "$label: $v1 - $v2"
+        "greater than" -> "$label > $v1"
+        "less than" -> "$label < $v1"
+        "empty" -> "$label: empty"
+        "not empty" -> "$label: not empty"
+        // Substring matches carry SQL-style wildcards so they cannot be read as an exact
+        // match on the same field and value.
+        "contains" -> "$label: %$v1%"
+        "does not contain" -> "$label: not %$v1%"
+        "not equal", "not member of", "not_member_of" -> "$label: not $v1"
+        else -> "$label: $v1"
+    }
+}
+
+fun filterSummaryLabel(filter: FilterState): String =
+    filterSummaryLabel(filter.field, filter.comparison, filter.value1, filter.value2)
+
+// Month is stored 1-based, matching the picker in FilterBottomSheet
+private fun monthName(monthNumber: String): String {
+    val index = (monthNumber.toIntOrNull() ?: return monthNumber) - 1
+    return MONTH_NAMES.getOrNull(index) ?: monthNumber
+}
+
+// An exact birthday is stored as epoch millis
+private fun formatBirthdayValue(epochMillis: String): String {
+    val millis = epochMillis.toLongOrNull() ?: return epochMillis
+    return SimpleDateFormat("MMM dd, yyyy", Locale.US).format(Date(millis))
 }

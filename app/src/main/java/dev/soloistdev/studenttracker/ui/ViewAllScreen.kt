@@ -756,11 +756,7 @@ fun ViewAllScreen(
                         )
 
                         pinnedFilters.forEach { pinnedFilter ->
-                            val labelText = if (pinnedFilter.comparison == "In between") {
-                                "${pinnedFilter.field.replace("_", " ")}: ${pinnedFilter.value1} - ${pinnedFilter.value2}"
-                            } else {
-                                "${pinnedFilter.field.replace("_", " ")} ${pinnedFilter.comparison} ${pinnedFilter.value1}"
-                            }
+                            val labelText = filterSummaryLabel(pinnedFilter)
 
                             InputChip(
                                 selected = activeFilter?.id == pinnedFilter.id,
