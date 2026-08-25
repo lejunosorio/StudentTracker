@@ -22,9 +22,11 @@ import java.io.IOException
         MessageTemplateEntity::class,
         AssessmentColumnEntity::class,
         AssessmentScoreEntity::class,
-        ClassroomEntity::class
+        ClassroomEntity::class,
+        GradingTermEntity::class,
+        AssessmentCategoryEntity::class
     ],
-    version = 16, // Version 16: Multi-class and seating upgrade
+    version = 17, // Version 17: Grading periods, weighted categories, unique score rows
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -139,6 +141,50 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+
+        // --- MIGRATION 16 TO 17 ---
+        // Adds grading periods and weighted categories, and enforces one score per student
+        // per assessment. Existing duplicate score rows are collapsed to the newest before the
+        // unique index is created, otherwise the index would fail to build.
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `grading_terms` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `startDate` INTEGER NOT NULL DEFAULT 0,
+                        `endDate` INTEGER NOT NULL DEFAULT 0,
+                        `isActive` INTEGER NOT NULL DEFAULT 0,
+                        `isDeleted` INTEGER NOT NULL DEFAULT 0,
+                        `lastModified` INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `assessment_categories` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `weight` REAL NOT NULL DEFAULT 0.0,
+                        `termId` INTEGER NOT NULL DEFAULT 0,
+                        `isDeleted` INTEGER NOT NULL DEFAULT 0,
+                        `lastModified` INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+
+                safeAddColumn(db, "assessment_columns", "termId", "INTEGER NOT NULL DEFAULT 0")
+                safeAddColumn(db, "assessment_columns", "categoryId", "INTEGER NOT NULL DEFAULT 0")
+
+                // Collapse duplicates, keeping the most recently written row per pair
+                db.execSQL("""
+                    DELETE FROM `assessment_scores`
+                    WHERE `id` NOT IN (
+                        SELECT MAX(`id`) FROM `assessment_scores` GROUP BY `columnId`, `studentId`
+                    )
+                """.trimIndent())
+
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_assessment_scores_columnId_studentId` ON `assessment_scores` (`columnId`, `studentId`)")
+            }
+        }
         private fun safeAddColumn(db: SupportSQLiteDatabase, tableName: String, columnName: String, typeAndDefault: String) {
             try {
                 db.execSQL("ALTER TABLE `$tableName` ADD COLUMN `$columnName` $typeAndDefault")
@@ -159,7 +205,7 @@ abstract class AppDatabase : RoomDatabase() {
                         "student_tracker_secure_db"
                     )
                         .openHelperFactory(factory)
-                        .addMigrations(MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                        .addMigrations(MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                         .build().also {
                             it.openHelper.writableDatabase
                         }

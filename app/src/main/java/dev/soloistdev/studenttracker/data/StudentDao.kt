@@ -146,6 +146,11 @@ interface StudentDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertAssessmentColumn(column: AssessmentColumnEntity): Long
 
+    // In-place edit. Insert-with-REPLACE would delete the column row first, and the CASCADE
+    // from assessment_scores would take every score on that sheet with it.
+    @Update
+    fun updateAssessmentColumn(column: AssessmentColumnEntity)
+
     @Query("UPDATE assessment_columns SET isDeleted = 1 WHERE id = :columnId")
     fun softDeleteAssessmentColumn(columnId: Int)
 
@@ -176,5 +181,54 @@ interface StudentDao {
             val updatedStudent = student.withUpdatedSeating(className, x, y)
             insertStudent(updatedStudent)
         }
+    }
+
+    // --- GRADING TERMS ---
+    @Query("SELECT * FROM grading_terms WHERE isDeleted = 0 ORDER BY startDate ASC")
+    fun getAllGradingTerms(): List<GradingTermEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertGradingTerm(term: GradingTermEntity): Long
+
+    @Query("UPDATE grading_terms SET isDeleted = 1 WHERE id = :termId")
+    fun softDeleteGradingTerm(termId: Int)
+
+    @Query("UPDATE grading_terms SET isActive = 0")
+    fun clearActiveTerms()
+
+    @Query("UPDATE grading_terms SET isActive = 1 WHERE id = :termId")
+    fun markTermActive(termId: Int)
+
+    @Transaction
+    fun setActiveTerm(termId: Int) {
+        clearActiveTerms()
+        markTermActive(termId)
+    }
+
+    // --- ASSESSMENT CATEGORIES ---
+    @Query("SELECT * FROM assessment_categories WHERE isDeleted = 0 ORDER BY name ASC")
+    fun getAllAssessmentCategories(): List<AssessmentCategoryEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertAssessmentCategory(category: AssessmentCategoryEntity): Long
+
+    @Query("UPDATE assessment_categories SET isDeleted = 1 WHERE id = :categoryId")
+    fun softDeleteAssessmentCategory(categoryId: Int)
+
+    // Resolves the existing row so a re-save updates in place rather than appending a duplicate
+    @Query("SELECT * FROM assessment_scores WHERE columnId = :columnId AND studentId = :studentId LIMIT 1")
+    fun getScoreFor(columnId: Int, studentId: Int): AssessmentScoreEntity?
+
+    @Transaction
+    fun upsertAssessmentScore(columnId: Int, studentId: Int, score: String) {
+        val existing = getScoreFor(columnId, studentId)
+        insertAssessmentScore(
+            AssessmentScoreEntity(
+                id = existing?.id ?: 0,
+                columnId = columnId,
+                studentId = studentId,
+                score = score
+            )
+        )
     }
 }

@@ -190,6 +190,10 @@ class StudentRepository(private val context: Context) {
         studentDao.insertAssessmentColumn(column)
     }
 
+    suspend fun updateAssessmentColumn(column: AssessmentColumnEntity) = withContext(Dispatchers.IO) {
+        studentDao.updateAssessmentColumn(column)
+    }
+
     suspend fun softDeleteAssessmentColumn(columnId: Int) = withContext(Dispatchers.IO) {
         studentDao.softDeleteAssessmentColumn(columnId)
     }
@@ -222,5 +226,39 @@ class StudentRepository(private val context: Context) {
     // Performs updates to seating chart coordinates mapped explicitly per classroom
     suspend fun updateStudentSeating(studentId: Int, className: String, x: Float, y: Float) = withContext(Dispatchers.IO) {
         studentDao.updateStudentSeatingForClass(studentId, className, x, y)
+    }
+
+    // Grading Terms
+    suspend fun getAllGradingTerms(): List<GradingTermEntity> = withContext(Dispatchers.IO) {
+        studentDao.getAllGradingTerms()
+    }
+
+    suspend fun insertGradingTerm(term: GradingTermEntity): Long = withContext(Dispatchers.IO) {
+        studentDao.insertGradingTerm(term)
+    }
+
+    suspend fun softDeleteGradingTerm(termId: Int) = withContext(Dispatchers.IO) {
+        studentDao.softDeleteGradingTerm(termId)
+    }
+
+    suspend fun setActiveTerm(termId: Int) = withContext(Dispatchers.IO) {
+        studentDao.setActiveTerm(termId)
+    }
+
+    // Assessment Categories
+    suspend fun getAllAssessmentCategories(): List<AssessmentCategoryEntity> = withContext(Dispatchers.IO) {
+        studentDao.getAllAssessmentCategories()
+    }
+
+    suspend fun insertAssessmentCategory(category: AssessmentCategoryEntity): Long = withContext(Dispatchers.IO) {
+        studentDao.insertAssessmentCategory(category)
+    }
+
+    suspend fun softDeleteAssessmentCategory(categoryId: Int) = withContext(Dispatchers.IO) {
+        studentDao.softDeleteAssessmentCategory(categoryId)
+    }
+
+    suspend fun upsertAssessmentScore(columnId: Int, studentId: Int, score: String) = withContext(Dispatchers.IO) {
+        studentDao.upsertAssessmentScore(columnId, studentId, score)
     }
 }
