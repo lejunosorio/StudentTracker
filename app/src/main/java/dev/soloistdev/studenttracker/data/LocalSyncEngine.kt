@@ -4,11 +4,11 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
+import dev.soloistdev.studenttracker.security.SyncCrypto
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.ServerSocket
 import java.net.Socket
@@ -28,11 +28,16 @@ class LocalSyncEngine(private val context: Context) {
     private val _syncState = MutableStateFlow("Idle")
     val syncState: StateFlow<String> = _syncState
 
+    // Single-use code the receiver displays and the sender must enter to derive the transfer key
+    private val _pairingCode = MutableStateFlow<String?>(null)
+    val pairingCode: StateFlow<String?> = _pairingCode
+
     private var onBackupReceivedCallback: ((File) -> Unit)? = null
 
     // Starts a secure localized TCP Socket Server on an anonymous free port [1]
     fun startLocalServer(onBackupReceived: (File) -> Unit) {
         stopActiveSession()
+        _pairingCode.value = SyncCrypto.generatePairingCode()
         _syncState.value = "Listening"
         onBackupReceivedCallback = onBackupReceived
 
@@ -98,19 +103,24 @@ class LocalSyncEngine(private val context: Context) {
         nsdManager.discoverServices("_studenttracker._tcp.", NsdManager.PROTOCOL_DNS_SD, discoveryListener)
     }
 
-    // Transmits the standard JSON database payload directly over the local network socket [1]
-    fun transmitBackupToPeer(peer: NsdServiceInfo, backupFile: File, onComplete: (Boolean) -> Unit) {
+    // Seals the JSON database payload under the pairing code of the peer, then transmits it [1]
+    fun transmitBackupToPeer(
+        peer: NsdServiceInfo,
+        backupFile: File,
+        pairingCode: String,
+        onComplete: (Boolean) -> Unit
+    ) {
         _syncState.value = "Connecting"
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                val sealedPayload = SyncCrypto.encrypt(backupFile.readBytes(), pairingCode)
+
                 val clientSocket = Socket(peer.host, peer.port)
                 _syncState.value = "Syncing"
 
-                FileInputStream(backupFile).use { fis ->
-                    clientSocket.getOutputStream().use { output ->
-                        fis.copyTo(output)
-                        output.flush()
-                    }
+                clientSocket.getOutputStream().use { output ->
+                    output.write(sealedPayload)
+                    output.flush()
                 }
                 clientSocket.close()
                 _syncState.value = "Success"
@@ -125,6 +135,7 @@ class LocalSyncEngine(private val context: Context) {
     // Gracefully unregisters listeners and releases active socket connections [1]
     fun stopActiveSession() {
         _syncState.value = "Idle"
+        _pairingCode.value = null
         serverJob?.cancel()
         serverJob = null
 
@@ -173,16 +184,27 @@ class LocalSyncEngine(private val context: Context) {
     private fun handleIncomingPayload(socket: Socket) {
         _syncState.value = "Syncing"
         try {
+            val activeCode = _pairingCode.value
+                ?: throw IllegalStateException("No active pairing session.")
+
+            // Bounded read: an unpaired peer cannot stream an unlimited write into the cache.
+            // Allow headroom over the plaintext cap for the header and the GCM tag.
+            val sealedPayload = SyncCrypto.readBounded(
+                socket.getInputStream(),
+                SyncCrypto.MAX_PAYLOAD_BYTES + 1024
+            )
+
+            // Authenticates the sender before a single byte reaches the database.
+            val plaintext = SyncCrypto.decrypt(sealedPayload, activeCode)
+
             val cacheDir = File(context.cacheDir, "backups").apply { mkdirs() }
             // Resolved: Saved as a .json file to skip hardware KeyStore decryption [1]
             val receivedFile = File(cacheDir, "temp_p2p_import.json")
             if (receivedFile.exists()) receivedFile.delete()
 
-            socket.getInputStream().use { input ->
-                FileOutputStream(receivedFile).use { fos ->
-                    input.copyTo(fos)
-                    fos.flush()
-                }
+            FileOutputStream(receivedFile).use { fos ->
+                fos.write(plaintext)
+                fos.flush()
             }
             _syncState.value = "Success"
             onBackupReceivedCallback?.invoke(receivedFile)

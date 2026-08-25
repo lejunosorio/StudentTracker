@@ -160,7 +160,6 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                         .openHelperFactory(factory)
                         .addMigrations(MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
-                        .fallbackToDestructiveMigration()
                         .build().also {
                             it.openHelper.writableDatabase
                         }

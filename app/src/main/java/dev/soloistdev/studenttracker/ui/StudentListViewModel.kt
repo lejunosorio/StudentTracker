@@ -62,37 +62,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
 
         if (filter != null && filter.field.isNotEmpty()) {
             processedList = processedList.filter { student ->
-                val fieldValue: String = when (filter.field) {
-                    "First Name" -> student.firstName
-                    "Last Name" -> student.lastName
-                    "Gender" -> if (student.gender == "F") "Female" else "Male"
-                    "Home Address" -> student.address
-                    "Student Contact" -> student.contactNumber
-                    "Class", "Classroom" -> student.classNamesJson
-                    "Age" -> {
-                        val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
-                        age.toString()
-                    }
-                    "Birthday" -> student.birthday.toString()
-                    "Guardian Name" -> {
-                        val guardians = Guardian.listFromJsonString(student.guardiansJson)
-                        if (guardians.isNotEmpty()) guardians[0].name else ""
-                    }
-                    "Guardian Contact" -> {
-                        val guardians = Guardian.listFromJsonString(student.guardiansJson)
-                        if (guardians.isNotEmpty()) guardians[0].phones.firstOrNull() ?: "" else ""
-                    }
-                    else -> {
-                        try {
-                            val json = JSONObject(student.customDataJson)
-                            json.optString(filter.field, "")
-                        } catch (_: Exception) {
-                            ""
-                        }
-                    }
-                }
-
-                applyComparison(fieldValue, filter)
+                FilterEngine.applyComparison(FilterEngine.getFieldValue(student, filter.field), filter)
             }
         }
 
@@ -248,29 +218,6 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
             clearSelection()
             onCreated(recordId, normalizedStart)
         }
-    }
-
-    private fun generateDateList(startDate: Long, endDate: Long): List<Long> {
-        val dates = mutableListOf<Long>()
-        val startCal = Calendar.getInstance().apply {
-            timeInMillis = startDate
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-        val endCal = Calendar.getInstance().apply {
-            timeInMillis = endDate
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-        while (!startCal.after(endCal)) {
-            dates.add(startCal.timeInMillis)
-            startCal.add(Calendar.DAY_OF_YEAR, 1)
-        }
-        return dates
     }
 
     fun toggleStudentSelection(studentId: Int) {
@@ -429,85 +376,6 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
             }
             clearSelection()
             loadStudents()
-        }
-    }
-
-    private fun applyComparison(fieldValue: String, filter: FilterState): Boolean {
-        val value1 = filter.value1.trim()
-        val value2 = filter.value2.trim()
-
-        if (filter.field == "Class" || filter.field == "Classroom") {
-            val studentClasses = try {
-                val array = JSONArray(fieldValue)
-                val list = mutableListOf<String>()
-                for (i in 0 until array.length()) {
-                    list.add(array.getString(i).lowercase())
-                }
-                list
-            } catch (e: Exception) {
-                listOf(fieldValue.lowercase())
-            }
-            val targetClass = value1.lowercase()
-            return when (filter.comparison) {
-                "member_of", "contains", "equal" -> studentClasses.contains(targetClass)
-                "not_member_of", "does not contain", "not equal" -> !studentClasses.contains(targetClass)
-                else -> true
-            }
-        }
-
-        if (filter.field == "Birthday") {
-            val studentBirthday = fieldValue.toLongOrNull() ?: return false
-            val studentCal = Calendar.getInstance().apply { timeInMillis = studentBirthday }
-            return when (filter.comparison) {
-                "birth_year" -> {
-                    val yearVal = value1.toIntOrNull() ?: return false
-                    studentCal.get(Calendar.YEAR) == yearVal
-                }
-                "birth_month" -> {
-                    val monthVal = value1.toIntOrNull() ?: return false
-                    (studentCal.get(Calendar.MONTH) + 1) == monthVal
-                }
-                "birth_month_year" -> {
-                    val monthVal = value1.toIntOrNull() ?: return false
-                    val yearVal = value2.toIntOrNull() ?: return false
-                    (studentCal.get(Calendar.MONTH) + 1) == monthVal && studentCal.get(Calendar.YEAR) == yearVal
-                }
-                "exact_birthday" -> {
-                    val targetBirthday = value1.toLongOrNull() ?: return false
-                    val calFilter = Calendar.getInstance().apply { timeInMillis = targetBirthday }
-                    studentCal.get(Calendar.YEAR) == calFilter.get(Calendar.YEAR) &&
-                            studentCal.get(Calendar.DAY_OF_YEAR) == calFilter.get(Calendar.DAY_OF_YEAR)
-                }
-                else -> false
-            }
-        }
-
-        return when (filter.comparison) {
-            "contains" -> fieldValue.contains(value1, ignoreCase = true)
-            "does not contain" -> !fieldValue.contains(value1, ignoreCase = true)
-            "equal" -> fieldValue.equals(value1, ignoreCase = true)
-            "not equal" -> !fieldValue.equals(value1, ignoreCase = true)
-            "empty" -> fieldValue.isBlank()
-            "not empty" -> fieldValue.isNotBlank()
-            "greater than" -> {
-                val numField = fieldValue.toDoubleOrNull()
-                val numVal = value1.toDoubleOrNull()
-                if (numField != null && numVal != null) numField > numVal else false
-            }
-            "less than" -> {
-                val numField = fieldValue.toDoubleOrNull()
-                val numVal = value1.toDoubleOrNull()
-                if (numField != null && numVal != null) numField < numVal else false
-            }
-            "In between" -> {
-                val numField = fieldValue.toDoubleOrNull()
-                val numMin = value1.toDoubleOrNull()
-                val numMax = value2.toDoubleOrNull()
-                if (numField != null && numMin != null && numMax != null) {
-                    numField in numMin..numMax
-                } else false
-            }
-            else -> true
         }
     }
 }

@@ -3,7 +3,6 @@ agp = "9.3.0"
 androidDatabaseSqlcipher = "4.5.4"
 biometric = "1.2.0-alpha05"
 coreKtx = "1.10.1"
-hiltAndroid = "2.60.1"
 junit = "4.13.2"
 junitVersion = "1.1.5"
 espressoCore = "3.5.1"
@@ -12,10 +11,8 @@ activityCompose = "1.8.0"
 kotlin = "2.2.10"
 ksp = "2.2.10-2.0.2"
 composeBom = "2026.02.01"
-mapsCompose = "8.4.0"
 navigationCompose = "2.9.8"
 osmdroidAndroid = "6.1.20"
-playServicesMaps = "20.0.0"
 roomCompiler = "2.6.1"
 roomRuntime = "2.8.4"
 rootbeerLib = "0.1.2"
@@ -23,7 +20,6 @@ rootbeerLibVersion = "0.1.0"
 securityCrypto = "1.1.0"
 sqliteKtx = "2.7.0"
 uiText = "1.11.4"
-identityJvm = "202411.1"
 zxing = "3.5.3"
 foundation = "1.11.4"
 
@@ -41,8 +37,6 @@ androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "
 androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "securityCrypto" }
 androidx-sqlite-ktx = { module = "androidx.sqlite:sqlite-ktx", version.ref = "sqliteKtx" }
 github-rootbeer-lib = { module = "com.github.rootbeer:rootbeer-lib", version.ref = "rootbeerLibVersion" }
-hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hiltAndroid" }
-hilt-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "hiltAndroid" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
@@ -56,12 +50,9 @@ androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "u
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
-maps-compose = { module = "com.google.maps.android:maps-compose", version.ref = "mapsCompose" }
 osmdroid-android = { module = "org.osmdroid:osmdroid-android", version.ref = "osmdroidAndroid" }
-play-services-maps = { module = "com.google.android.gms:play-services-maps", version.ref = "playServicesMaps" }
 rootbeer-lib = { module = "com.scottyab:rootbeer-lib", version.ref = "rootbeerLib" }
 androidx-compose-ui-text = { group = "androidx.compose.ui", name = "ui-text", version.ref = "uiText" }
-identity-jvm = { group = "com.android.identity", name = "identity-jvm", version.ref = "identityJvm" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
 

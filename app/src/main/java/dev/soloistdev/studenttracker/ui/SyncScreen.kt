@@ -2,12 +2,14 @@ package dev.soloistdev.studenttracker.ui
 
 import android.content.Context
 import android.net.Uri
+import android.net.nsd.NsdServiceInfo
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -20,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,6 +56,76 @@ fun SyncScreen(onBack: () -> Unit) {
     val localSyncEngine = remember { LocalSyncEngine(context) }
     val syncState by localSyncEngine.syncState.collectAsState()
     val discoveredPeers by localSyncEngine.discoveredPeers.collectAsState()
+    val pairingCode by localSyncEngine.pairingCode.collectAsState()
+
+    // Peer selected for transmission, held until the operator supplies its pairing code
+    var peerAwaitingCode by remember { mutableStateOf<NsdServiceInfo?>(null) }
+    var enteredCode by remember { mutableStateOf("") }
+
+    val peerToastSuccess = stringResource(R.string.toast_p2p_transmission_success)
+
+    // Serializes the active roster and hands it to the engine, which seals it under [code]
+    fun sendRosterToPeer(peer: NsdServiceInfo, code: String) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val activeRoster = repository.getAllActiveStudents()
+                val activeLogs = repository.getAllAttendanceLogs()
+
+                val cacheDir = File(context.cacheDir, "backups").apply { mkdirs() }
+                val tempFile = File(cacheDir, "temp_p2p_transmit.json")
+
+                val payloadObj = JSONObject().apply {
+                    val studentsArr = JSONArray()
+                    activeRoster.forEach { s ->
+                        studentsArr.put(JSONObject().apply {
+                            put("id", s.id)
+                            put("firstName", s.firstName)
+                            put("lastName", s.lastName)
+                            put("gender", s.gender)
+                            put("birthday", s.birthday)
+                            put("address", s.address)
+                            put("contactNumber", s.contactNumber)
+                            put("picturePath", s.picturePath)
+                            put("guardiansJson", s.guardiansJson)
+                            put("customDataJson", s.customDataJson)
+                            put("lastModified", s.lastModified)
+                            put("classRoom", s.getClassNamesList().firstOrNull() ?: "")
+                            put("classNamesJson", JSONArray(s.classNamesJson))
+                            put("seatingJson", JSONObject(s.seatingJson))
+                        })
+                    }
+                    put("students", studentsArr)
+
+                    val logsArr = JSONArray()
+                    activeLogs.forEach { l ->
+                        logsArr.put(JSONObject().apply {
+                            put("recordId", l.recordId)
+                            put("dateMillis", l.dateMillis)
+                            put("studentId", l.studentId)
+                            put("status", l.status)
+                            put("lastModified", l.lastModified)
+                        })
+                    }
+                    put("attendanceLogs", logsArr)
+                }
+
+                FileOutputStream(tempFile).use { fos ->
+                    fos.write(payloadObj.toString().toByteArray())
+                    fos.flush()
+                }
+
+                localSyncEngine.transmitBackupToPeer(peer, tempFile, code) { success ->
+                    if (success) {
+                        Toast.makeText(context, peerToastSuccess, Toast.LENGTH_SHORT).show()
+                    }
+                    // The plaintext roster never outlives the transfer
+                    tempFile.delete()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -171,6 +244,42 @@ fun SyncScreen(onBack: () -> Unit) {
                         }
                     }
 
+                    val activeCode = pairingCode
+                    if (syncState == "Listening" && activeCode != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.sync_p2p_pairing_code_label),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    text = activeCode,
+                                    fontSize = 32.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    text = stringResource(R.string.sync_p2p_pairing_code_hint),
+                                    fontSize = 10.sp,
+                                    textAlign = TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                )
+                            }
+                        }
+                    }
+
                     if (syncState == "Scanning") {
                         Text(stringResource(R.string.sync_p2p_peers_header), fontSize = 12.sp, fontWeight = FontWeight.Bold)
 
@@ -178,70 +287,13 @@ fun SyncScreen(onBack: () -> Unit) {
                             Text(stringResource(R.string.sync_p2p_no_peers), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
                         } else {
                             discoveredPeers.forEach { peer ->
-                                val peerToastSuccess = stringResource(R.string.toast_p2p_transmission_success)
                                 Card(
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
-                                            scope.launch(Dispatchers.IO) {
-                                                try {
-                                                    val activeRoster = repository.getAllActiveStudents()
-                                                    val activeLogs = repository.getAllAttendanceLogs()
-
-                                                    val cacheDir = File(context.cacheDir, "backups").apply { mkdirs() }
-                                                    val tempFile = File(cacheDir, "temp_p2p_transmit.json")
-
-                                                    val payloadObj = JSONObject().apply {
-                                                        val studentsArr = JSONArray()
-                                                        activeRoster.forEach { s ->
-                                                            studentsArr.put(JSONObject().apply {
-                                                                put("id", s.id)
-                                                                put("firstName", s.firstName)
-                                                                put("lastName", s.lastName)
-                                                                put("gender", s.gender)
-                                                                put("birthday", s.birthday)
-                                                                put("address", s.address)
-                                                                put("contactNumber", s.contactNumber)
-                                                                put("picturePath", s.picturePath)
-                                                                put("guardiansJson", s.guardiansJson)
-                                                                put("customDataJson", s.customDataJson)
-                                                                put("lastModified", s.lastModified)
-                                                                put("classRoom", s.getClassNamesList().firstOrNull() ?: "")
-                                                                put("classNamesJson", JSONArray(s.classNamesJson))
-                                                                put("seatingJson", JSONObject(s.seatingJson))
-                                                            })
-                                                        }
-                                                        put("students", studentsArr)
-
-                                                        val logsArr = JSONArray()
-                                                        activeLogs.forEach { l ->
-                                                            logsArr.put(JSONObject().apply {
-                                                                put("recordId", l.recordId)
-                                                                put("dateMillis", l.dateMillis)
-                                                                put("studentId", l.studentId)
-                                                                put("status", l.status)
-                                                                put("lastModified", l.lastModified)
-                                                            })
-                                                        }
-                                                        put("attendanceLogs", logsArr)
-                                                    }
-
-                                                    FileOutputStream(tempFile).use { fos ->
-                                                        fos.write(payloadObj.toString().toByteArray())
-                                                        fos.flush()
-                                                    }
-
-                                                    localSyncEngine.transmitBackupToPeer(peer, tempFile) { success ->
-                                                        if (success) {
-                                                            Toast.makeText(context, peerToastSuccess, Toast.LENGTH_SHORT).show()
-                                                        }
-                                                        tempFile.delete()
-                                                    }
-                                                } catch (e: Exception) {
-                                                    e.printStackTrace()
-                                                }
-                                            }
+                                            enteredCode = ""
+                                            peerAwaitingCode = peer
                                         }
                                         .padding(vertical = 2.dp)
                                 ) {
@@ -300,6 +352,52 @@ fun SyncScreen(onBack: () -> Unit) {
             )
         }
 
+        val targetPeer = peerAwaitingCode
+        if (targetPeer != null) {
+            AlertDialog(
+                onDismissRequest = { peerAwaitingCode = null },
+                title = { Text(stringResource(R.string.sync_p2p_enter_code_title), fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = stringResource(R.string.sync_p2p_enter_code_desc),
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 18.sp
+                        )
+                        OutlinedTextField(
+                            value = enteredCode,
+                            onValueChange = { input -> enteredCode = input.filter { it.isDigit() }.take(6) },
+                            label = { Text(stringResource(R.string.sync_p2p_code_field_label)) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        enabled = enteredCode.length == 6,
+                        onClick = {
+                            sendRosterToPeer(targetPeer, enteredCode)
+                            peerAwaitingCode = null
+                        }
+                    ) {
+                        Text(stringResource(R.string.sync_p2p_code_send_action))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { peerAwaitingCode = null }) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
+        }
+
         if (showHelpDialog) {
             AlertDialog(
                 onDismissRequest = { showHelpDialog = false },
@@ -346,4 +444,4 @@ private fun getFileName(context: Context, uri: Uri): String? {
             if (idx != -1) it.getString(idx) else null
         } else null
     }
-}
+}

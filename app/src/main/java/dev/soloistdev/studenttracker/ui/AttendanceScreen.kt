@@ -226,7 +226,7 @@ fun AttendanceScreen(
                 1 -> {
                     // ================= SUB-SCREEN 1: DATES LIST (BADGES INTEGRATED) =================
                     selectedRecord?.let { record ->
-                        val dates = remember(record) { viewModel.generateDateList(record.startDate, record.endDate) }
+                        val dates = remember(record) { generateDateList(record.startDate, record.endDate) }
                         val recordLogs by viewModel.recordLogs.collectAsState()
 
                         LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -305,7 +305,7 @@ fun AttendanceScreen(
                     selectedRecord?.let { record ->
                         val recordLogs by viewModel.recordLogs.collectAsState()
                         val roster by viewModel.currentRoster.collectAsState()
-                        val dates = remember(record) { viewModel.generateDateList(record.startDate, record.endDate) }
+                        val dates = remember(record) { generateDateList(record.startDate, record.endDate) }
 
                         Column(modifier = Modifier.fillMaxSize()) {
                             Card(

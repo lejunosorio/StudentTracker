@@ -19,6 +19,12 @@ class StudentRepository(private val context: Context) {
         studentDao.insertStudent(student)
     }
 
+    // In-place update used by the backup merge, so refreshing an existing student does not
+    // cascade-delete their behavior incidents and assessment scores.
+    suspend fun updateStudent(student: StudentEntity) = withContext(Dispatchers.IO) {
+        studentDao.updateStudent(student)
+    }
+
     suspend fun softDeleteStudent(studentId: Int) = withContext(Dispatchers.IO) {
         studentDao.softDeleteStudent(studentId)
     }

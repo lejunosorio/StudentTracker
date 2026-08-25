@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Update
 
 @Dao
 interface StudentDao {
@@ -17,6 +18,11 @@ interface StudentDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertStudent(student: StudentEntity): Long
+
+    // In-place update. Avoids the INSERT OR REPLACE delete+insert, which would cascade
+    // away the behavior incidents and assessment scores that reference this student.
+    @Update
+    fun updateStudent(student: StudentEntity)
 
     @Query("UPDATE students SET isDeleted = 1 WHERE id = :studentId")
     fun softDeleteStudent(studentId: Int)

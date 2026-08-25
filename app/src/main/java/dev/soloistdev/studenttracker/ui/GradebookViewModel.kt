@@ -70,7 +70,7 @@ class GradebookViewModel(application: Application) : AndroidViewModel(applicatio
                         value2 = filter.value2
                     )
                     activeRoster.filter { student ->
-                        applyComparison(getFieldValue(student, filter.fieldName), filterState)
+                        FilterEngine.applyComparison(FilterEngine.getFieldValue(student, filter.fieldName), filterState)
                     }
                 } else {
                     activeRoster
@@ -111,89 +111,6 @@ class GradebookViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             repository.softDeleteAssessmentColumn(columnId)
             loadData()
-        }
-    }
-
-    // Helper functions mirroring local sorting checks
-    private fun getFieldValue(student: StudentEntity, field: String): String {
-        return when (field) {
-            "First Name" -> student.firstName
-            "Last Name" -> student.lastName
-            "Gender" -> if (student.gender == "F") "Female" else "Male"
-            "Address", "Home Address" -> student.address
-            "Student Contact" -> student.contactNumber
-            "Age" -> {
-                val currentYear = Calendar.getInstance().get(Calendar.YEAR)
-                val birthCal = Calendar.getInstance().apply { timeInMillis = student.birthday }
-                val birthYear = birthCal.get(Calendar.YEAR)
-                (currentYear - birthYear).toString()
-            }
-            "Birthday" -> student.birthday.toString()
-            else -> {
-                try {
-                    JSONObject(student.customDataJson).optString(field, "")
-                } catch (_: Exception) {
-                    ""
-                }
-            }
-        }
-    }
-
-    private fun applyComparison(fieldValue: String, filter: FilterState): Boolean {
-        val value1 = filter.value1.trim()
-        val value2 = filter.value2.trim()
-
-        if (filter.field == "Birthday") {
-            val studentBirthday = fieldValue.toLongOrNull() ?: return false
-            val studentCal = Calendar.getInstance().apply { timeInMillis = studentBirthday }
-            return when (filter.comparison) {
-                "birth_year" -> {
-                    val yearVal = value1.toIntOrNull() ?: return false
-                    studentCal.get(Calendar.YEAR) == yearVal
-                }
-                "birth_month" -> {
-                    val monthVal = value1.toIntOrNull() ?: return false
-                    (studentCal.get(Calendar.MONTH) + 1) == monthVal
-                }
-                "birth_month_year" -> {
-                    val monthVal = value1.toIntOrNull() ?: return false
-                    val yearVal = value2.toIntOrNull() ?: return false
-                    (studentCal.get(Calendar.MONTH) + 1) == monthVal && studentCal.get(Calendar.YEAR) == yearVal
-                }
-                "exact_birthday" -> {
-                    val targetBirthday = value1.toLongOrNull() ?: return false
-                    val calFilter = Calendar.getInstance().apply { timeInMillis = targetBirthday }
-                    studentCal.get(Calendar.YEAR) == calFilter.get(Calendar.YEAR) &&
-                            studentCal.get(Calendar.DAY_OF_YEAR) == calFilter.get(Calendar.DAY_OF_YEAR)
-                }
-                else -> false
-            }
-        }
-
-        return when (filter.comparison) {
-            "contains" -> fieldValue.contains(value1, ignoreCase = true)
-            "does not contain" -> !fieldValue.contains(value1, ignoreCase = true)
-            "equal" -> fieldValue.equals(value1, ignoreCase = true)
-            "not equal" -> !fieldValue.equals(value1, ignoreCase = true)
-            "greater than" -> {
-                val numField = fieldValue.toDoubleOrNull()
-                val numVal = value1.toDoubleOrNull()
-                if (numField != null && numVal != null) numField > numVal else false
-            }
-            "less than" -> {
-                val numField = fieldValue.toDoubleOrNull()
-                val numVal = value1.toDoubleOrNull()
-                if (numField != null && numVal != null) numField < numVal else false
-            }
-            "In between" -> {
-                val numField = fieldValue.toDoubleOrNull()
-                val numMin = value1.toDoubleOrNull()
-                val numMax = value2.toDoubleOrNull()
-                if (numField != null && numMin != null && numMax != null) {
-                    numField in numMin..numMax
-                } else false
-            }
-            else -> true
         }
     }
 }

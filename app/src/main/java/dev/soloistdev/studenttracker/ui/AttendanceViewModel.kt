@@ -85,8 +85,8 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
 
                 if (filter != null) {
                     val matchedStudents = studentsList.filter { student ->
-                        val value = getFieldValue(student, filter.fieldName)
-                        evaluateCondition(value, filter.comparison, filter.value1, filter.value2)
+                        val value = FilterEngine.getFieldValue(student, filter.fieldName)
+                        FilterEngine.evaluateCondition(value, filter.comparison, filter.value1, filter.value2)
                     }
 
                     val daysList = generateDateList(start, end)
@@ -674,118 +674,5 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun writeNumberCell(ref: String, value: Int, styleId: Int): String {
         return "<c r=\"$ref\" t=\"n\" s=\"$styleId\"><v>$value</v></c>"
-    }
-
-    fun generateDateList(startDate: Long, endDate: Long): List<Long> {
-        val dates = mutableListOf<Long>()
-        val startCal = Calendar.getInstance().apply {
-            timeInMillis = startDate
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-        val endCal = Calendar.getInstance().apply {
-            timeInMillis = endDate
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-        while (!startCal.after(endCal)) {
-            dates.add(startCal.timeInMillis)
-            startCal.add(Calendar.DAY_OF_YEAR, 1)
-        }
-        return dates
-    }
-
-    private fun getFieldValue(student: StudentEntity, field: String): String {
-        return when (field) {
-            "First Name" -> student.firstName
-            "Last Name" -> student.lastName
-            "Gender" -> if (student.gender == "F") "Female" else "Male"
-            "Address" -> student.address
-            "Class", "Classroom" -> student.classNamesJson // Updated to return multi-classroom array data
-            "Age" -> {
-                val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
-                age.toString()
-            }
-            "Birthday" -> student.birthday.toString()
-            else -> {
-                try {
-                    JSONObject(student.customDataJson).optString(field, "")
-                } catch (_: Exception) {
-                    ""
-                }
-            }
-        }
-    }
-
-    private fun evaluateCondition(fieldVal: String, operator: String, v1: String, v2: String): Boolean {
-        val cleanVal = fieldVal.trim()
-
-        // Evaluates multiple class names utilizing contains (member of) or does not contain (not member of) logic
-        val isJsonArray = cleanVal.startsWith("[") && cleanVal.endsWith("]")
-        if (isJsonArray) {
-            val studentClasses = try {
-                val array = JSONArray(cleanVal)
-                val list = mutableListOf<String>()
-                for (i in 0 until array.length()) {
-                    list.add(array.getString(i).lowercase())
-                }
-                list
-            } catch (e: Exception) {
-                e.printStackTrace()
-                emptyList<String>()
-            }
-            val targetClass = v1.lowercase()
-            return when (operator) {
-                "member_of", "member of", "contains", "equal" -> studentClasses.contains(targetClass)
-                "not_member_of", "not member of", "does not contain", "not equal" -> !studentClasses.contains(targetClass)
-                else -> true
-            }
-        }
-
-        if (operator in listOf("birth_year", "birth_month", "birth_month_year", "exact_birthday")) {
-            val studentBirthday = cleanVal.toLongOrNull() ?: return false
-            val studentCal = Calendar.getInstance().apply { timeInMillis = studentBirthday }
-            return when (operator) {
-                "birth_year" -> {
-                    val yearVal = v1.toIntOrNull() ?: return false
-                    studentCal.get(Calendar.YEAR) == yearVal
-                }
-                "birth_month" -> {
-                    val monthVal = v1.toIntOrNull() ?: return false
-                    (studentCal.get(Calendar.MONTH) + 1) == monthVal
-                }
-                "birth_month_year" -> {
-                    val monthVal = v1.toIntOrNull() ?: return false
-                    val yearVal = v2.toIntOrNull() ?: return false
-                    (studentCal.get(Calendar.MONTH) + 1) == monthVal && studentCal.get(Calendar.YEAR) == yearVal
-                }
-                "exact_birthday" -> {
-                    val targetBirthday = v1.toLongOrNull() ?: return false
-                    val calFilter = Calendar.getInstance().apply { timeInMillis = targetBirthday }
-                    studentCal.get(Calendar.YEAR) == calFilter.get(Calendar.YEAR) &&
-                            studentCal.get(Calendar.DAY_OF_YEAR) == calFilter.get(Calendar.DAY_OF_YEAR)
-                }
-                else -> false
-            }
-        }
-        return when (operator) {
-            "contains" -> cleanVal.contains(v1, ignoreCase = true)
-            "does not contain" -> !cleanVal.contains(v1, ignoreCase = true)
-            "equal" -> cleanVal.equals(v1, ignoreCase = true)
-            "not equal" -> !cleanVal.equals(v1, ignoreCase = true)
-            "greater than" -> (cleanVal.toDoubleOrNull() ?: 0.0) > (v1.toDoubleOrNull() ?: 0.0)
-            "less than" -> (cleanVal.toDoubleOrNull() ?: 0.0) < (v1.toDoubleOrNull() ?: 0.0)
-            "In between" -> {
-                val num = cleanVal.toDoubleOrNull() ?: 0.0
-                val min = v1.toDoubleOrNull() ?: 0.0
-                val max = v2.toDoubleOrNull() ?: 0.0
-                num in min..max
-            }
-            else -> true
-        }
     }
 }

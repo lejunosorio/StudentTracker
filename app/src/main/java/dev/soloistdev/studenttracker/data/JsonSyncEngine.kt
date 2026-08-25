@@ -89,6 +89,7 @@ object JsonSyncEngine {
                         put("birthday", sdfDate.format(Date(s.birthday)))
                         put("address", s.address)
                         put("contactNumber", s.contactNumber)
+                        put("lastModified", s.lastModified)
                         // Backward compatibility: legacy single class string
                         put("classRoom", s.getClassNamesList().firstOrNull() ?: "")
                         put("classNamesJson", JSONArray(s.classNamesJson))
@@ -248,6 +249,7 @@ object JsonSyncEngine {
                         put("birthday", sdfDate.format(Date(s.birthday)))
                         put("address", s.address)
                         put("contactNumber", s.contactNumber)
+                        put("lastModified", s.lastModified)
                         put("picturePath", s.picturePath)
                         put("guardiansJson", s.guardiansJson)
                         put("customDataJson", s.customDataJson)
@@ -428,7 +430,7 @@ object JsonSyncEngine {
                 else -> {
                     val rawClass = sObj.optString("Classroom", sObj.optString("classRoom", sObj.optString("class", ""))).trim()
                     val validatedClass = if (validClassrooms.contains(rawClass)) rawClass else ""
-                    if (validatedClass.isNotEmpty()) "[\\\"" + validatedClass + "\\\"]" else "[]"
+                    if (validatedClass.isNotEmpty()) JSONArray().put(validatedClass).toString() else "[]"
                 }
             }
 
@@ -442,7 +444,7 @@ object JsonSyncEngine {
                     val oldX = sObj.optDouble("seatingX", -1.0).toFloat()
                     val oldY = sObj.optDouble("seatingY", -1.0).toFloat()
                     if (rawClass.isNotEmpty() && oldX >= 0f && oldY >= 0f) {
-                        "{\\\"" + rawClass + "\\\":{\\\"x\\\":" + oldX + ",\\\"y\\\":" + oldY + "}}"
+                        JSONObject().put(rawClass, JSONObject().put("x", oldX.toDouble()).put("y", oldY.toDouble())).toString()
                     } else "{}"
                 }
             }
@@ -626,6 +628,16 @@ object JsonSyncEngine {
         }
     }
 
+    /**
+     * Applies a backup payload as a MERGE rather than a blind insert.
+     *
+     * Every entity is reconciled against what the database already holds, so importing the same
+     * file twice converges on the same roster instead of duplicating it. Students are keyed by
+     * first name + last name + birthday; an existing student is refreshed only when the incoming
+     * record carries a newer lastModified, so a restore never silently discards newer local
+     * edits. Backups written before lastModified was exported resolve to 0 and therefore count
+     * as older, which leaves the local copy untouched.
+     */
     private suspend fun parseAndInsertBackupPayload(payloadObj: JSONObject, repository: StudentRepository): ImportResult {
         val sdfBday = SimpleDateFormat("MM-dd-yyyy", Locale.US)
 
@@ -637,25 +649,25 @@ object JsonSyncEngine {
 
         val validClassroomNames = mutableSetOf<String>()
 
-        // Classrooms
+        // Classrooms, keyed by name so a re-import refreshes the timetable in place
+        val existingClassrooms = repository.getAllClassrooms().associateBy { it.name.trim().lowercase() }
         val classroomsArr = payloadObj.optJSONArray("classrooms")
         if (classroomsArr != null) {
             for (i in 0 until classroomsArr.length()) {
                 val cObj = classroomsArr.getJSONObject(i)
                 val name = cObj.optString("name", "").trim()
-                val start = cObj.optString("start", "08:00 AM")
-                val end = cObj.optString("end", "04:00 PM")
+                if (name.isEmpty()) continue
 
-                if (name.isNotEmpty()) {
-                    validClassroomNames.add(name)
-                    val classroom = ClassroomEntity(
+                validClassroomNames.add(name)
+                repository.insertClassroom(
+                    ClassroomEntity(
+                        id = existingClassrooms[name.lowercase()]?.id ?: 0,
                         name = name,
-                        startTime = start,
-                        endTime = end
+                        startTime = cObj.optString("start", "08:00 AM"),
+                        endTime = cObj.optString("end", "04:00 PM")
                     )
-                    repository.insertClassroom(classroom)
-                    classroomsLoaded++
-                }
+                )
+                classroomsLoaded++
             }
         }
 
@@ -666,16 +678,29 @@ object JsonSyncEngine {
         val existingTemplateNames = repository.getAllFormTemplates().map { it.fieldName }.toSet()
         val discoveredTemplates = mutableSetOf<String>()
 
-        // Students & Behavior Logs
-        val studentsArr = payloadObj.optJSONArray("students") ?: JSONArray()
+        // Soft-deleted students are included so a re-import revives them instead of cloning them
+        val localStudents = repository.getAllActiveStudents() + repository.getAllDeletedStudents()
+        val studentsByIdentity = localStudents.associateBy { identityKey(it.firstName, it.lastName, it.birthday) }
+
+        // Seeded from the current roster so participant rows can resolve students that the
+        // payload does not itself carry.
         val studentIdentifierToIdMap = mutableMapOf<String, Int>()
+        localStudents.forEach { studentIdentifierToIdMap[participantKey(it)] = it.id }
+
+        // Students and their behavior logs
+        val studentsArr = payloadObj.optJSONArray("students") ?: JSONArray()
 
         for (i in 0 until studentsArr.length()) {
             val sObj = studentsArr.getJSONObject(i)
             val first = sObj.optString("firstName", "")
             val last = sObj.optString("lastName", "")
             val bdayStr = sObj.optString("birthday", "")
-            val bdayMillis = try { sdfBday.parse(bdayStr)?.time ?: 0L } catch (_: Exception) { 0L }
+            val bdayMillis = try {
+                sdfBday.parse(bdayStr)?.time ?: sObj.optLong("birthday", 0L)
+            } catch (_: Exception) {
+                sObj.optLong("birthday", 0L)
+            }
+            val incomingLastModified = sObj.optLong("lastModified", 0L)
 
             val rawGuardians = sObj.opt("guardiansJson")
             val resolvedGuardiansJson = when (rawGuardians) {
@@ -710,7 +735,7 @@ object JsonSyncEngine {
                 else -> {
                     val rawClass = sObj.optString("Classroom", sObj.optString("classRoom", sObj.optString("class", ""))).trim()
                     val validatedClass = if (validClassroomNames.contains(rawClass)) rawClass else ""
-                    if (validatedClass.isNotEmpty()) "[\\\"" + validatedClass + "\\\"]" else "[]"
+                    if (validatedClass.isNotEmpty()) JSONArray().put(validatedClass).toString() else "[]"
                 }
             }
 
@@ -724,7 +749,7 @@ object JsonSyncEngine {
                     val oldX = sObj.optDouble("seatingX", -1.0).toFloat()
                     val oldY = sObj.optDouble("seatingY", -1.0).toFloat()
                     if (rawClass.isNotEmpty() && oldX >= 0f && oldY >= 0f) {
-                        "{\\\"" + rawClass + "\\\":{\\\"x\\\":" + oldX + ",\\\"y\\\":" + oldY + "}}"
+                        JSONObject().put(rawClass, JSONObject().put("x", oldX.toDouble()).put("y", oldY.toDouble())).toString()
                     } else "{}"
                 }
             }
@@ -743,32 +768,54 @@ object JsonSyncEngine {
                 classNamesJson = resolvedClassNamesJson,
                 seatingJson = resolvedSeatingJson
             )
-            val newStudentId = repository.insertStudent(student).toInt()
-            studentsLoaded++
 
-            // Establish mapping identifier representing the first classroom cohort cleanly
+            val existing = studentsByIdentity[identityKey(first, last, bdayMillis)]
+            val resolvedStudentId: Int
+            if (existing == null) {
+                resolvedStudentId = repository.insertStudent(student).toInt()
+                studentsLoaded++
+            } else if (incomingLastModified > existing.lastModified) {
+                // updateStudent, not insert-with-id: an INSERT OR REPLACE here would delete the
+                // row first and cascade away the incidents and scores that point at it.
+                repository.updateStudent(student.copy(id = existing.id))
+                resolvedStudentId = existing.id
+                studentsLoaded++
+            } else {
+                // Local record is the same age or newer, so it wins. Still resolve the link.
+                resolvedStudentId = existing.id
+            }
+
             val firstClass = student.getClassNamesList().firstOrNull() ?: ""
-            val identifier = "${last}_${first}_${firstClass}"
-            studentIdentifierToIdMap[identifier] = newStudentId
+            studentIdentifierToIdMap[participantKey(last, first, firstClass)] = resolvedStudentId
 
+            // Behavior incidents, de-duplicated on title plus date within this student
             val behaviorArr = sObj.optJSONArray("behaviorIncidents")
             if (behaviorArr != null) {
+                val seenIncidents = repository.getIncidentsForStudent(resolvedStudentId)
+                    .map { "${it.title}|${it.incidentDate}" }
+                    .toMutableSet()
+
                 for (b in 0 until behaviorArr.length()) {
                     val bObj = behaviorArr.getJSONObject(b)
                     val title = bObj.optString("title", "")
-                    val cat = bObj.optString("category", "Neutral")
-                    val desc = bObj.optString("description", "")
                     val bDateStr = bObj.optString("date", "")
-                    val bDateMillis = try { sdfBday.parse(bDateStr)?.time ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }
+                    val bDateMillis = try {
+                        sdfBday.parse(bDateStr)?.time ?: System.currentTimeMillis()
+                    } catch (_: Exception) {
+                        System.currentTimeMillis()
+                    }
 
-                    val incident = BehaviorIncidentEntity(
-                        studentId = newStudentId,
-                        title = title,
-                        category = cat,
-                        description = desc,
-                        incidentDate = bDateMillis
+                    if (!seenIncidents.add("$title|$bDateMillis")) continue
+
+                    repository.insertIncident(
+                        BehaviorIncidentEntity(
+                            studentId = resolvedStudentId,
+                            title = title,
+                            category = bObj.optString("category", "Neutral"),
+                            description = bObj.optString("description", ""),
+                            incidentDate = bDateMillis
+                        )
                     )
-                    repository.insertIncident(incident)
                 }
             }
         }
@@ -784,7 +831,8 @@ object JsonSyncEngine {
             )
         }
 
-        // Saved Filters
+        // Saved Filters, keyed by name
+        val existingFilters = repository.getAllSavedFilters().associateBy { it.filterName.trim().lowercase() }
         val filtersArr = payloadObj.optJSONArray("savedFilters")
         if (filtersArr != null) {
             for (i in 0 until filtersArr.length()) {
@@ -803,110 +851,125 @@ object JsonSyncEngine {
                     }
                 }
 
-                val filter = SavedFilterEntity(
-                    filterName = name,
-                    fieldName = field,
-                    comparison = comp,
-                    value1 = fObj.optString("value1", fObj.optString("value", "")),
-                    value2 = fObj.optString("value2", ""),
-                    displayOrder = fObj.optInt("displayOrder", i)
+                repository.insertSavedFilter(
+                    SavedFilterEntity(
+                        id = existingFilters[name.trim().lowercase()]?.id ?: 0,
+                        filterName = name,
+                        fieldName = field,
+                        comparison = comp,
+                        value1 = fObj.optString("value1", fObj.optString("value", "")),
+                        value2 = fObj.optString("value2", ""),
+                        displayOrder = fObj.optInt("displayOrder", i)
+                    )
                 )
-                repository.insertSavedFilter(filter)
                 filtersLoaded++
             }
         }
 
-        // Attendance Sheets & Log matrix
+        // Attendance sheets, keyed by name plus date range; logs upserted per student and day
+        val existingRecords = repository.getAllAttendanceRecords()
         val attendanceArr = payloadObj.optJSONArray("attendanceRecord")
         if (attendanceArr != null) {
             for (i in 0 until attendanceArr.length()) {
                 val rObj = attendanceArr.getJSONObject(i)
                 val rName = rObj.optString("name", "")
-                val startStr = rObj.optString("startDate", "")
-                val endStr = rObj.optString("endDate", "")
+                val startMillis = try { sdfBday.parse(rObj.optString("startDate", ""))?.time ?: 0L } catch (_: Exception) { 0L }
+                val endMillis = try { sdfBday.parse(rObj.optString("endDate", ""))?.time ?: 0L } catch (_: Exception) { 0L }
 
-                val startMillis = try { sdfBday.parse(startStr)?.time ?: 0L } catch (_: Exception) { 0L }
-                val endMillis = try { sdfBday.parse(endStr)?.time ?: 0L } catch (_: Exception) { 0L }
-
-                val record = AttendanceRecordEntity(
-                    name = rName,
-                    savedFilterId = 0,
-                    startDate = startMillis,
-                    endDate = endMillis
-                )
-                val recordId = repository.insertAttendanceRecord(record).toInt()
+                val existingRecord = existingRecords.find {
+                    it.name == rName && it.startDate == startMillis && it.endDate == endMillis
+                }
+                val recordId = existingRecord?.id ?: repository.insertAttendanceRecord(
+                    AttendanceRecordEntity(
+                        name = rName,
+                        savedFilterId = 0,
+                        startDate = startMillis,
+                        endDate = endMillis
+                    )
+                ).toInt()
                 attendanceLoaded++
+
+                val existingLogs = if (existingRecord != null) repository.getLogsForRecord(recordId) else emptyList()
 
                 val participantsArr = rObj.optJSONArray("participants")
                 if (participantsArr != null) {
                     for (p in 0 until participantsArr.length()) {
                         val pObj = participantsArr.getJSONObject(p)
-                        val identifier = pObj.optString("studentIdentifier", "")
-                        val localStudentId = studentIdentifierToIdMap[identifier] ?: -1
+                        val localStudentId = studentIdentifierToIdMap[pObj.optString("studentIdentifier", "")] ?: -1
+                        if (localStudentId == -1) continue
 
-                        if (localStudentId != -1) {
-                            val attendanceLogsObj = pObj.optJSONObject("attendance")
-                            if (attendanceLogsObj != null) {
-                                val logDates = attendanceLogsObj.keys()
-                                while (logDates.hasNext()) {
-                                    val dateStr = logDates.next()
-                                    val logStatus = attendanceLogsObj.optString(dateStr, "NOT_SET")
-                                    val logDateMillis = try { sdfBday.parse(dateStr)?.time ?: 0L } catch (_: Exception) { 0L }
-
-                                    val log = AttendanceLogEntity(
-                                        recordId = recordId,
-                                        dateMillis = logDateMillis,
-                                        studentId = localStudentId,
-                                        status = logStatus.uppercase()
-                                    )
-                                    repository.insertAttendanceLog(log)
-                                }
+                        val attendanceLogsObj = pObj.optJSONObject("attendance") ?: continue
+                        val logDates = attendanceLogsObj.keys()
+                        while (logDates.hasNext()) {
+                            val dateStr = logDates.next()
+                            val logDateMillis = try { sdfBday.parse(dateStr)?.time ?: 0L } catch (_: Exception) { 0L }
+                            val priorLog = existingLogs.find {
+                                it.dateMillis == logDateMillis && it.studentId == localStudentId
                             }
+
+                            repository.insertAttendanceLog(
+                                AttendanceLogEntity(
+                                    id = priorLog?.id ?: 0,
+                                    recordId = recordId,
+                                    dateMillis = logDateMillis,
+                                    studentId = localStudentId,
+                                    status = attendanceLogsObj.optString(dateStr, "NOT_SET").uppercase()
+                                )
+                            )
                         }
                     }
                 }
             }
         }
 
-        // Gradebook Sheets & Score matrix
+        // Gradebook sheets, keyed by name plus exam date; scores upserted per student
+        val existingColumns = repository.getAllAssessmentColumns()
         val gradebookArr = payloadObj.optJSONArray("gradeBook")
         if (gradebookArr != null) {
             for (i in 0 until gradebookArr.length()) {
                 val gObj = gradebookArr.getJSONObject(i)
                 val gName = gObj.optString("name", "")
-                val maxPoints = gObj.optDouble("maxPoints", 100.0)
-                val examStr = gObj.optString("examDate", "")
-                val checkStr = gObj.optString("checkDate", "")
+                val examMillis = try {
+                    sdfBday.parse(gObj.optString("examDate", ""))?.time ?: System.currentTimeMillis()
+                } catch (_: Exception) {
+                    System.currentTimeMillis()
+                }
+                val checkMillis = try {
+                    sdfBday.parse(gObj.optString("checkDate", ""))?.time ?: System.currentTimeMillis()
+                } catch (_: Exception) {
+                    System.currentTimeMillis()
+                }
 
-                val examMillis = try { sdfBday.parse(examStr)?.time ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }
-                val checkMillis = try { sdfBday.parse(checkStr)?.time ?: System.currentTimeMillis() } catch (_: Exception) { System.currentTimeMillis() }
-
-                val column = AssessmentColumnEntity(
-                    name = gName,
-                    maxPoints = maxPoints,
-                    examDate = examMillis,
-                    checkDate = checkMillis,
-                    savedFilterId = 0
-                )
-                val columnId = repository.insertAssessmentColumn(column).toInt()
+                val existingColumn = existingColumns.find { it.name == gName && it.examDate == examMillis }
+                val columnId = existingColumn?.id ?: repository.insertAssessmentColumn(
+                    AssessmentColumnEntity(
+                        name = gName,
+                        maxPoints = gObj.optDouble("maxPoints", 100.0),
+                        examDate = examMillis,
+                        checkDate = checkMillis,
+                        savedFilterId = 0
+                    )
+                ).toInt()
                 gradebookLoaded++
+
+                val existingScores = if (existingColumn != null) repository.getScoresForColumn(columnId) else emptyList()
 
                 val gradesArr = gObj.optJSONArray("grades")
                 if (gradesArr != null) {
                     for (g in 0 until gradesArr.length()) {
                         val scoreObj = gradesArr.getJSONObject(g)
-                        val identifier = scoreObj.optString("studentIdentifier", "")
-                        val localStudentId = studentIdentifierToIdMap[identifier] ?: -1
+                        val localStudentId = studentIdentifierToIdMap[scoreObj.optString("studentIdentifier", "")] ?: -1
+                        if (localStudentId == -1) continue
 
-                        if (localStudentId != -1) {
-                            val scoreStr = scoreObj.optString("score", "")
-                            val scoreEntity = AssessmentScoreEntity(
+                        val priorScore = existingScores.find { it.studentId == localStudentId }
+                        repository.insertAssessmentScore(
+                            AssessmentScoreEntity(
+                                id = priorScore?.id ?: 0,
                                 columnId = columnId,
                                 studentId = localStudentId,
-                                score = scoreStr
+                                score = scoreObj.optString("score", "")
                             )
-                            repository.insertAssessmentScore(scoreEntity)
-                        }
+                        )
                     }
                 }
             }
@@ -920,6 +983,17 @@ object JsonSyncEngine {
             gradebookCount = gradebookLoaded
         )
     }
+
+    // Match key for a student across devices: names are case-folded, birthday is exact.
+    private fun identityKey(firstName: String, lastName: String, birthday: Long): String =
+        "${firstName.trim().lowercase()}_${lastName.trim().lowercase()}_$birthday"
+
+    // Match key used by attendance and gradebook rows, mirroring the exporter format.
+    private fun participantKey(lastName: String, firstName: String, className: String): String =
+        "${lastName}_${firstName}_${className}"
+
+    private fun participantKey(student: StudentEntity): String =
+        participantKey(student.lastName, student.firstName, student.getClassNamesList().firstOrNull() ?: "")
 
     private fun verifyFileSizeLimit(context: Context, uri: Uri) {
         val cursor = context.contentResolver.query(uri, null, null, null, null)
@@ -952,4 +1026,4 @@ object JsonSyncEngine {
         }
         return name
     }
-}
+}

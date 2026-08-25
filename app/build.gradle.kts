@@ -47,15 +47,13 @@ android {
     }
 }
 
-// SPRINT 2 & 7 FORCE RESOLUTION STRATEGY
-// Forcefully resolves all Kotlin standard libraries and Google Maps down to 2.2.x compatible versions
+// KOTLIN STDLIB FORCE RESOLUTION STRATEGY
+// Forcefully resolves all Kotlin standard libraries down to 2.2.x compatible versions
 configurations.all {
     resolutionStrategy {
         force("org.jetbrains.kotlin:kotlin-stdlib:2.2.10")
         force("org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.2.10")
         force("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.10")
-        force("com.google.maps.android:maps-compose:4.3.3") // Force stable maps-compose
-        force("com.google.maps.android:maps-ktx:5.1.1")     // Force stable maps-ktx
     }
 }
 
@@ -73,11 +71,6 @@ dependencies {
 
     // Navigation
     implementation(libs.androidx.navigation.compose)
-
-    // Dependency Injection (Hilt)
-    implementation(libs.hilt.android)
-    implementation(libs.identity.jvm)
-    annotationProcessor(libs.hilt.compiler)
 
     // Security (RootBeer - Free Root Detection)
     implementation(libs.rootbeer.lib)
@@ -99,10 +92,6 @@ dependencies {
 
     // Material Extended Icons
     implementation(libs.androidx.material.icons.extended)
-
-    // Google Maps SDK (Stable, fully compatible with Kotlin 2.2.x)
-    implementation(libs.play.services.maps)
-    implementation(libs.maps.compose)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
