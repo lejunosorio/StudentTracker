@@ -328,6 +328,45 @@ fun AppNavigation() {
                     if (navController.currentDestination?.route == ScreenRoute.APP_SETTINGS) {
                         navController.navigate(ScreenRoute.SYNC)
                     }
+                },
+                onNavigateToAppearance = {
+                    if (navController.currentDestination?.route == ScreenRoute.APP_SETTINGS) {
+                        navController.navigate(ScreenRoute.SETTINGS_APPEARANCE)
+                    }
+                },
+                onNavigateToBackup = {
+                    if (navController.currentDestination?.route == ScreenRoute.APP_SETTINGS) {
+                        navController.navigate(ScreenRoute.SETTINGS_BACKUP)
+                    }
+                },
+                onNavigateToStorage = {
+                    if (navController.currentDestination?.route == ScreenRoute.APP_SETTINGS) {
+                        navController.navigate(ScreenRoute.SETTINGS_STORAGE)
+                    }
+                }
+            )
+        }
+
+        composable(ScreenRoute.SETTINGS_APPEARANCE) {
+            AppearanceSettingsScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) navController.popBackStack()
+                }
+            )
+        }
+
+        composable(ScreenRoute.SETTINGS_BACKUP) {
+            BackupSettingsScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) navController.popBackStack()
+                }
+            )
+        }
+
+        composable(ScreenRoute.SETTINGS_STORAGE) {
+            StorageSettingsScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) navController.popBackStack()
                 }
             )
         }
@@ -551,6 +590,9 @@ object ScreenRoute {
     const val BIOMETRICS_PRIVACY = "biometrics_privacy"
     const val ATTENDANCE = "attendance?recordId={recordId}&dateMillis={dateMillis}"
     const val APP_SETTINGS = "app_settings"
+    const val SETTINGS_APPEARANCE = "settings_appearance"
+    const val SETTINGS_BACKUP = "settings_backup"
+    const val SETTINGS_STORAGE = "settings_storage"
     const val IMPORT_STUDENT = "import_student?id={id}&first={first}&last={last}&gender={gender}&birthday={birthday}&address={address}&contact={contact}&guardians={guardians}&custom={custom}&class={class}&seatingX={seatingX}&seatingY={seatingY}"
     const val SYNC = "sync" // Registered Running Sync route constant cleanly
     const val CSV_IMPORT = "csv_import"
