@@ -1,13 +1,19 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12 and below. Nothing this app stores belongs in a cloud backup:
+
+      - the SQLCipher database is useless off-device, because its passphrase lives in
+        secure_prefs under a hardware-backed key that never leaves the KeyStore;
+      - restoring secure_prefs onto a new device yields a file that cannot be decrypted there,
+        which is worse than having no file at all;
+      - the rolling snapshots hold the plaintext-equivalent roster - names, birthdays, addresses
+        and guardian phone numbers of minors - and must not be uploaded anywhere implicitly.
+
+    Backup and restore are offered explicitly in-app instead, where the teacher chooses.
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="secure_prefs.xml" />
+    <exclude domain="file" path="." />
+    <exclude domain="external" path="." />
 </full-backup-content>

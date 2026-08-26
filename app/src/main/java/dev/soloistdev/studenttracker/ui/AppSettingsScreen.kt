@@ -14,7 +14,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
@@ -31,8 +34,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
+import dev.soloistdev.studenttracker.LocaleHelper
 import dev.soloistdev.studenttracker.R
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import dev.soloistdev.studenttracker.data.AppDatabase
+import dev.soloistdev.studenttracker.data.BackupScheduler
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
 import dev.soloistdev.studenttracker.data.JsonSyncEngine
@@ -49,18 +56,25 @@ import java.util.*
 fun AppSettingsScreen(
     onBack: () -> Unit,
     onNavigateToBiometrics: () -> Unit,
-    onNavigateToSync: () -> Unit
+    onNavigateToSync: () -> Unit,
+    onNavigateToCsvImport: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { StudentRepository(context) }
 
     val sharedPrefs = remember { context.getSharedPreferences("app_settings", Context.MODE_PRIVATE) }
+    // Bumped after any backup action so the snapshot list re-reads from disk
+    var backupRefreshKey by remember { mutableIntStateOf(0) }
+    var pendingRestoreFile by remember { mutableStateOf<java.io.File?>(null) }
 
     var dynamicColorsEnabled by remember { mutableStateOf(sharedPrefs.getBoolean("dynamic_colors", true)) }
 
     var appTheme by remember { mutableStateOf(sharedPrefs.getString("app_theme", "System") ?: "System") }
     var themeDropdownExpanded by remember { mutableStateOf(false) }
+
+    var selectedLanguage by remember { mutableStateOf(LocaleHelper.current(context)) }
+    var languageDropdownExpanded by remember { mutableStateOf(false) }
 
     var activeBadgeField by remember { mutableStateOf(sharedPrefs.getString("card_banner_field", "") ?: "") }
     var availableTemplates by remember { mutableStateOf<List<FormTemplateEntity>>(emptyList()) }
@@ -115,11 +129,6 @@ fun AppSettingsScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
-                actions = {
-                    IconButton(onClick = {}) {
-                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.menu_app_settings))
-                    }
-                }
             )
         }
     ) { paddingValues ->
@@ -159,6 +168,44 @@ fun AppSettingsScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
+                    // Language picker. Recreating the activity is what makes the change take
+                    // effect immediately: every already-composed string is re-resolved against
+                    // the new locale on the way back up.
+                    ExposedDropdownMenuBox(
+                        expanded = languageDropdownExpanded,
+                        onExpandedChange = { languageDropdownExpanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = LocaleHelper.displayName(selectedLanguage),
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text(stringResource(R.string.settings_language_label)) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = languageDropdownExpanded) },
+                            colors = m3TextFieldColors,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
+                        )
+                        ExposedDropdownMenu(
+                            expanded = languageDropdownExpanded,
+                            onDismissRequest = { languageDropdownExpanded = false }
+                        ) {
+                            LocaleHelper.SUPPORTED.forEach { code ->
+                                DropdownMenuItem(
+                                    text = { Text(LocaleHelper.displayName(code)) },
+                                    onClick = {
+                                        languageDropdownExpanded = false
+                                        if (code != selectedLanguage) {
+                                            selectedLanguage = code
+                                            LocaleHelper.set(context, code)
+                                            (context as? android.app.Activity)?.recreate()
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+
                     // 3-CHOICE SELECTION DROPDOWN
                     val themeLabel = when (appTheme) {
                         "Light" -> "Light Theme"
@@ -174,7 +221,7 @@ fun AppSettingsScreen(
                             value = themeLabel,
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("App Theme Configuration") },
+                            label = { Text(stringResource(R.string.s_app_theme_configuration)) },
                             colors = m3TextFieldColors,
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = themeDropdownExpanded) },
                             modifier = Modifier
@@ -234,7 +281,7 @@ fun AppSettingsScreen(
                     }
                     Icon(
                         imageVector = Icons.Default.Security,
-                        contentDescription = "Navigate to Security Settings",
+                        contentDescription = stringResource(R.string.cd_navigate_to_security_settings),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -299,6 +346,15 @@ fun AppSettingsScreen(
                 }
             }
 
+            // Automatic Backup Category
+            Text("AUTOMATIC BACKUP", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+
+            AutoBackupCard(
+                onRestore = { file -> pendingRestoreFile = file },
+                refreshKey = backupRefreshKey,
+                onChanged = { backupRefreshKey++ }
+            )
+
             // Storage, Backup & Database Category
             Text(stringResource(R.string.settings_storage_database), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
@@ -321,7 +377,25 @@ fun AppSettingsScreen(
                             Text("Sync Data", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("Share databases locally via P2P Wi-Fi", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                         }
-                        Icon(Icons.Default.Wifi, contentDescription = "Sync", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.Wifi, contentDescription = stringResource(R.string.cd_sync), tint = MaterialTheme.colorScheme.primary)
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    // Spreadsheet import with explicit column mapping
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onNavigateToCsvImport() }
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Import Spreadsheet (CSV)", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Map columns from any school system export", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                        }
+                        Icon(Icons.Default.TableChart, contentDescription = stringResource(R.string.cd_csv_import), tint = MaterialTheme.colorScheme.primary)
                     }
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -343,7 +417,30 @@ fun AppSettingsScreen(
                             Text("Export Database (JSON)", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("Saves all student directories, classes, and evaluations as a local JSON file.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                         }
-                        Icon(Icons.Default.Save, contentDescription = "Export Backup", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.Save, contentDescription = stringResource(R.string.cd_export_backup), tint = MaterialTheme.colorScheme.primary)
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    // Encrypted export. The importer for this format already existed; without a
+                    // way to produce a .enc file the round trip was broken in one direction.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                exportType = "ENC"
+                                exportFileNameInput = "student_tracker_backup_" + SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+                                showExportNameDialog = true
+                            }
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.sync_export_backup_title), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.settings_export_enc_desc), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                        }
+                        Icon(Icons.Default.Security, contentDescription = stringResource(R.string.sync_export_backup_title), tint = MaterialTheme.colorScheme.primary)
                     }
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -365,7 +462,7 @@ fun AppSettingsScreen(
                             Text("Export CSV Spreadsheet", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("Decrypted spreadsheet row formatting compatible with Excel", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                         }
-                        Icon(Icons.Default.TableChart, contentDescription = "Export CSV", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.TableChart, contentDescription = stringResource(R.string.cd_export_csv), tint = MaterialTheme.colorScheme.primary)
                     }
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -385,7 +482,7 @@ fun AppSettingsScreen(
                             Text("Import Database (JSON)", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("Restores all student profiles, behavior logs, and records from a JSON backup.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                         }
-                        Icon(Icons.Default.Download, contentDescription = "Import Backup", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.Download, contentDescription = stringResource(R.string.cd_import_backup), tint = MaterialTheme.colorScheme.primary)
                     }
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -433,7 +530,7 @@ fun AppSettingsScreen(
                             Text("Purge Database", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.error)
                             Text("Permanently erases all students, classes, filters, and sheets", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                         }
-                        Icon(Icons.Default.Delete, contentDescription = "Purge Database", tint = MaterialTheme.colorScheme.error)
+                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.cd_purge_database), tint = MaterialTheme.colorScheme.error)
                     }
                 }
             }
@@ -489,7 +586,7 @@ fun AppSettingsScreen(
                                     val db = AppDatabase.getDatabase(context)
                                     db.clearAllTables()
                                     withContext(Dispatchers.Main) {
-                                        Toast.makeText(context, "Database successfully purged!", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, context.getString(R.string.toast_database_successfully_purged), Toast.LENGTH_LONG).show()
                                     }
                                 } catch (e: Exception) {
                                     e.printStackTrace()
@@ -499,7 +596,7 @@ fun AppSettingsScreen(
                         enabled = purgeInputText.trim().lowercase() == "delete",
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
-                        Text("Purge All Data")
+                        Text(stringResource(R.string.s_purge_all_data))
                     }
                 },
                 dismissButton = {
@@ -522,7 +619,7 @@ fun AppSettingsScreen(
             AlertDialog(
                 onDismissRequest = { showImportConfirmDialog = false },
                 title = { Text("Restore Database?", fontWeight = FontWeight.Bold) },
-                text = { Text("Are you sure you want to restore your database from this JSON backup? This will import all Classrooms, Students, Behavior Logs, Attendance Records, and Gradebooks.") },
+                text = { Text(stringResource(R.string.s_are_you_sure_you_want_to_restore_your_data)) },
                 confirmButton = {
                     Button(
                         onClick = {
@@ -591,7 +688,7 @@ fun AppSettingsScreen(
                                 isImportDone = false
                             }
                         ) {
-                            Text("Done")
+                            Text(stringResource(R.string.s_done))
                         }
                     }
                 },
@@ -619,7 +716,7 @@ fun AppSettingsScreen(
                                 // Sanitizes filename inputs to prevent directory traversal injections
                                 exportFileNameInput = input.filter { it.isLetterOrDigit() || it == '_' || it == '-' }
                             },
-                            label = { Text("Filename") },
+                            label = { Text(stringResource(R.string.s_filename)) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -629,22 +726,29 @@ fun AppSettingsScreen(
                     Button(
                         onClick = {
                             val finalName = exportFileNameInput.trim().ifEmpty {
-                                if (exportType == "JSON") "student_tracker_backup" else "student_roster_export"
+                                if (exportType == "CSV") "student_roster_export" else "student_tracker_backup"
                             }
                             showExportNameDialog = false
                             exportFileNameInput = ""
 
                             scope.launch {
-                                if (exportType == "JSON") {
-                                    JsonSyncEngine.exportBackupJson(context, repository, finalName)
-                                } else {
-                                    val list = repository.getAllActiveStudents()
-                                    CsvExportEngine.exportRosterToCsv(context, list, finalName)
+                                when (exportType) {
+                                    "JSON" -> JsonSyncEngine.exportBackupJson(context, repository, finalName)
+                                    "ENC" -> {
+                                        val ok = JsonSyncEngine.exportEncryptedBackup(context, repository, finalName)
+                                        if (!ok) {
+                                            Toast.makeText(context, R.string.settings_export_enc_failed, Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                    else -> {
+                                        val list = repository.getAllActiveStudents()
+                                        CsvExportEngine.exportRosterToCsv(context, list, finalName)
+                                    }
                                 }
                             }
                         }
                     ) {
-                        Text("Export")
+                        Text(stringResource(R.string.s_export))
                     }
                 },
                 dismissButton = {
@@ -659,6 +763,199 @@ fun AppSettingsScreen(
                 },
                 shape = RoundedCornerShape(28.dp)
             )
+        }
+    }
+
+        pendingRestoreFile?.let { file ->
+            AlertDialog(
+                onDismissRequest = { pendingRestoreFile = null },
+                title = { Text("Restore Snapshot", fontWeight = FontWeight.Bold) },
+                text = {
+                    Text(
+                        text = "Merge ${BackupScheduler.describe(file)} into the current database? Existing students are matched and refreshed rather than duplicated.",
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        val target = file
+                        pendingRestoreFile = null
+                        showLoadingPopup = true
+                        isImportDone = false
+                        scope.launch {
+                            // Snapshots are sealed on disk; importLocalBackup unwraps whichever
+                            // form this one was written in.
+                            val result = JsonSyncEngine.importLocalBackup(context, target, repository)
+                            importResult = result
+                            isImportDone = true
+                            backupRefreshKey++
+                        }
+                    }) {
+                        Text(stringResource(R.string.s_restore))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingRestoreFile = null }) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
+        }
+}
+/**
+ * Rolling-backup controls.
+ *
+ * The list is the point: an automatic backup nobody can see is indistinguishable from no backup
+ * at all, so the most recent snapshots are shown with their timestamps and size, and each one can
+ * be restored or copied off the device.
+ */
+@Composable
+private fun AutoBackupCard(
+    onRestore: (java.io.File) -> Unit,
+    refreshKey: Int,
+    onChanged: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val repository = remember { StudentRepository(context) }
+
+    var enabled by remember { mutableStateOf(BackupScheduler.isEnabled(context)) }
+    var retention by remember { mutableIntStateOf(BackupScheduler.retention(context)) }
+    var intervalHours by remember { mutableIntStateOf(BackupScheduler.intervalHours(context)) }
+    var isRunning by remember { mutableStateOf(false) }
+
+    val backups = remember(refreshKey) { BackupScheduler.listBackups(context) }
+    val lastRun = remember(refreshKey) { BackupScheduler.lastRunMillis(context) }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Automatic backups", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = if (lastRun > 0L) {
+                            "Last run ${SimpleDateFormat("MMM dd 'at' HH:mm", Locale.US).format(Date(lastRun))}"
+                        } else {
+                            "Never run yet"
+                        },
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = {
+                        enabled = it
+                        BackupScheduler.setEnabled(context, it)
+                    }
+                )
+            }
+
+            Text(
+                text = "A snapshot is written when the app goes to the background, at most once every $intervalHours hours. The newest $retention are kept.",
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = intervalHours.toString(),
+                    onValueChange = { input ->
+                        val v = input.filter { it.isDigit() }.toIntOrNull() ?: 1
+                        intervalHours = v.coerceIn(1, 168)
+                        BackupScheduler.setIntervalHours(context, intervalHours)
+                    },
+                    label = { Text("Every (hrs)", fontSize = 11.sp) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextField(
+                    value = retention.toString(),
+                    onValueChange = { input ->
+                        val v = input.filter { it.isDigit() }.toIntOrNull() ?: 1
+                        retention = v.coerceIn(1, 30)
+                        BackupScheduler.setRetention(context, retention)
+                    },
+                    label = { Text("Keep", fontSize = 11.sp) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Button(
+                onClick = {
+                    isRunning = true
+                    scope.launch {
+                        val file = BackupScheduler.runBackup(context, repository)
+                        isRunning = false
+                        onChanged()
+                        Toast.makeText(
+                            context,
+                            if (file != null) "Backup saved" else "Nothing to back up",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                },
+                enabled = !isRunning,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                if (isRunning) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text(stringResource(R.string.s_back_up_now))
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            if (backups.isEmpty()) {
+                Text(
+                    text = "No snapshots yet.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+            } else {
+                backups.forEach { file ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = BackupScheduler.describe(file),
+                            fontSize = 12.sp,
+                            modifier = Modifier.weight(1f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        IconButton(onClick = { scope.launch { BackupScheduler.shareBackup(context, file) } }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Share, contentDescription = stringResource(R.string.cd_share), modifier = Modifier.size(16.dp))
+                        }
+                        IconButton(onClick = { onRestore(file) }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Restore, contentDescription = stringResource(R.string.cd_restore), modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+
+                Text(
+                    text = "Snapshots are encrypted to this device and are removed if the app is uninstalled. Sharing one exports a readable copy — keep it somewhere safe.",
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
         }
     }
 }

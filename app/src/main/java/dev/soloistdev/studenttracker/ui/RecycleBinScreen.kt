@@ -38,6 +38,11 @@ fun RecycleBinScreen(
     val deletedRecords by viewModel.deletedRecords.collectAsState()
     val context = LocalContext.current
 
+    // Re-read on every entry: the ViewModel outlives this composable.
+    LaunchedEffect(Unit) {
+        viewModel.loadAllDeleted()
+    }
+
     // Active Category Tab: 0 = Students, 1 = Custom Fields, 2 = Saved Filters, 3 = Attendance
     var activeCategoryTab by remember { mutableIntStateOf(0) }
 
@@ -116,7 +121,7 @@ fun RecycleBinScreen(
                         if (deletedStudents.isEmpty()) {
                             item { EmptyStateLabel() }
                         } else {
-                            items(deletedStudents) { student ->
+                            items(deletedStudents, key = { it.id }) { student ->
                                 val genderLabel = if (student.gender == "F") stringResource(R.string.gender_female) else stringResource(R.string.gender_male)
                                 RecycleBinRowItem(
                                     title = "${student.lastName}, ${student.firstName}",
@@ -138,7 +143,7 @@ fun RecycleBinScreen(
                         if (deletedTemplates.isEmpty()) {
                             item { EmptyStateLabel() }
                         } else {
-                            items(deletedTemplates) { template ->
+                            items(deletedTemplates, key = { it.id }) { template ->
                                 val requiredLabel = if (template.isRequired) stringResource(R.string.action_yes) else stringResource(R.string.action_no)
                                 RecycleBinRowItem(
                                     title = template.fieldName.replace("_", " "),
@@ -160,7 +165,7 @@ fun RecycleBinScreen(
                         if (deletedFilters.isEmpty()) {
                             item { EmptyStateLabel() }
                         } else {
-                            items(deletedFilters) { filter ->
+                            items(deletedFilters, key = { it.id }) { filter ->
                                 RecycleBinRowItem(
                                     title = filter.filterName,
                                     subtitle = stringResource(R.string.recycle_bin_filter_desc, filter.fieldName.replace("_", " "), filter.comparison, filter.value1),
@@ -181,7 +186,7 @@ fun RecycleBinScreen(
                         if (deletedRecords.isEmpty()) {
                             item { EmptyStateLabel() }
                         } else {
-                            items(deletedRecords) { record ->
+                            items(deletedRecords, key = { it.id }) { record ->
                                 val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.US)
                                 val dateStr = "${sdf.format(Date(record.startDate))} - ${sdf.format(Date(record.endDate))}"
                                 RecycleBinRowItem(

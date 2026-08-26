@@ -101,7 +101,7 @@ fun ClassroomsScreen(onBack: () -> Unit) {
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(classrooms) { classroom ->
+                items(classrooms, key = { it.id }) { classroom ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -130,16 +130,16 @@ fun ClassroomsScreen(onBack: () -> Unit) {
                                     editingClassroom = classroom
                                     showDialog = true
                                 }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+                                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.cd_edit), tint = MaterialTheme.colorScheme.primary)
                                 }
                                 IconButton(onClick = {
                                     scope.launch {
                                         repository.softDeleteClassroom(classroom.id)
                                         refreshClassrooms()
-                                        Toast.makeText(context, "Classroom removed.", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, context.getString(R.string.toast_classroom_removed), Toast.LENGTH_SHORT).show()
                                     }
                                 }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.cd_delete), tint = MaterialTheme.colorScheme.error)
                                 }
                             }
                         }
@@ -172,7 +172,7 @@ fun ClassroomsScreen(onBack: () -> Unit) {
                         OutlinedTextField(
                             value = name,
                             onValueChange = { name = it },
-                            label = { Text("Classroom Name * (e.g., 10-A)") },
+                            label = { Text(stringResource(R.string.s_classroom_name_e_g_10_a)) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -180,7 +180,7 @@ fun ClassroomsScreen(onBack: () -> Unit) {
                         OutlinedTextField(
                             value = startTime,
                             onValueChange = { startTime = it },
-                            label = { Text("Start Session Time * (e.g., 08:00 AM)") },
+                            label = { Text(stringResource(R.string.s_start_session_time_e_g_08_00_am)) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -188,7 +188,7 @@ fun ClassroomsScreen(onBack: () -> Unit) {
                         OutlinedTextField(
                             value = endTime,
                             onValueChange = { endTime = it },
-                            label = { Text("End Session Time * (e.g., 04:00 PM)") },
+                            label = { Text(stringResource(R.string.s_end_session_time_e_g_04_00_pm)) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -198,7 +198,7 @@ fun ClassroomsScreen(onBack: () -> Unit) {
                     Button(
                         onClick = {
                             if (name.isBlank() || startTime.isBlank() || endTime.isBlank()) {
-                                Toast.makeText(context, "All fields are required.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.toast_all_fields_are_required), Toast.LENGTH_SHORT).show()
                             } else {
                                 scope.launch {
                                     val entity = ClassroomEntity(
@@ -210,7 +210,7 @@ fun ClassroomsScreen(onBack: () -> Unit) {
                                     repository.insertClassroom(entity)
                                     refreshClassrooms()
                                     showDialog = false
-                                    Toast.makeText(context, "Classroom saved successfully.", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, context.getString(R.string.toast_classroom_saved_successfully), Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }

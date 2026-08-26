@@ -14,6 +14,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
+import dev.soloistdev.studenttracker.data.BackupScheduler
+import dev.soloistdev.studenttracker.data.StudentRepository
 import dev.soloistdev.studenttracker.security.IntegrityChecker
 import dev.soloistdev.studenttracker.ui.AppNavigation
 import dev.soloistdev.studenttracker.ui.theme.StudentTrackerTheme
@@ -22,16 +24,31 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : FragmentActivity() {
+
+    /** Applies the chosen language before any resource in this activity is resolved. */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleHelper.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Root detection warns; it does not lock the teacher out of their own gradebook.
+        //
+        // Closing the app was easy to defeat by anyone actually attacking it, false-positives on
+        // custom ROMs and many perfectly ordinary devices, and the only person it reliably shut
+        // out was the owner - who then had no way to reach their data or export a backup. The
+        // warning gives them the information and lets them decide.
         val integrityChecker = IntegrityChecker(this)
         lifecycleScope.launch(Dispatchers.IO) {
             val isRooted = integrityChecker.isDeviceRooted()
             if (isRooted) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "Security Error: Rooted environment detected. App closing.", Toast.LENGTH_LONG).show()
-                    finishAffinity()
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(R.string.warning_rooted_device),
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
         }
@@ -89,5 +106,22 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+    }
+
+    /**
+     * Backing up as the app leaves the foreground catches the data the teacher just entered.
+     * BackupScheduler throttles internally, so this is cheap on every backgrounding and only
+     * actually writes once the configured interval has elapsed.
+     */
+    override fun onStop() {
+        super.onStop()
+        val appContext = applicationContext
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                BackupScheduler.maybeAutoBackup(appContext, StudentRepository(appContext))
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 }

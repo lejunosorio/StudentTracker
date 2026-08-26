@@ -8,6 +8,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.SecretKeyFactory // Resolved: Cryptographic PBKDF2 imports [1]
 import javax.crypto.spec.PBEKeySpec     // Resolved: Cryptographic PBKDF2 imports [1]
@@ -18,6 +19,10 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
         .build()
 
+    // Opened synchronously, on purpose. This decides whether the lock screen is shown at all, and
+    // it is read before the first frame; loading it asynchronously would mean either showing the
+    // gate to someone who has turned it off and then snatching it away, or holding the app on a
+    // spinner. It is one KeyStore round-trip, once per process, on a retained ViewModel.
     private val sharedPreferences = EncryptedSharedPreferences.create(
         application,
         "secure_prefs",
@@ -50,6 +55,16 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
         random.nextBytes(saltBytes)
         return Base64.encodeToString(saltBytes, Base64.NO_WRAP)
     }
+
+    /**
+     * Compares two encoded hashes without leaking, through timing, how much of one matched.
+     *
+     * A plain String equality returns as soon as two characters differ, which is measurable and
+     * lets an attacker recover a hash a character at a time. MessageDigest.isEqual always reads
+     * both operands to the end.
+     */
+    private fun hashesMatch(a: String, b: String): Boolean =
+        MessageDigest.isEqual(a.toByteArray(Charsets.UTF_8), b.toByteArray(Charsets.UTF_8))
 
     // Hashes the PIN securely using PBKDF2 with HmacSHA256 and key stretching [1]
     private fun hashPin(pin: String, salt: String): String {
@@ -87,7 +102,7 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
         if (salt.isEmpty() || savedHash.isEmpty()) return false
 
         val computedHash = hashPin(pin, salt)
-        if (computedHash == savedHash) {
+        if (hashesMatch(computedHash, savedHash)) {
             _isUnlocked.value = true
             return true
         }
@@ -119,7 +134,7 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
         if (salt.isEmpty() || savedHash.isEmpty()) return false
 
         val computedOldHash = hashPin(oldPin, salt)
-        if (computedOldHash == savedHash) {
+        if (hashesMatch(computedOldHash, savedHash)) {
             val newSalt = generateSalt()
             val newHashedPin = hashPin(newPin, newSalt)
             sharedPreferences.edit {

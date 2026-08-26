@@ -4,11 +4,13 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dev.soloistdev.studenttracker.data.AgeCalculator
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.SavedFilterEntity
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
 import dev.soloistdev.studenttracker.data.MessageTemplateEntity
+import dev.soloistdev.studenttracker.data.StudentInsights
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -29,13 +31,12 @@ class SavedFiltersViewModel(application: Application) : AndroidViewModel(applica
         .map { list ->
             val activeBadgeField = sharedPrefs.getString("card_banner_field", "") ?: ""
             val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.US)
-            val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+            val today = java.time.LocalDate.now()
 
             list.map { student ->
                 val genderStr = if (student.gender == "F") "Female" else "Male"
                 val bdayFormatted = sdf.format(Date(student.birthday))
-                val cal = Calendar.getInstance().apply { timeInMillis = student.birthday }
-                val age = currentYear - cal.get(Calendar.YEAR)
+                val age = AgeCalculator.ageInYears(student.birthday, today)
 
                 val dynamicBadgeValue = if (activeBadgeField.isNotEmpty()) {
                     try {
@@ -65,6 +66,10 @@ class SavedFiltersViewModel(application: Application) : AndroidViewModel(applica
     private val _messageTemplates = MutableStateFlow<List<MessageTemplateEntity>>(emptyList())
     val messageTemplates: StateFlow<List<MessageTemplateEntity>> = _messageTemplates
 
+    // Backs the merge tokens in the bulk message composer
+    private val _insights = MutableStateFlow<Map<Int, StudentInsights.Insight>>(emptyMap())
+    val insights: StateFlow<Map<Int, StudentInsights.Insight>> = _insights
+
     init {
         loadData()
     }
@@ -73,6 +78,14 @@ class SavedFiltersViewModel(application: Application) : AndroidViewModel(applica
         viewModelScope.launch {
             _filters.value = repository.getAllSavedFilters()
             _students.value = repository.getAllActiveStudents()
+            _insights.value = StudentInsights.compute(
+                students = _students.value,
+                logs = repository.getAllAttendanceLogs(),
+                columns = repository.getAllAssessmentColumns(),
+                scores = repository.getAllAssessmentScores(),
+                categories = repository.getAllAssessmentCategories(),
+                incidents = repository.getAllIncidents()
+            )
             _templates.value = repository.getAllFormTemplates()
             _messageTemplates.value = repository.getAllMessageTemplates()
         }

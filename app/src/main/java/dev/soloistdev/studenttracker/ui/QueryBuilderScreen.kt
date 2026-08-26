@@ -66,6 +66,7 @@ fun QueryBuilderScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .imePadding()
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -123,7 +124,7 @@ fun QueryBuilderScreen(
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Delete,
-                                                contentDescription = "Delete Rule",
+                                                contentDescription = stringResource(R.string.cd_delete_rule),
                                                 tint = MaterialTheme.colorScheme.error,
                                                 modifier = Modifier.size(20.dp)
                                             )
@@ -144,7 +145,7 @@ fun QueryBuilderScreen(
                                             value = rule.field.replace("_", " "),
                                             onValueChange = {},
                                             readOnly = true,
-                                            label = { Text("Select Field") },
+                                            label = { Text(stringResource(R.string.s_select_field)) },
                                             trailingIcon = { Icon(Icons.Default.ArrowDropDown, null, Modifier.clickable { fExpanded = true }) },
                                             modifier = Modifier.fillMaxWidth()
                                         )
@@ -176,7 +177,7 @@ fun QueryBuilderScreen(
                                             value = rule.comparison,
                                             onValueChange = {},
                                             readOnly = true,
-                                            label = { Text("Comparison") },
+                                            label = { Text(stringResource(R.string.s_comparison)) },
                                             trailingIcon = { Icon(Icons.Default.ArrowDropDown, null, Modifier.clickable { cExpanded = true }) },
                                             modifier = Modifier.fillMaxWidth()
                                         )
@@ -218,14 +219,14 @@ fun QueryBuilderScreen(
                                                 OutlinedTextField(
                                                     value = rule.value1,
                                                     onValueChange = { rule.value1 = it },
-                                                    label = { Text("Min Value *") },
+                                                    label = { Text(stringResource(R.string.s_min_value)) },
                                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                                     modifier = Modifier.weight(1f)
                                                 )
                                                 OutlinedTextField(
                                                     value = rule.value2,
                                                     onValueChange = { rule.value2 = it },
-                                                    label = { Text("Max Value *") },
+                                                    label = { Text(stringResource(R.string.s_max_value)) },
                                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                                     modifier = Modifier.weight(1f)
                                                 )
@@ -235,7 +236,7 @@ fun QueryBuilderScreen(
                                             OutlinedTextField(
                                                 value = rule.value1,
                                                 onValueChange = { rule.value1 = it },
-                                                label = { Text("Value *") },
+                                                label = { Text(stringResource(R.string.s_value)) },
                                                 keyboardOptions = KeyboardOptions(keyboardType = if (isNumeric) KeyboardType.Number else KeyboardType.Text),
                                                 modifier = Modifier.fillMaxWidth()
                                             )

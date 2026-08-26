@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
+import java.time.LocalDate
 import java.util.*
 
 class StudentListViewModel(application: Application) : AndroidViewModel(application) {
@@ -31,6 +32,9 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
 
     private val _availableTemplates = MutableStateFlow<List<FormTemplateEntity>>(emptyList())
     val availableTemplates: StateFlow<List<FormTemplateEntity>> = _availableTemplates
+
+    private val _classrooms = MutableStateFlow<List<ClassroomEntity>>(emptyList())
+    val classrooms: StateFlow<List<ClassroomEntity>> = _classrooms
 
     private val _isSelectionMode = MutableStateFlow(false)
     val isSelectionMode: StateFlow<Boolean> = _isSelectionMode
@@ -76,13 +80,12 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
 
         val activeBadgeField = sharedPrefs.getString("card_banner_field", "") ?: ""
         val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.US)
-        val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+        val today = LocalDate.now()
 
         sortedList.map { student ->
             val genderStr = if (student.gender == "F") "Female" else "Male"
             val birthdayFormatted = sdf.format(Date(student.birthday))
-            val cal = Calendar.getInstance().apply { timeInMillis = student.birthday }
-            val age = currentYear - cal.get(Calendar.YEAR)
+            val age = AgeCalculator.ageInYears(student.birthday, today)
 
             val dynamicBadgeValue = if (activeBadgeField.isNotEmpty()) {
                 try {
@@ -112,12 +115,19 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
     fun loadData() {
         loadStudents()
         loadTemplates()
+        loadClassrooms()
     }
 
     fun loadStudents() {
         viewModelScope.launch {
             _rawStudents.value = repository.getAllActiveStudents()
             _isInitialLoadCompleted.value = true
+        }
+    }
+
+    fun loadClassrooms() {
+        viewModelScope.launch {
+            _classrooms.value = repository.getAllClassrooms()
         }
     }
 
@@ -274,7 +284,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                         val updatedStudent = currentStudent.copy(
                             customDataJson = json.toString()
                         )
-                        repository.insertStudent(updatedStudent)
+                        repository.saveStudent(updatedStudent)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
@@ -335,7 +345,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                             classNamesJson = updatedClassesJson,
                             lastModified = System.currentTimeMillis()
                         )
-                        repository.insertStudent(updatedStudent)
+                        repository.saveStudent(updatedStudent)
                     }
                 }
             }
@@ -370,7 +380,7 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
                             seatingJson = seatingObj.toString(),
                             lastModified = System.currentTimeMillis()
                         )
-                        repository.insertStudent(updatedStudent)
+                        repository.saveStudent(updatedStudent)
                     }
                 }
             }

@@ -33,6 +33,12 @@ class GradebookViewModel(application: Application) : AndroidViewModel(applicatio
     private val _categories = MutableStateFlow<List<AssessmentCategoryEntity>>(emptyList())
     val categories: StateFlow<List<AssessmentCategoryEntity>> = _categories
 
+    private val _rubrics = MutableStateFlow<List<RubricEntity>>(emptyList())
+    val rubrics: StateFlow<List<RubricEntity>> = _rubrics
+
+    private val _rubricLevels = MutableStateFlow<List<RubricLevelEntity>>(emptyList())
+    val rubricLevels: StateFlow<List<RubricLevelEntity>> = _rubricLevels
+
     // 0 = every term. Drives both the assessment list and the running grade column.
     private val _selectedTermId = MutableStateFlow(0)
     val selectedTermId: StateFlow<Int> = _selectedTermId
@@ -66,6 +72,8 @@ class GradebookViewModel(application: Application) : AndroidViewModel(applicatio
             _scores.value = repository.getAllAssessmentScores()
             _terms.value = repository.getAllGradingTerms()
             _categories.value = repository.getAllAssessmentCategories()
+            _rubrics.value = repository.getAllRubrics()
+            _rubricLevels.value = repository.getAllRubricLevels()
 
             // Default the view to whichever period is marked active
             if (_selectedTermId.value == 0) {
@@ -85,6 +93,7 @@ class GradebookViewModel(application: Application) : AndroidViewModel(applicatio
         checkDate: Long,
         filterId: Int,
         termId: Int = _selectedTermId.value,
+        rubricId: Int = 0,
         categoryId: Int = 0
     ) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -95,7 +104,8 @@ class GradebookViewModel(application: Application) : AndroidViewModel(applicatio
                 checkDate = checkDate,
                 savedFilterId = filterId,
                 termId = termId,
-                categoryId = categoryId
+                categoryId = categoryId,
+                rubricId = rubricId
             )
             val columnId = repository.insertAssessmentColumn(column).toInt()
 
@@ -192,6 +202,34 @@ class GradebookViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+
+    /** Renames a period or moves its date range. Uses @Update: no cascade risk either way. */
+    fun updateTerm(term: GradingTermEntity) {
+        viewModelScope.launch {
+            repository.updateGradingTerm(term.copy(lastModified = System.currentTimeMillis()))
+            loadData()
+        }
+    }
+
+    fun updateCategory(category: AssessmentCategoryEntity) {
+        viewModelScope.launch {
+            repository.updateAssessmentCategory(category.copy(lastModified = System.currentTimeMillis()))
+            loadData()
+        }
+    }
+
+    /**
+     * Renames a rubric.
+     *
+     * updateRubric, not insert: rubric_levels cascade from this row, so an INSERT OR REPLACE
+     * would silently delete every level the rubric owns.
+     */
+    fun renameRubric(rubric: RubricEntity, newName: String) {
+        viewModelScope.launch {
+            repository.updateRubric(rubric.copy(name = newName.trim(), lastModified = System.currentTimeMillis()))
+            loadData()
+        }
+    }
     fun deleteCategory(categoryId: Int) {
         viewModelScope.launch {
             repository.softDeleteAssessmentCategory(categoryId)

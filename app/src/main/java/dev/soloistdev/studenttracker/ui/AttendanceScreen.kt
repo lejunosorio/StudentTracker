@@ -51,9 +51,17 @@ fun AttendanceScreen(
     var selectedDateMillis by remember { mutableLongStateOf(0L) }
     var showCreateDialog by remember { mutableStateOf(false) }
 
+    // Sheet open in the rename / date-range editor
+    var editingRecord by remember { mutableStateOf<AttendanceRecordEntity?>(null) }
+
     val errorSavedFilterMsg = stringResource(R.string.error_create_saved_filter)
     val attendanceCreatedMsg = stringResource(R.string.toast_attendance_created)
 
+
+    // Re-read on every entry: the ViewModel outlives this composable.
+    LaunchedEffect(Unit) {
+        viewModel.loadRecords()
+    }
     LaunchedEffect(initialRecordId, initialDateMillis) {
         viewModel.loadRecords()
         if (initialRecordId != -1) {
@@ -164,7 +172,7 @@ fun AttendanceScreen(
                         }
                     } else {
                         LazyColumn(modifier = Modifier.fillMaxSize()) {
-                            items(records) { record ->
+                            items(records, key = { it.id }) { record ->
                                 val filterName = savedFilters.find { it.id == record.savedFilterId }?.filterName ?: stringResource(R.string.unknown_filter)
                                 val sdf = SimpleDateFormat("MMM dd", Locale.US)
                                 val rangeStr = "${sdf.format(Date(record.startDate))} - ${sdf.format(Date(record.endDate))}"
@@ -191,6 +199,9 @@ fun AttendanceScreen(
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(record.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                                             Text("Filter: $filterName • Date: $rangeStr", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                                        }
+                                        IconButton(onClick = { editingRecord = record }) {
+                                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.cd_edit_sheet), tint = MaterialTheme.colorScheme.primary)
                                         }
                                         IconButton(onClick = { showDeleteDialog = true }) {
                                             Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.action_delete), tint = MaterialTheme.colorScheme.error)
@@ -230,7 +241,7 @@ fun AttendanceScreen(
                         val recordLogs by viewModel.recordLogs.collectAsState()
 
                         LazyColumn(modifier = Modifier.fillMaxSize()) {
-                            items(dates) { dateMillis ->
+                            items(dates, key = { it }) { dateMillis ->
                                 val sdf = SimpleDateFormat("EEEE, MMMM dd, yyyy", Locale.US)
 
                                 val dayLogs = remember(recordLogs, dateMillis) {
@@ -337,7 +348,7 @@ fun AttendanceScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(bottom = 16.dp)
                             ) {
-                                items(roster) { student ->
+                                items(roster, key = { it.id }) { student ->
                                     val studentLogs = remember(recordLogs, student.id) {
                                         recordLogs.filter { it.studentId == student.id }
                                     }
@@ -394,6 +405,16 @@ fun AttendanceScreen(
             )
         }
     }
+
+    editingRecord?.let { target ->
+        EditAttendanceRecordDialog(
+            record = target,
+            onSave = { updated ->
+                viewModel.updateRecordDetails(updated) { editingRecord = null }
+            },
+            onDismiss = { editingRecord = null }
+        )
+    }
 }
 
 @Composable
@@ -443,6 +464,22 @@ fun DailyRosterSheet(
                     Text(stringResource(R.string.label_completion_summary, presentCount, absentCount, unmarkedCount), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val copyContext = LocalContext.current
+                    IconButton(
+                        onClick = {
+                            viewModel.copyPreviousDay(record.id, dateMillis) { copied ->
+                                Toast.makeText(
+                                    copyContext,
+                                    if (copied > 0) "Copied $copied marks from the previous day"
+                                    else "No earlier marked day to copy from",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = stringResource(R.string.cd_same_as_previous_day), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                    }
                     IconButton(
                         onClick = { viewModel.markAllUnmarkedPresent(record.id, dateMillis) },
                         colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -507,7 +544,7 @@ fun DailyRosterSheet(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
-                items(filteredRoster) { student ->
+                items(filteredRoster, key = { it.id }) { student ->
                     val log = logs.find { it.studentId == student.id }
                     val currentStatus = log?.status ?: "NOT_SET"
 
@@ -683,7 +720,7 @@ fun RecordCreateForm(
                         trailingIcon = {
                             Icon(
                                 imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = "Expand",
+                                contentDescription = stringResource(R.string.cd_expand),
                                 modifier = Modifier.clickable { filterExpanded = true }
                             )
                         },
@@ -746,7 +783,7 @@ fun RecordCreateForm(
                                 )
                                 Icon(
                                     imageVector = Icons.Default.CalendarToday,
-                                    contentDescription = "Select Start Date",
+                                    contentDescription = stringResource(R.string.cd_select_start_date),
                                     tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(16.dp)
                                 )
@@ -776,7 +813,7 @@ fun RecordCreateForm(
                                 )
                                 Icon(
                                     imageVector = Icons.Default.CalendarToday,
-                                    contentDescription = "Select End Date",
+                                    contentDescription = stringResource(R.string.cd_select_end_date),
                                     tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(16.dp)
                                 )
@@ -792,7 +829,7 @@ fun RecordCreateForm(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
-                                contentDescription = "Error",
+                                contentDescription = stringResource(R.string.cd_error),
                                 tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(16.dp)
                             )
@@ -853,5 +890,121 @@ fun RecordCreateForm(
                 }) { Text(stringResource(R.string.action_ok)) }
             }
         ) { DatePicker(state = pickerState, showModeToggle = false) }
+    }
+}
+/**
+ * Renames a sheet or corrects its date range.
+ *
+ * Previously the only remedy for a typo was delete and recreate, which threw away every mark on
+ * the sheet. Marks already recorded outside a narrowed range are kept rather than pruned - losing
+ * attendance data because a date was corrected would be worse than a range that reads slightly
+ * wide.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditAttendanceRecordDialog(
+    record: AttendanceRecordEntity,
+    onSave: (AttendanceRecordEntity) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember(record.id) { mutableStateOf(record.name) }
+    var startMillis by remember(record.id) { mutableLongStateOf(record.startDate) }
+    var endMillis by remember(record.id) { mutableLongStateOf(record.endDate) }
+    var showStartPicker by remember { mutableStateOf(false) }
+    var showEndPicker by remember { mutableStateOf(false) }
+
+    val sdf = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
+    val rangeInvalid = startMillis > endMillis
+    val isValid = name.isNotBlank() && !rangeInvalid
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.attendance_edit_title), fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(stringResource(R.string.attendance_record_name_label)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedButton(
+                    onClick = { showStartPicker = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(stringResource(R.string.attendance_start_date_label, sdf.format(Date(startMillis))), fontSize = 12.sp)
+                }
+
+                OutlinedButton(
+                    onClick = { showEndPicker = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(stringResource(R.string.attendance_end_date_label, sdf.format(Date(endMillis))), fontSize = 12.sp)
+                }
+
+                if (rangeInvalid) {
+                    Text(
+                        text = stringResource(R.string.attendance_date_range_error),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
+                Text(
+                    text = stringResource(R.string.attendance_edit_note),
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = isValid,
+                onClick = {
+                    onSave(record.copy(name = name.trim(), startDate = startMillis, endDate = endMillis))
+                }
+            ) { Text(stringResource(R.string.action_save)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+        shape = RoundedCornerShape(28.dp)
+    )
+
+    if (showStartPicker) {
+        val state = rememberDatePickerState(initialSelectedDateMillis = startMillis)
+        DatePickerDialog(
+            onDismissRequest = { showStartPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { startMillis = it }
+                    showStartPicker = false
+                }) { Text(stringResource(R.string.action_ok)) }
+            }
+        ) { DatePicker(state = state, showModeToggle = false) }
+    }
+
+    if (showEndPicker) {
+        val state = rememberDatePickerState(initialSelectedDateMillis = endMillis)
+        DatePickerDialog(
+            onDismissRequest = { showEndPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { endMillis = it }
+                    showEndPicker = false
+                }) { Text(stringResource(R.string.action_ok)) }
+            }
+        ) { DatePicker(state = state, showModeToggle = false) }
     }
 }

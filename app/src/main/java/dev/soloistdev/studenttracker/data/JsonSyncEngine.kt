@@ -32,135 +32,460 @@ object JsonSyncEngine {
 
     private const val MAX_IMPORT_SIZE_BYTES = 10 * 1024 * 1024 // 10MB limit
 
-    data class MergeSummary(
-        val newStudentsCount: Int,
-        val updatedStudentsCount: Int,
-        val updatedLogsCount: Int,
-        val skippedCount: Int,
-        val studentsToInsert: List<StudentEntity>,
-        val studentsToUpdate: List<StudentEntity>,
-        val logsToMerge: List<AttendanceLogEntity>,
-        val incomingIdToIdentityMap: Map<Int, String>
-    )
+    /** One place that knows how a device-bound file is sealed, so write and read cannot drift. */
+    private fun encryptedFileFor(context: Context, file: File): EncryptedFile =
+        EncryptedFile.Builder(
+            file,
+            context,
+            MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
+            EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
+        ).build()
 
-    // COMPLETE UNENCRYPTED JSON BACKUP EXPORTER (Allows customizable sharing filenames)
-    suspend fun exportBackupJson(context: Context, repository: StudentRepository, customFileName: String? = null) = withContext(Dispatchers.IO) {
+    /**
+     * The same document as [writeBackupTo], sealed under the hardware-backed key.
+     *
+     * Used for the rolling snapshots, which sit on disk between sessions. A snapshot holds the
+     * whole roster in the clear otherwise - names, birthdays, addresses and guardian numbers of
+     * minors - which would undo the point of encrypting the database it was copied out of.
+     */
+    suspend fun writeEncryptedBackupTo(
+        context: Context,
+        repository: StudentRepository,
+        targetFile: File
+    ): Boolean = withContext(Dispatchers.IO) {
         try {
-            val activeRoster = repository.getAllActiveStudents()
-            val activeLogs = repository.getAllAttendanceLogs()
-            val classrooms = repository.getAllClassrooms()
-            val filters = repository.getAllSavedFilters()
-            val columns = repository.getAllAssessmentColumns()
-            val scores = repository.getAllAssessmentScores()
+            val payload = buildBackupPayload(repository).toString().toByteArray(Charsets.UTF_8)
+            targetFile.parentFile?.mkdirs()
+            // EncryptedFile refuses to write over an existing file
+            if (targetFile.exists()) targetFile.delete()
+            encryptedFileFor(context, targetFile).openFileOutput().use { out ->
+                out.write(payload)
+                out.flush()
+            }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            if (targetFile.exists()) targetFile.delete()
+            false
+        }
+    }
 
-            val sdfDate = SimpleDateFormat("MM-dd-yyyy", Locale.US)
+    /** Seals already-built JSON text into [targetFile]. Used to retro-seal legacy snapshots. */
+    suspend fun sealTextTo(context: Context, text: String, targetFile: File): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                targetFile.parentFile?.mkdirs()
+                if (targetFile.exists()) targetFile.delete()
+                encryptedFileFor(context, targetFile).openFileOutput().use { out ->
+                    out.write(text.toByteArray(Charsets.UTF_8))
+                    out.flush()
+                }
+                true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                if (targetFile.exists()) targetFile.delete()
+                false
+            }
+        }
 
-            val payloadObj = JSONObject().apply {
-                // 1. Classrooms
-                val classroomsArr = JSONArray()
-                classrooms.forEach { c ->
-                    classroomsArr.put(JSONObject().apply {
-                        put("name", c.name)
-                        put("start", c.startTime)
-                        put("end", c.endTime)
+    /**
+     * Reads a snapshot from local storage, sealed or not, and returns its JSON text.
+     *
+     * Snapshots written before backups were encrypted are still plain JSON on disk, and a
+     * teacher's disaster recovery should not depend on which version of the app wrote the file.
+     */
+    suspend fun readLocalBackup(context: Context, file: File): String = withContext(Dispatchers.IO) {
+        if (file.length() > MAX_IMPORT_SIZE_BYTES) {
+            throw IOException("Safety threshold exceeded. File size exceeds 10MB limit.")
+        }
+        if (file.name.endsWith(ENCRYPTED_SUFFIX)) {
+            encryptedFileFor(context, file).openFileInput().use { it.readBytes() }
+                .toString(Charsets.UTF_8)
+        } else {
+            file.readText(Charsets.UTF_8)
+        }
+    }
+
+    /** Merges a snapshot held in the app's own storage. Handles both the sealed and legacy forms. */
+    suspend fun importLocalBackup(
+        context: Context,
+        file: File,
+        repository: StudentRepository
+    ): ImportResult? = withContext(Dispatchers.IO) {
+        try {
+            parseAndInsertBackupPayload(asPayloadObject(readLocalBackup(context, file)), repository)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /** Suffix marking a snapshot sealed under the device key. */
+    const val ENCRYPTED_SUFFIX = ".enc"
+
+    /**
+     * Accepts either the current object form or the original bare students array, so files
+     * written by any past version still import.
+     */
+    private fun asPayloadObject(raw: String): JSONObject {
+        val trimmed = raw.trim()
+        return if (trimmed.startsWith("{")) {
+            JSONObject(trimmed)
+        } else {
+            JSONObject().apply { put("students", JSONArray(trimmed)) }
+        }
+    }
+
+    /** The canonical backup document. One builder, so every export path stays in step. */
+    suspend fun buildBackupPayload(repository: StudentRepository): JSONObject = withContext(Dispatchers.IO) {
+        val activeRoster = repository.getAllActiveStudents()
+        val classrooms = repository.getAllClassrooms()
+        val columns = repository.getAllAssessmentColumns()
+
+        val sdfDate = SimpleDateFormat("MM-dd-yyyy", Locale.US)
+
+        JSONObject().apply {
+            val classroomsArr = JSONArray()
+            classrooms.forEach { c ->
+                classroomsArr.put(JSONObject().apply {
+                    put("name", c.name)
+                    put("start", c.startTime)
+                    put("end", c.endTime)
+                })
+            }
+            put("classrooms", classroomsArr)
+
+            val studentsArr = JSONArray()
+            activeRoster.forEach { s ->
+                val behaviorIncidents = repository.getIncidentsForStudent(s.id)
+                val behaviorArr = JSONArray()
+                behaviorIncidents.forEach { b ->
+                    behaviorArr.put(JSONObject().apply {
+                        put("title", b.title)
+                        put("category", b.category)
+                        put("description", b.description)
+                        put("date", sdfDate.format(Date(b.incidentDate)))
                     })
                 }
-                put("classrooms", classroomsArr)
 
-                // 2. Students & Relational Behavior Logs
-                val studentsArr = JSONArray()
-                activeRoster.forEach { s ->
-                    val behaviorIncidents = repository.getIncidentsForStudent(s.id)
-                    val behaviorArr = JSONArray()
-                    behaviorIncidents.forEach { b ->
-                        behaviorArr.put(JSONObject().apply {
-                            put("title", b.title)
-                            put("category", b.category)
-                            put("description", b.description)
-                            put("date", sdfDate.format(Date(b.incidentDate)))
+                studentsArr.put(JSONObject().apply {
+                    put("id", s.id)
+                    put("firstName", s.firstName)
+                    put("lastName", s.lastName)
+                    put("gender", s.gender)
+                    put("birthday", sdfDate.format(Date(s.birthday)))
+                    put("address", s.address)
+                    put("contactNumber", s.contactNumber)
+                    put("lastModified", s.lastModified)
+                    put("classRoom", s.getClassNamesList().firstOrNull() ?: "")
+                    put("classNamesJson", JSONArray(s.classNamesJson))
+                    put("seatingJson", JSONObject(s.seatingJson))
+                    put("guardiansJson", JSONArray(s.guardiansJson))
+                    put("customDataJson", JSONObject(s.customDataJson))
+                    put("behaviorIncidents", behaviorArr)
+                })
+            }
+            put("students", studentsArr)
+
+            // Everything in this block used to be absent from the document, so a restore quietly
+            // dropped the teacher's custom fields, saved filters, grading periods, category
+            // weights, rubrics and message templates. Cross-references are carried by name, not
+            // by row id, because ids are local to whichever device wrote the file.
+            val formTemplatesArr = JSONArray()
+            repository.getAllFormTemplates().forEach { t ->
+                formTemplatesArr.put(JSONObject().apply {
+                    put("fieldName", t.fieldName)
+                    put("fieldType", t.fieldType)
+                    put("isRequired", t.isRequired)
+                    put("options", JSONArray(t.optionsJson))
+                })
+            }
+            put("formTemplates", formTemplatesArr)
+
+            val savedFiltersArr = JSONArray()
+            repository.getAllSavedFilters().forEach { f ->
+                savedFiltersArr.put(JSONObject().apply {
+                    put("name", f.filterName)
+                    put("field", f.fieldName)
+                    put("comparison", f.comparison)
+                    put("value1", f.value1)
+                    put("value2", f.value2)
+                    put("displayOrder", f.displayOrder)
+                })
+            }
+            put("savedFilters", savedFiltersArr)
+
+            val terms = repository.getAllGradingTerms()
+            val termsArr = JSONArray()
+            terms.forEach { t ->
+                termsArr.put(JSONObject().apply {
+                    put("name", t.name)
+                    put("startDate", sdfDate.format(Date(t.startDate)))
+                    put("endDate", sdfDate.format(Date(t.endDate)))
+                    put("isActive", t.isActive)
+                })
+            }
+            put("gradingTerms", termsArr)
+
+            val termNameById = terms.associate { it.id to it.name }
+            val categories = repository.getAllAssessmentCategories()
+            val categoriesArr = JSONArray()
+            categories.forEach { c ->
+                categoriesArr.put(JSONObject().apply {
+                    put("name", c.name)
+                    put("weight", c.weight)
+                    put("term", termNameById[c.termId] ?: "")
+                })
+            }
+            put("assessmentCategories", categoriesArr)
+
+            val rubrics = repository.getAllRubrics()
+            val allLevels = repository.getAllRubricLevels()
+            val rubricsArr = JSONArray()
+            rubrics.forEach { r ->
+                val levelsArr = JSONArray()
+                allLevels.filter { it.rubricId == r.id }.forEach { level ->
+                    levelsArr.put(JSONObject().apply {
+                        put("label", level.label)
+                        put("points", level.points)
+                        put("descriptor", level.descriptor)
+                        put("order", level.displayOrder)
+                    })
+                }
+                rubricsArr.put(JSONObject().apply {
+                    put("name", r.name)
+                    put("levels", levelsArr)
+                })
+            }
+            put("rubrics", rubricsArr)
+
+            val messageTemplatesArr = JSONArray()
+            repository.getAllMessageTemplates().forEach { t ->
+                messageTemplatesArr.put(JSONObject().apply {
+                    put("name", t.name)
+                    put("text", t.text)
+                })
+            }
+            put("messageTemplates", messageTemplatesArr)
+
+            val participationArr = JSONArray()
+            classrooms.forEach { classroom ->
+                repository.getParticipationForClass(classroom.name).forEach { entry ->
+                    val student = activeRoster.find { it.id == entry.studentId } ?: return@forEach
+                    participationArr.put(JSONObject().apply {
+                        put("studentIdentifier", participantKey(student))
+                        put("className", entry.className)
+                        put("timesCalled", entry.timesCalled)
+                        put("lastCalled", entry.lastCalledMillis)
+                    })
+                }
+            }
+            put("participation", participationArr)
+
+            val attendanceRecords = repository.getAllAttendanceRecords()
+            val attendanceArr = JSONArray()
+            attendanceRecords.forEach { r ->
+                val recordLogs = repository.getLogsForRecord(r.id)
+                val rosterStudentIds = recordLogs.map { it.studentId }.distinct()
+                val roster = activeRoster.filter { it.id in rosterStudentIds }
+
+                attendanceArr.put(JSONObject().apply {
+                    put("name", r.name)
+                    put("startDate", sdfDate.format(Date(r.startDate)))
+                    put("endDate", sdfDate.format(Date(r.endDate)))
+
+                    val participantsArr = JSONArray()
+                    roster.forEach { student ->
+                        val studentLogs = recordLogs.filter { it.studentId == student.id }
+                        val attendanceObj = JSONObject()
+                        studentLogs.forEach { log ->
+                            attendanceObj.put(sdfDate.format(Date(log.dateMillis)), log.status)
+                        }
+
+                        participantsArr.put(JSONObject().apply {
+                            put("studentIdentifier", "${student.lastName}_${student.firstName}_${student.getClassNamesList().firstOrNull() ?: ""}")
+                            put("attendance", attendanceObj)
                         })
                     }
-
-                    studentsArr.put(JSONObject().apply {
-                        put("id", s.id)
-                        put("firstName", s.firstName)
-                        put("lastName", s.lastName)
-                        put("gender", s.gender)
-                        put("birthday", sdfDate.format(Date(s.birthday)))
-                        put("address", s.address)
-                        put("contactNumber", s.contactNumber)
-                        put("lastModified", s.lastModified)
-                        // Backward compatibility: legacy single class string
-                        put("classRoom", s.getClassNamesList().firstOrNull() ?: "")
-                        put("classNamesJson", JSONArray(s.classNamesJson))
-                        put("seatingJson", JSONObject(s.seatingJson))
-                        put("guardiansJson", JSONArray(s.guardiansJson))
-                        put("customDataJson", JSONObject(s.customDataJson))
-                        put("behaviorIncidents", behaviorArr)
-                    })
-                }
-                put("students", studentsArr)
-
-                // 3. Saved Filters (can be empty or legacy)
-                put("savedFilters", JSONArray())
-
-                // 4. Attendance Sheets
-                val attendanceRecords = repository.getAllAttendanceRecords()
-                val attendanceArr = JSONArray()
-                attendanceRecords.forEach { r ->
-                    val recordLogs = repository.getLogsForRecord(r.id)
-                    val rosterStudentIds = recordLogs.map { it.studentId }.distinct()
-                    val roster = activeRoster.filter { it.id in rosterStudentIds }
-
-                    attendanceArr.put(JSONObject().apply {
-                        put("name", r.name)
-                        put("startDate", sdfDate.format(Date(r.startDate)))
-                        put("endDate", sdfDate.format(Date(r.endDate)))
-
-                        val participantsArr = JSONArray()
-                        roster.forEach { student ->
-                            val studentLogs = recordLogs.filter { it.studentId == student.id }
-                            val attendanceObj = JSONObject()
-                            studentLogs.forEach { log ->
-                                attendanceObj.put(sdfDate.format(Date(log.dateMillis)), log.status)
-                            }
-
-                            participantsArr.put(JSONObject().apply {
-                                put("studentIdentifier", "${student.lastName}_${student.firstName}_${student.getClassNamesList().firstOrNull() ?: ""}")
-                                put("attendance", attendanceObj)
-                            })
-                        }
-                        put("participants", participantsArr)
-                    })
-                }
-                put("attendanceRecord", attendanceArr)
-
-                // 5. Gradebook Sheets
-                val gradebookArr = JSONArray()
-                columns.forEach { col ->
-                    val colScores = repository.getScoresForColumn(col.id)
-                    val rosterIds = colScores.map { it.studentId }.distinct()
-                    val roster = activeRoster.filter { it.id in rosterIds }
-
-                    gradebookArr.put(JSONObject().apply {
-                        put("name", col.name)
-                        put("maxPoints", col.maxPoints)
-                        put("examDate", sdfDate.format(Date(col.examDate)))
-                        put("checkDate", sdfDate.format(Date(col.checkDate)))
-
-                        val gradesArr = JSONArray()
-                        roster.forEach { student ->
-                            val matchedScore = colScores.find { it.studentId == student.id }
-                            gradesArr.put(JSONObject().apply {
-                                put("studentIdentifier", "${student.lastName}_${student.firstName}_${student.getClassNamesList().firstOrNull() ?: ""}")
-                                put("score", matchedScore?.score ?: "")
-                            })
-                        }
-                        put("grades", gradesArr)
-                    })
-                }
-                put("gradeBook", gradebookArr)
+                    put("participants", participantsArr)
+                })
             }
+            put("attendanceRecord", attendanceArr)
+
+            val gradebookArr = JSONArray()
+            columns.forEach { col ->
+                val colScores = repository.getScoresForColumn(col.id)
+                val rosterIds = colScores.map { it.studentId }.distinct()
+                val roster = activeRoster.filter { it.id in rosterIds }
+
+                gradebookArr.put(JSONObject().apply {
+                    put("name", col.name)
+                    put("maxPoints", col.maxPoints)
+                    put("examDate", sdfDate.format(Date(col.examDate)))
+                    put("checkDate", sdfDate.format(Date(col.checkDate)))
+                    // By name: which grading period this assessment belongs to, which weighted
+                    // bucket it counts toward, and which marking scale it is graded against.
+                    put("term", termNameById[col.termId] ?: "")
+                    put("category", categories.find { it.id == col.categoryId }?.name ?: "")
+                    put("rubric", rubrics.find { it.id == col.rubricId }?.name ?: "")
+
+                    val gradesArr = JSONArray()
+                    roster.forEach { student ->
+                        val matchedScore = colScores.find { it.studentId == student.id }
+                        gradesArr.put(JSONObject().apply {
+                            put("studentIdentifier", "${student.lastName}_${student.firstName}_${student.getClassNamesList().firstOrNull() ?: ""}")
+                            put("score", matchedScore?.score ?: "")
+                        })
+                    }
+                    put("grades", gradesArr)
+                })
+            }
+            put("gradeBook", gradebookArr)
+        }
+    }
+
+
+    /** Marks a payload as a scoped substitute handoff rather than a full backup. */
+    const val SCOPE_SUBSTITUTE = "substitute"
+
+    /**
+     * Builds a minimal packet for handing one class to a substitute teacher.
+     *
+     * Deliberately omits home addresses, guardian names and phone numbers, student contact
+     * numbers, behaviour notes and grades. A substitute needs to know who is in the room and
+     * where they sit; nothing else is theirs to hold, and a device that leaves your control
+     * should carry as little as the job allows.
+     */
+    suspend fun buildSubstitutePacket(
+        repository: StudentRepository,
+        className: String,
+        record: AttendanceRecordEntity,
+        dateMillis: Long
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val sdfDate = SimpleDateFormat("MM-dd-yyyy", Locale.US)
+        val roster = repository.getAllActiveStudents()
+            .filter { it.getClassNamesList().contains(className) }
+        val rosterIds = roster.map { it.id }.toSet()
+        val logs = repository.getLogsForDate(record.id, dateMillis).filter { it.studentId in rosterIds }
+
+        JSONObject().apply {
+            put("scope", SCOPE_SUBSTITUTE)
+
+            val classroomsArr = JSONArray()
+            repository.getAllClassrooms().filter { it.name == className }.forEach { c ->
+                classroomsArr.put(JSONObject().apply {
+                    put("name", c.name)
+                    put("start", c.startTime)
+                    put("end", c.endTime)
+                })
+            }
+            put("classrooms", classroomsArr)
+
+            val studentsArr = JSONArray()
+            roster.forEach { s ->
+                studentsArr.put(JSONObject().apply {
+                    put("id", s.id)
+                    put("firstName", s.firstName)
+                    put("lastName", s.lastName)
+                    put("gender", s.gender)
+                    put("birthday", sdfDate.format(Date(s.birthday)))
+                    put("lastModified", s.lastModified)
+                    put("classRoom", className)
+                    put("classNamesJson", JSONArray(s.classNamesJson))
+                    put("seatingJson", JSONObject(s.seatingJson))
+                    // address, contactNumber, guardiansJson and customDataJson intentionally absent
+                })
+            }
+            put("students", studentsArr)
+
+            put("savedFilters", JSONArray())
+            put("gradeBook", JSONArray())
+
+            val attendanceArr = JSONArray()
+            attendanceArr.put(JSONObject().apply {
+                put("name", record.name)
+                put("startDate", sdfDate.format(Date(record.startDate)))
+                put("endDate", sdfDate.format(Date(record.endDate)))
+
+                val participantsArr = JSONArray()
+                roster.forEach { student ->
+                    val attendanceObj = JSONObject()
+                    logs.filter { it.studentId == student.id }.forEach { log ->
+                        attendanceObj.put(sdfDate.format(Date(log.dateMillis)), log.status)
+                    }
+                    participantsArr.put(JSONObject().apply {
+                        put("studentIdentifier", "${student.lastName}_${student.firstName}_$className")
+                        put("attendance", attendanceObj)
+                    })
+                }
+                put("participants", participantsArr)
+            })
+            put("attendanceRecord", attendanceArr)
+        }
+    }
+
+    /**
+     * Writes the backup as an AES-GCM encrypted .enc file and offers it for sharing.
+     *
+     * The counterpart to importSecureBackup, which already existed. Without this the encrypted
+     * format was documented in the help text and produced by nothing, so the only way to obtain
+     * a .enc file was to already have one.
+     *
+     * The key lives in the hardware-backed keystore, so a .enc file is readable only on the
+     * device that wrote it. That is the point for a stolen-phone threat model, and exactly why
+     * it is the wrong choice for moving a roster between devices - use the plain JSON for that.
+     */
+    suspend fun exportEncryptedBackup(
+        context: Context,
+        repository: StudentRepository,
+        customFileName: String? = null
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val payload = buildBackupPayload(repository).toString().toByteArray(Charsets.UTF_8)
+
+            val cacheDir = File(context.cacheDir, "backups").apply { mkdirs() }
+            val baseName = if (customFileName.isNullOrBlank()) "student_tracker_backup" else customFileName.trim()
+            val target = File(cacheDir, "$baseName.enc")
+            // EncryptedFile refuses to write over an existing file
+            if (target.exists()) target.delete()
+
+            encryptedFileFor(context, target).openFileOutput().use { out ->
+                out.write(payload)
+                out.flush()
+            }
+            target.deleteOnExit()
+
+            val fileUri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                target
+            )
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/octet-stream"
+                putExtra(Intent.EXTRA_STREAM, fileUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            withContext(Dispatchers.Main) {
+                context.startActivity(Intent.createChooser(shareIntent, "Share $baseName.enc"))
+            }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+    /**
+     * Shares the backup as plain JSON, for moving a roster to another device.
+     *
+     * Built by [buildBackupPayload] like every other export path. This used to assemble the whole
+     * document a second time by hand, so anything added to the backup was silently missing here
+     * until someone noticed.
+     */
+    suspend fun exportBackupJson(context: Context, repository: StudentRepository, customFileName: String? = null) = withContext(Dispatchers.IO) {
+        try {
+            val payloadObj = buildBackupPayload(repository)
 
             val cacheDir = File(context.cacheDir, "backups").apply { mkdirs() }
             val baseName = if (customFileName.isNullOrBlank()) "student_tracker_backup" else customFileName.trim()
@@ -194,375 +519,6 @@ object JsonSyncEngine {
         }
     }
 
-    // COHORT-SPECIFIC BACKUP EXPORTER: Filters database schemas relative strictly to the selected classroom cohort
-    suspend fun generateClassroomBackupJson(context: Context, repository: StudentRepository, className: String): File? = withContext(Dispatchers.IO) {
-        try {
-            val activeRoster = repository.getAllActiveStudents().filter { s -> s.getClassNamesList().contains(className) }
-            val classStudentIds = activeRoster.map { it.id }.toSet()
-
-            val activeLogs = repository.getAllAttendanceLogs().filter { l -> l.studentId in classStudentIds }
-            val activeScores = repository.getAllAssessmentScores().filter { sc -> sc.studentId in classStudentIds }
-
-            val columns = repository.getAllAssessmentColumns().filter { col ->
-                activeScores.any { sc -> sc.columnId == col.id }
-            }
-
-            val attendanceRecords = repository.getAllAttendanceRecords().filter { rec ->
-                activeLogs.any { l -> l.recordId == rec.id }
-            }
-
-            val classrooms = repository.getAllClassrooms().filter { c -> c.name == className }
-
-            val sdfDate = SimpleDateFormat("MM-dd-yyyy", Locale.US)
-
-            val payloadObj = JSONObject().apply {
-                // Classrooms
-                val classroomsArr = JSONArray()
-                classrooms.forEach { c ->
-                    classroomsArr.put(JSONObject().apply {
-                        put("name", c.name)
-                        put("start", c.startTime)
-                        put("end", c.endTime)
-                    })
-                }
-                put("classrooms", classroomsArr)
-
-                // Students & Behavior Logs
-                val studentsArr = JSONArray()
-                activeRoster.forEach { s ->
-                    val behaviorIncidents = repository.getIncidentsForStudent(s.id)
-                    val behaviorArr = JSONArray()
-                    behaviorIncidents.forEach { b ->
-                        behaviorArr.put(JSONObject().apply {
-                            put("title", b.title)
-                            put("category", b.category)
-                            put("description", b.description)
-                            put("date", sdfDate.format(Date(b.incidentDate)))
-                        })
-                    }
-
-                    studentsArr.put(JSONObject().apply {
-                        put("id", s.id)
-                        put("firstName", s.firstName)
-                        put("lastName", s.lastName)
-                        put("gender", s.gender)
-                        put("birthday", sdfDate.format(Date(s.birthday)))
-                        put("address", s.address)
-                        put("contactNumber", s.contactNumber)
-                        put("lastModified", s.lastModified)
-                        put("picturePath", s.picturePath)
-                        put("guardiansJson", s.guardiansJson)
-                        put("customDataJson", s.customDataJson)
-                        put("classNamesJson", s.classNamesJson)
-                        put("seatingJson", s.seatingJson)
-                        put("behaviorIncidents", behaviorArr)
-                    })
-                }
-                put("students", studentsArr)
-
-                // Saved Filters (can be empty or legacy)
-                put("savedFilters", JSONArray())
-
-                // Attendance Sheets
-                val attendanceArr = JSONArray()
-                attendanceRecords.forEach { r ->
-                    val recordLogs = activeLogs.filter { it.recordId == r.id }
-                    val roster = activeRoster.filter { it.id in recordLogs.map { l -> l.studentId } }
-
-                    attendanceArr.put(JSONObject().apply {
-                        put("name", r.name)
-                        put("startDate", sdfDate.format(Date(r.startDate)))
-                        put("endDate", sdfDate.format(Date(r.endDate)))
-
-                        val participantsArr = JSONArray()
-                        roster.forEach { student ->
-                            val studentLogs = recordLogs.filter { it.studentId == student.id }
-                            val attendanceObj = JSONObject()
-                            studentLogs.forEach { log ->
-                                attendanceObj.put(sdfDate.format(Date(log.dateMillis)), log.status)
-                            }
-
-                            participantsArr.put(JSONObject().apply {
-                                put("studentIdentifier", "${student.lastName}_${student.firstName}_${student.getClassNamesList().firstOrNull() ?: ""}")
-                                put("attendance", attendanceObj)
-                            })
-                        }
-                        put("participants", participantsArr)
-                    })
-                }
-                put("attendanceRecord", attendanceArr)
-
-                // Gradebook Sheets
-                val gradebookArr = JSONArray()
-                columns.forEach { col ->
-                    val colScores = activeScores.filter { it.columnId == col.id }
-                    val roster = activeRoster.filter { it.id in colScores.map { cs -> cs.studentId } }
-
-                    gradebookArr.put(JSONObject().apply {
-                        put("name", col.name)
-                        put("maxPoints", col.maxPoints)
-                        put("examDate", sdfDate.format(Date(col.examDate)))
-                        put("checkDate", sdfDate.format(Date(col.checkDate)))
-
-                        val gradesArr = JSONArray()
-                        roster.forEach { student ->
-                            val matchedScore = colScores.find { it.studentId == student.id }
-                            gradesArr.put(JSONObject().apply {
-                                put("studentIdentifier", "${student.lastName}_${student.firstName}_${student.getClassNamesList().firstOrNull() ?: ""}")
-                                put("score", matchedScore?.score ?: "")
-                            })
-                        }
-                        put("grades", gradesArr)
-                    })
-                }
-                put("gradeBook", gradebookArr)
-            }
-
-            val cacheDir = File(context.cacheDir, "backups").apply { mkdirs() }
-            val backupFile = File(cacheDir, "classroom_share_${className.replace(" ", "_")}.json")
-            if (backupFile.exists()) backupFile.delete()
-
-            FileOutputStream(backupFile).use { fos ->
-                fos.write(payloadObj.toString().toByteArray(Charsets.UTF_8))
-                fos.flush()
-            }
-
-            backupFile
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
-
-    suspend fun evaluateMerge(
-        context: Context,
-        uri: Uri,
-        repository: StudentRepository
-    ): MergeSummary = withContext(Dispatchers.IO) {
-        verifyFileSizeLimit(context, uri)
-        val fileName = getFileName(context, uri)
-        val mimeType = context.contentResolver.getType(uri)
-        val isJsonFile = fileName?.endsWith(".json", ignoreCase = true) == true || mimeType == "application/json"
-
-        val decryptedContent = if (isJsonFile) {
-            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: throw IOException("Failed to read stream")
-        } else {
-            val cacheDir = File(context.cacheDir, "backups").apply { mkdirs() }
-            val tempEncFile = File(cacheDir, "temp_backup_parse.enc")
-            if (tempEncFile.exists()) tempEncFile.delete()
-
-            context.contentResolver.openInputStream(uri)?.use { stream ->
-                FileOutputStream(tempEncFile).use { fos -> stream.copyTo(fos) }
-            } ?: throw IOException("Failed to cache stream")
-
-            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-            val encryptedFile = EncryptedFile.Builder(
-                tempEncFile,
-                context,
-                masterKeyAlias,
-                EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
-            ).build()
-
-            val content = encryptedFile.openFileInput().use { it.readBytes() }
-            tempEncFile.delete()
-            content
-        }
-
-        val jsonString = String(decryptedContent, Charsets.UTF_8).trim()
-        val payloadObj = try { JSONObject(jsonString) } catch (_: Exception) { null }
-
-        val incomingStudentsArr = payloadObj?.optJSONArray("students") ?: JSONArray(jsonString)
-        val incomingLogsArr = payloadObj?.optJSONArray("attendanceLogs") ?: JSONArray()
-
-        val localStudents = repository.getAllActiveStudents()
-        val localLogs = repository.getAllAttendanceLogs()
-
-        val studentsToInsert = mutableListOf<StudentEntity>()
-        val studentsToUpdate = mutableListOf<StudentEntity>()
-        val logsToMerge = mutableListOf<AttendanceLogEntity>()
-
-        var newStudents = 0
-        var updatedStudents = 0
-        var updatedLogs = 0
-        var skipped = 0
-
-        val incomingIdToIdentityMap = mutableMapOf<Int, String>()
-        val identityToLocalIdMap = mutableMapOf<String, Int>()
-        localStudents.forEach { s ->
-            val identity = "${s.firstName.lowercase()}_${s.lastName.lowercase()}_${s.birthday}"
-            identityToLocalIdMap[identity] = s.id
-        }
-
-        val bdaySdf = SimpleDateFormat("MM-dd-yyyy", Locale.US)
-
-        val incomingClassrooms = mutableSetOf<String>()
-        val classroomsArr = payloadObj?.optJSONArray("classrooms")
-        if (classroomsArr != null) {
-            for (c in 0 until classroomsArr.length()) {
-                incomingClassrooms.add(classroomsArr.getJSONObject(c).optString("name", "").trim())
-            }
-        }
-        val dbClassrooms = repository.getAllClassrooms().map { it.name.trim() }.toSet()
-        val validClassrooms = dbClassrooms + incomingClassrooms
-
-        for (i in 0 until incomingStudentsArr.length()) {
-            val sObj = incomingStudentsArr.getJSONObject(i)
-            val incomingId = sObj.optInt("id", -1)
-            val first = sObj.optString("firstName", "")
-            val last = sObj.optString("lastName", "")
-
-            val bdayStr = sObj.optString("birthday", "")
-            val bday = try { bdaySdf.parse(bdayStr)?.time ?: sObj.optLong("birthday", 0L) } catch (_: Exception) { sObj.optLong("birthday", 0L) }
-
-            val lastMod = sObj.optLong("lastModified", 0L)
-
-            val identity = "${first.lowercase()}_${last.lowercase()}_$bday"
-            if (incomingId != -1) {
-                incomingIdToIdentityMap[incomingId] = identity
-            }
-
-            // Fallback Parsing for Multi-Class list
-            val classNamesJsonRaw = sObj.opt("classNamesJson")
-            val resolvedClassNamesJson = when (classNamesJsonRaw) {
-                is JSONArray -> classNamesJsonRaw.toString()
-                is String -> classNamesJsonRaw
-                else -> {
-                    val rawClass = sObj.optString("Classroom", sObj.optString("classRoom", sObj.optString("class", ""))).trim()
-                    val validatedClass = if (validClassrooms.contains(rawClass)) rawClass else ""
-                    if (validatedClass.isNotEmpty()) JSONArray().put(validatedClass).toString() else "[]"
-                }
-            }
-
-            // Fallback Parsing for Multi-Class Seating coordinates
-            val seatingJsonRaw = sObj.opt("seatingJson")
-            val resolvedSeatingJson = when (seatingJsonRaw) {
-                is JSONObject -> seatingJsonRaw.toString()
-                is String -> seatingJsonRaw
-                else -> {
-                    val rawClass = sObj.optString("Classroom", sObj.optString("classRoom", sObj.optString("class", ""))).trim()
-                    val oldX = sObj.optDouble("seatingX", -1.0).toFloat()
-                    val oldY = sObj.optDouble("seatingY", -1.0).toFloat()
-                    if (rawClass.isNotEmpty() && oldX >= 0f && oldY >= 0f) {
-                        JSONObject().put(rawClass, JSONObject().put("x", oldX.toDouble()).put("y", oldY.toDouble())).toString()
-                    } else "{}"
-                }
-            }
-
-            val student = StudentEntity(
-                firstName = first,
-                lastName = last,
-                gender = sObj.optString("gender", ""),
-                birthday = bday,
-                address = sObj.optString("address", ""),
-                contactNumber = sObj.optString("contactNumber", ""),
-                picturePath = sObj.optString("picturePath", ""),
-                guardiansJson = sObj.optString("guardiansJson", "[]"),
-                customDataJson = sObj.optString("customDataJson", "{}"),
-                lastModified = lastMod,
-                classNamesJson = resolvedClassNamesJson,
-                seatingJson = resolvedSeatingJson
-            )
-
-            val localMatch = localStudents.find {
-                it.firstName.equals(first, ignoreCase = true) &&
-                        it.lastName.equals(last, ignoreCase = true) &&
-                        it.birthday == bday
-            }
-
-            if (localMatch == null) {
-                newStudents++
-                studentsToInsert.add(student)
-            } else {
-                if (lastMod > localMatch.lastModified) {
-                    updatedStudents++
-                    studentsToUpdate.add(student.copy(id = localMatch.id))
-                } else {
-                    skipped++
-                }
-            }
-        }
-
-        for (i in 0 until incomingLogsArr.length()) {
-            val lObj = incomingLogsArr.getJSONObject(i)
-            val recordId = lObj.optInt("recordId", -1)
-            val dateMillis = lObj.optLong("dateMillis", 0L)
-            val incomingStudentId = lObj.optInt("studentId", -1)
-            val status = lObj.optString("status", "NOT_SET")
-            val lastMod = lObj.optLong("lastModified", 0L)
-
-            if (recordId == -1 || incomingStudentId == -1) continue
-
-            val identity = incomingIdToIdentityMap[incomingStudentId]
-            val localStudentId = identity?.let { identityToLocalIdMap[it] } ?: -1
-
-            val log = AttendanceLogEntity(
-                recordId = recordId,
-                dateMillis = dateMillis,
-                studentId = localStudentId,
-                status = status,
-                lastModified = lastMod
-            )
-
-            val localMatch = localLogs.find {
-                it.recordId == recordId &&
-                        it.dateMillis == dateMillis &&
-                        it.studentId == localStudentId
-            }
-
-            if (localMatch == null) {
-                logsToMerge.add(log)
-            } else {
-                if (lastMod > localMatch.lastModified) {
-                    updatedLogs++
-                    logsToMerge.add(log.copy(id = localMatch.id))
-                } else {
-                    skipped++
-                }
-            }
-        }
-
-        MergeSummary(
-            newStudentsCount = newStudents,
-            updatedStudentsCount = updatedStudents,
-            updatedLogsCount = updatedLogs,
-            skippedCount = skipped,
-            studentsToInsert = studentsToInsert,
-            studentsToUpdate = studentsToUpdate,
-            logsToMerge = logsToMerge,
-            incomingIdToIdentityMap = incomingIdToIdentityMap
-        )
-    }
-
-    suspend fun executeMerge(
-        repository: StudentRepository,
-        summary: MergeSummary
-    ) = withContext(Dispatchers.IO) {
-        val newlyCreatedIdsMap = mutableMapOf<String, Int>()
-
-        summary.studentsToInsert.forEach { s ->
-            val newId = repository.insertStudent(s).toInt()
-            val identity = "${s.firstName.lowercase()}_${s.lastName.lowercase()}_${s.birthday}"
-            newlyCreatedIdsMap[identity] = newId
-        }
-
-        summary.studentsToUpdate.forEach { s ->
-            repository.insertStudent(s)
-        }
-
-        summary.logsToMerge.forEach { log ->
-            var studentIdToUse = log.studentId
-            if (studentIdToUse == -1) {
-                val key = summary.incomingIdToIdentityMap[log.studentId]
-                studentIdToUse = key?.let { newlyCreatedIdsMap[it] } ?: -1
-            }
-
-            if (studentIdToUse != -1) {
-                repository.insertAttendanceLog(log.copy(studentId = studentIdToUse))
-            }
-        }
-    }
-
     suspend fun importSecureBackup(context: Context, uri: Uri, repository: StudentRepository): ImportResult? = withContext(Dispatchers.IO) {
         try {
             verifyFileSizeLimit(context, uri)
@@ -577,28 +533,12 @@ object JsonSyncEngine {
                 }
             } ?: return@withContext null
 
-            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-            val encryptedFile = EncryptedFile.Builder(
-                tempEncFile,
-                context,
-                masterKeyAlias,
-                EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
-            ).build()
-
-            val content = encryptedFile.openFileInput().use { decryptedInputStream ->
+            val content = encryptedFileFor(context, tempEncFile).openFileInput().use { decryptedInputStream ->
                 decryptedInputStream.readBytes()
             }
             tempEncFile.delete()
 
-            val decryptedString = String(content, Charsets.UTF_8).trim()
-
-            val payloadObj = if (decryptedString.startsWith("{")) {
-                JSONObject(decryptedString)
-            } else {
-                JSONObject().apply { put("students", JSONArray(decryptedString)) }
-            }
-
-            parseAndInsertBackupPayload(payloadObj, repository)
+            parseAndInsertBackupPayload(asPayloadObject(String(content, Charsets.UTF_8)), repository)
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -613,15 +553,7 @@ object JsonSyncEngine {
                 stream.readBytes()
             } ?: return@withContext null
 
-            val jsonString = String(content, Charsets.UTF_8).trim()
-
-            val payloadObj = if (jsonString.startsWith("{")) {
-                JSONObject(jsonString)
-            } else {
-                JSONObject().apply { put("students", JSONArray(jsonString)) }
-            }
-
-            parseAndInsertBackupPayload(payloadObj, repository)
+            parseAndInsertBackupPayload(asPayloadObject(String(content, Charsets.UTF_8)), repository)
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -648,6 +580,12 @@ object JsonSyncEngine {
         var gradebookLoaded = 0
 
         val validClassroomNames = mutableSetOf<String>()
+
+        // A substitute packet carries only enough of each student to identify them - no address,
+        // no guardians, no contact number. Letting it update an existing record would therefore
+        // blank exactly the fields it deliberately omitted, so scoped packets may create students
+        // but never modify ones already on this device.
+        val isScopedHandoff = payloadObj.optString("scope", "") == SCOPE_SUBSTITUTE
 
         // Classrooms, keyed by name so a re-import refreshes the timetable in place
         val existingClassrooms = repository.getAllClassrooms().associateBy { it.name.trim().lowercase() }
@@ -772,12 +710,15 @@ object JsonSyncEngine {
             val existing = studentsByIdentity[identityKey(first, last, bdayMillis)]
             val resolvedStudentId: Int
             if (existing == null) {
-                resolvedStudentId = repository.insertStudent(student).toInt()
+                resolvedStudentId = repository.saveStudent(student)
                 studentsLoaded++
-            } else if (incomingLastModified > existing.lastModified) {
-                // updateStudent, not insert-with-id: an INSERT OR REPLACE here would delete the
-                // row first and cascade away the incidents and scores that point at it.
-                repository.updateStudent(student.copy(id = existing.id))
+            } else if (!isScopedHandoff && incomingLastModified > existing.lastModified) {
+                // Carry the peer's timestamp across rather than stamping the merge time. Stamping
+                // now would make this device look newer than every peer, so the next sync in the
+                // other direction would decline to bring anything back.
+                repository.saveStudent(
+                    student.copy(id = existing.id, lastModified = incomingLastModified)
+                )
                 resolvedStudentId = existing.id
                 studentsLoaded++
             } else {
@@ -866,6 +807,155 @@ object JsonSyncEngine {
             }
         }
 
+        // Form templates. Carrying these explicitly preserves the field TYPE and any dropdown
+        // options. The discovery pass above has already created a plain TEXT field for every
+        // custom key it saw, so this resolves by name and corrects the type in place.
+        val templatesArr = payloadObj.optJSONArray("formTemplates")
+        if (templatesArr != null) {
+            val templatesByName = repository.getAllFormTemplates().associateBy { it.fieldName.trim().lowercase() }
+            for (i in 0 until templatesArr.length()) {
+                val tObj = templatesArr.getJSONObject(i)
+                val fieldName = tObj.optString("fieldName", "").trim()
+                if (fieldName.isEmpty()) continue
+
+                repository.insertFormTemplate(
+                    FormTemplateEntity(
+                        id = templatesByName[fieldName.lowercase()]?.id ?: 0,
+                        fieldName = fieldName,
+                        fieldType = tObj.optString("fieldType", "TEXT"),
+                        isRequired = tObj.optBoolean("isRequired", false),
+                        optionsJson = (tObj.optJSONArray("options") ?: JSONArray()).toString()
+                    )
+                )
+            }
+        }
+
+        // Grading periods, keyed by name. Resolved before the gradebook so assessments can be
+        // attached to the period they belong to.
+        val termIdByName = mutableMapOf<String, Int>()
+        repository.getAllGradingTerms().forEach { termIdByName[it.name.trim().lowercase()] = it.id }
+        val termsArr = payloadObj.optJSONArray("gradingTerms")
+        if (termsArr != null) {
+            for (i in 0 until termsArr.length()) {
+                val tObj = termsArr.getJSONObject(i)
+                val name = tObj.optString("name", "").trim()
+                if (name.isEmpty()) continue
+
+                val newId = repository.insertGradingTerm(
+                    GradingTermEntity(
+                        id = termIdByName[name.lowercase()] ?: 0,
+                        name = name,
+                        startDate = parseDateOrZero(sdfBday, tObj.optString("startDate", "")),
+                        endDate = parseDateOrZero(sdfBday, tObj.optString("endDate", "")),
+                        isActive = tObj.optBoolean("isActive", false)
+                    )
+                ).toInt()
+                termIdByName[name.lowercase()] = newId
+            }
+            // Exactly one period may be active, and setActiveTerm enforces that in one transaction.
+            repository.getAllGradingTerms().firstOrNull { it.isActive }?.let {
+                repository.setActiveTerm(it.id)
+            }
+        }
+
+        // Weighted categories, keyed by name
+        val categoryIdByName = mutableMapOf<String, Int>()
+        repository.getAllAssessmentCategories().forEach { categoryIdByName[it.name.trim().lowercase()] = it.id }
+        val categoriesArr = payloadObj.optJSONArray("assessmentCategories")
+        if (categoriesArr != null) {
+            for (i in 0 until categoriesArr.length()) {
+                val cObj = categoriesArr.getJSONObject(i)
+                val name = cObj.optString("name", "").trim()
+                if (name.isEmpty()) continue
+
+                val newId = repository.insertAssessmentCategory(
+                    AssessmentCategoryEntity(
+                        id = categoryIdByName[name.lowercase()] ?: 0,
+                        name = name,
+                        weight = cObj.optDouble("weight", 0.0),
+                        termId = termIdByName[cObj.optString("term", "").trim().lowercase()] ?: 0
+                    )
+                ).toInt()
+                categoryIdByName[name.lowercase()] = newId
+            }
+        }
+
+        // Rubrics and their levels, keyed by rubric name. Levels are replaced wholesale rather
+        // than merged: they are an ordered scale, and half-updating one produces a scale that
+        // no longer adds up.
+        val rubricIdByName = mutableMapOf<String, Int>()
+        repository.getAllRubrics().forEach { rubricIdByName[it.name.trim().lowercase()] = it.id }
+        val rubricsArr = payloadObj.optJSONArray("rubrics")
+        if (rubricsArr != null) {
+            val existingLevels = repository.getAllRubricLevels()
+            for (i in 0 until rubricsArr.length()) {
+                val rObj = rubricsArr.getJSONObject(i)
+                val name = rObj.optString("name", "").trim()
+                if (name.isEmpty()) continue
+
+                val existingId = rubricIdByName[name.lowercase()]
+                val rubricId = repository.insertRubric(
+                    RubricEntity(id = existingId ?: 0, name = name)
+                ).toInt()
+                rubricIdByName[name.lowercase()] = rubricId
+
+                existingLevels.filter { it.rubricId == rubricId }.forEach {
+                    repository.deleteRubricLevel(it.id)
+                }
+
+                val levelsArr = rObj.optJSONArray("levels") ?: JSONArray()
+                for (l in 0 until levelsArr.length()) {
+                    val lObj = levelsArr.getJSONObject(l)
+                    repository.insertRubricLevel(
+                        RubricLevelEntity(
+                            rubricId = rubricId,
+                            label = lObj.optString("label", ""),
+                            points = lObj.optDouble("points", 0.0),
+                            descriptor = lObj.optString("descriptor", ""),
+                            displayOrder = lObj.optInt("order", l)
+                        )
+                    )
+                }
+            }
+        }
+
+        // Message templates, keyed by name
+        val messageTemplatesArr = payloadObj.optJSONArray("messageTemplates")
+        if (messageTemplatesArr != null) {
+            val existingMessages = repository.getAllMessageTemplates().associateBy { it.name.trim().lowercase() }
+            for (i in 0 until messageTemplatesArr.length()) {
+                val mObj = messageTemplatesArr.getJSONObject(i)
+                val name = mObj.optString("name", "").trim()
+                if (name.isEmpty()) continue
+
+                repository.insertMessageTemplate(
+                    MessageTemplateEntity(
+                        id = existingMessages[name.lowercase()]?.id ?: 0,
+                        name = name,
+                        text = mObj.optString("text", "")
+                    )
+                )
+            }
+        }
+
+        // Cold-call counters, so an imported roster arrives with its participation history intact
+        val participationArr = payloadObj.optJSONArray("participation")
+        if (participationArr != null) {
+            for (i in 0 until participationArr.length()) {
+                val pObj = participationArr.getJSONObject(i)
+                val studentId = studentIdentifierToIdMap[pObj.optString("studentIdentifier", "")] ?: continue
+                val className = pObj.optString("className", "").trim()
+                if (className.isEmpty()) continue
+
+                repository.setParticipation(
+                    studentId = studentId,
+                    className = className,
+                    timesCalled = pObj.optInt("timesCalled", 0),
+                    lastCalledMillis = pObj.optLong("lastCalled", 0L)
+                )
+            }
+        }
+
         // Attendance sheets, keyed by name plus date range; logs upserted per student and day
         val existingRecords = repository.getAllAttendanceRecords()
         val attendanceArr = payloadObj.optJSONArray("attendanceRecord")
@@ -940,16 +1030,39 @@ object JsonSyncEngine {
                     System.currentTimeMillis()
                 }
 
+                val termId = termIdByName[gObj.optString("term", "").trim().lowercase()] ?: 0
+                val categoryId = categoryIdByName[gObj.optString("category", "").trim().lowercase()] ?: 0
+                val rubricId = rubricIdByName[gObj.optString("rubric", "").trim().lowercase()] ?: 0
+
                 val existingColumn = existingColumns.find { it.name == gName && it.examDate == examMillis }
-                val columnId = existingColumn?.id ?: repository.insertAssessmentColumn(
-                    AssessmentColumnEntity(
-                        name = gName,
-                        maxPoints = gObj.optDouble("maxPoints", 100.0),
-                        examDate = examMillis,
-                        checkDate = checkMillis,
-                        savedFilterId = 0
+                val columnId = if (existingColumn == null) {
+                    repository.insertAssessmentColumn(
+                        AssessmentColumnEntity(
+                            name = gName,
+                            maxPoints = gObj.optDouble("maxPoints", 100.0),
+                            examDate = examMillis,
+                            checkDate = checkMillis,
+                            savedFilterId = 0,
+                            termId = termId,
+                            categoryId = categoryId,
+                            rubricId = rubricId
+                        )
+                    ).toInt()
+                } else {
+                    // In place, so re-importing refreshes an assessment's weighting and period
+                    // instead of leaving the first import's links frozen. Not a REPLACE insert:
+                    // that would cascade every score on the sheet away.
+                    repository.updateAssessmentColumn(
+                        existingColumn.copy(
+                            maxPoints = gObj.optDouble("maxPoints", existingColumn.maxPoints),
+                            checkDate = checkMillis,
+                            termId = termId,
+                            categoryId = categoryId,
+                            rubricId = rubricId
+                        )
                     )
-                ).toInt()
+                    existingColumn.id
+                }
                 gradebookLoaded++
 
                 val existingScores = if (existingColumn != null) repository.getScoresForColumn(columnId) else emptyList()
@@ -983,6 +1096,14 @@ object JsonSyncEngine {
             gradebookCount = gradebookLoaded
         )
     }
+
+    /** Parses an "MM-dd-yyyy" field, treating anything unreadable as unset rather than throwing. */
+    private fun parseDateOrZero(format: SimpleDateFormat, raw: String): Long =
+        try {
+            format.parse(raw)?.time ?: 0L
+        } catch (_: Exception) {
+            0L
+        }
 
     // Match key for a student across devices: names are case-folded, birthday is exact.
     private fun identityKey(firstName: String, lastName: String, birthday: Long): String =

@@ -3,6 +3,8 @@ package dev.soloistdev.studenttracker.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -40,12 +42,18 @@ import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.Guardian
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
+import dev.soloistdev.studenttracker.data.AssessmentColumnEntity
+import dev.soloistdev.studenttracker.data.AssessmentScoreEntity
 import dev.soloistdev.studenttracker.data.BehaviorIncidentEntity
+import dev.soloistdev.studenttracker.data.StudentInsights
+import dev.soloistdev.studenttracker.security.ImageCompressor
 import dev.soloistdev.studenttracker.security.QrCodeGenerator
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,6 +74,12 @@ fun StudentProfileScreen(
 
     // Behavior Tracking States
     var incidents by remember { mutableStateOf<List<BehaviorIncidentEntity>>(emptyList()) }
+
+    // Academic standing. The Early Warning screen already computes this and links here, so the
+    // profile showing less than the row you tapped from was the wrong way round.
+    var insight by remember { mutableStateOf<StudentInsights.Insight?>(null) }
+    var gradedColumns by remember { mutableStateOf<List<AssessmentColumnEntity>>(emptyList()) }
+    var myScores by remember { mutableStateOf<List<AssessmentScoreEntity>>(emptyList()) }
     var behaviorExpanded by remember { mutableStateOf(false) }
     var showAddIncidentDialog by remember { mutableStateOf(false) }
 
@@ -85,6 +99,28 @@ fun StudentProfileScreen(
         student = list.find { studentEntity -> studentEntity.id == studentId }
         activeTemplates = repository.getAllFormTemplates()
         refreshIncidents()
+
+        // Computed with the same engines the gradebook and Early Warning screens use, so this
+        // card can never disagree with them.
+        val columns = repository.getAllAssessmentColumns()
+        val scores = repository.getAllAssessmentScores()
+        val categories = repository.getAllAssessmentCategories()
+        val logs = repository.getAllAttendanceLogs()
+        val allIncidents = repository.getAllIncidents()
+
+        myScores = scores.filter { it.studentId == studentId }
+        gradedColumns = columns.filter { col -> myScores.any { it.columnId == col.id && it.score.isNotBlank() } }
+
+        student?.let { current ->
+            insight = StudentInsights.compute(
+                students = listOf(current),
+                logs = logs,
+                columns = columns,
+                scores = scores,
+                categories = categories,
+                incidents = allIncidents
+            )[studentId]
+        }
     }
 
     Scaffold(
@@ -93,17 +129,17 @@ fun StudentProfileScreen(
                 title = { Text("Profile", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { onEdit(studentId) }) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit Profile")
+                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.cd_edit_profile))
                     }
                     IconButton(onClick = { showDeleteDialog = true }) {
                         Icon(
                             imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete Student",
+                            contentDescription = stringResource(R.string.cd_delete_student),
                             tint = MaterialTheme.colorScheme.error
                         )
                     }
@@ -128,7 +164,7 @@ fun StudentProfileScreen(
                 ) {
                     LocalImageLoader(
                         imagePath = currentStudent.picturePath,
-                        contentDescription = "Student Photo",
+                        contentDescription = stringResource(R.string.cd_student_photo),
                         fallback = {
                             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                                 val initials = "${currentStudent.lastName.take(1)}${currentStudent.firstName.take(1)}".uppercase()
@@ -149,7 +185,7 @@ fun StudentProfileScreen(
 
                 val sdf = SimpleDateFormat("MMMM dd, yyyy", Locale.US)
                 val bdayFormatted = sdf.format(Date(currentStudent.birthday))
-                val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = currentStudent.birthday }.get(Calendar.YEAR)
+                val age = dev.soloistdev.studenttracker.data.AgeCalculator.ageInYears(currentStudent.birthday)
                 val genderFull = if (currentStudent.gender == "F") "Female" else "Male"
 
                 Text(
@@ -172,10 +208,10 @@ fun StudentProfileScreen(
                                 try {
                                     context.startActivity(mapIntent)
                                 } catch (e: Exception) {
-                                    Toast.makeText(context, "No maps application installed.", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, context.getString(R.string.toast_no_maps_application_installed), Toast.LENGTH_SHORT).show()
                                 }
                             } else {
-                                Toast.makeText(context, "No address listed for this student.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.toast_no_address_listed_for_this_student), Toast.LENGTH_SHORT).show()
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
@@ -183,9 +219,9 @@ fun StudentProfileScreen(
                         shape = RoundedCornerShape(20.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Map, contentDescription = "Map")
+                            Icon(Icons.Default.Map, contentDescription = stringResource(R.string.cd_map))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Open in Maps")
+                            Text(stringResource(R.string.s_open_in_maps))
                         }
                     }
 
@@ -195,9 +231,9 @@ fun StudentProfileScreen(
                         shape = RoundedCornerShape(20.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Edit, contentDescription = "Share PDF")
+                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.cd_share_pdf))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Share PDF")
+                            Text(stringResource(R.string.s_share_pdf))
                         }
                     }
                 }
@@ -224,7 +260,7 @@ fun StudentProfileScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Call,
-                                    contentDescription = "Call Student",
+                                    contentDescription = stringResource(R.string.cd_call_student),
                                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                     modifier = Modifier.size(18.dp)
                                 )
@@ -233,6 +269,14 @@ fun StudentProfileScreen(
                     )
                 }
 
+
+                AcademicStandingCard(
+                    insight = insight,
+                    gradedColumns = gradedColumns,
+                    scores = myScores
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
                 // EXPANDABLE DIGITAL ID PROFILE QR CODE CARD (Enforces classroom assignment and seating positions)
                 var qrExpanded by remember { mutableStateOf(false) }
                 val qrPayload = remember(currentStudent) {
@@ -302,7 +346,7 @@ fun StudentProfileScreen(
                             if (qrBitmapWithLabel != null) {
                                 Image(
                                     bitmap = qrBitmapWithLabel.asImageBitmap(),
-                                    contentDescription = "Profile QR Code with Label",
+                                    contentDescription = stringResource(R.string.cd_profile_qr_code_with_label),
                                     modifier = Modifier.size(200.dp)
                                 )
 
@@ -449,6 +493,18 @@ fun StudentProfileScreen(
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                                                     )
                                                 }
+                                                if (incident.photoPath.isNotBlank()) {
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    LocalImageLoader(
+                                                        imagePath = incident.photoPath,
+                                                        contentDescription = stringResource(R.string.cd_incident_evidence),
+                                                        displaySize = 72.dp,
+                                                        modifier = Modifier
+                                                            .size(72.dp)
+                                                            .clip(RoundedCornerShape(8.dp)),
+                                                        fallback = {}
+                                                    )
+                                                }
                                                 Spacer(modifier = Modifier.height(4.dp))
                                                 Text(
                                                     text = "Incident Date: " + logSdf.format(Date(incident.incidentDate)),
@@ -468,7 +524,7 @@ fun StudentProfileScreen(
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.Delete,
-                                                    contentDescription = "Delete",
+                                                    contentDescription = stringResource(R.string.cd_delete),
                                                     tint = MaterialTheme.colorScheme.error,
                                                     modifier = Modifier.size(20.dp)
                                                 )
@@ -575,7 +631,7 @@ fun StudentProfileScreen(
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.Comment,
-                                                    contentDescription = "Send SMS Notification",
+                                                    contentDescription = stringResource(R.string.cd_send_sms_notification),
                                                     tint = MaterialTheme.colorScheme.onSecondaryContainer,
                                                     modifier = Modifier.size(18.dp)
                                                 )
@@ -591,7 +647,7 @@ fun StudentProfileScreen(
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.Call,
-                                                    contentDescription = "Call phone",
+                                                    contentDescription = stringResource(R.string.cd_call_phone),
                                                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                                     modifier = Modifier.size(18.dp)
                                                 )
@@ -730,7 +786,7 @@ fun StudentProfileScreen(
                             OutlinedTextField(
                                 value = customMessageText,
                                 onValueChange = { customMessageText = it },
-                                label = { Text("Message Body") },
+                                label = { Text(stringResource(R.string.s_message_body)) },
                                 placeholder = { Text(stringResource(R.string.notify_custom_placeholder)) },
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -812,6 +868,26 @@ fun StudentProfileScreen(
 
             var incidentDate by remember { mutableLongStateOf(System.currentTimeMillis()) }
             var showIncidentDatePicker by remember { mutableStateOf(false) }
+
+            // Photo evidence. Compressed into app-private storage on pick, so the note carries
+            // the image itself rather than a fragile reference into the gallery.
+            var incidentPhotoPath by remember { mutableStateOf("") }
+            var isAttachingPhoto by remember { mutableStateOf(false) }
+            val incidentPhotoPicker = rememberLauncherForActivityResult(
+                ActivityResultContracts.GetContent()
+            ) { uri ->
+                uri ?: return@rememberLauncherForActivityResult
+                isAttachingPhoto = true
+                scope.launch {
+                    val saved = ImageCompressor.compressAndSaveImage(context, uri)
+                    isAttachingPhoto = false
+                    if (saved != null) {
+                        incidentPhotoPath = saved
+                    } else {
+                        Toast.makeText(context, context.getString(R.string.toast_could_not_attach_that_image), Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
 
             val categories = listOf("Positive", "Negative", "Neutral")
             val chipColors = FilterChipDefaults.filterChipColors(
@@ -920,7 +996,7 @@ fun StudentProfileScreen(
                                 Text(selectionSdf.format(Date(incidentDate)), color = MaterialTheme.colorScheme.onSurface)
                                 Icon(
                                     imageVector = Icons.Default.CalendarToday,
-                                    contentDescription = "Select Incident Date",
+                                    contentDescription = stringResource(R.string.cd_select_incident_date),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
@@ -933,6 +1009,42 @@ fun StudentProfileScreen(
                             maxLines = 3,
                             modifier = Modifier.fillMaxWidth()
                         )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { incidentPhotoPicker.launch("image/*") },
+                                enabled = !isAttachingPhoto,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                if (isAttachingPhoto) {
+                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Text(
+                                        text = if (incidentPhotoPath.isBlank()) "Attach photo" else "Replace photo",
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                            if (incidentPhotoPath.isNotBlank()) {
+                                LocalImageLoader(
+                                    imagePath = incidentPhotoPath,
+                                    contentDescription = stringResource(R.string.cd_attached_evidence),
+                                    displaySize = 40.dp,
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(6.dp)),
+                                    fallback = {}
+                                )
+                                TextButton(onClick = { incidentPhotoPath = "" }) {
+                                    Text("Remove", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
                     }
                 },
                 confirmButton = {
@@ -947,7 +1059,8 @@ fun StudentProfileScreen(
                                         title = incidentTitle.trim(),
                                         category = selectedCategory,
                                         description = incidentDescription.trim(),
-                                        incidentDate = incidentDate
+                                        incidentDate = incidentDate,
+                                        photoPath = incidentPhotoPath
                                     )
                                     repository.insertIncident(newIncident)
                                     refreshIncidents()
@@ -993,12 +1106,12 @@ fun StudentProfileScreen(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
-                        Text("Delete")
+                        Text(stringResource(R.string.s_delete))
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showDeleteDialog = false }) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.s_cancel))
                     }
                 },
                 shape = RoundedCornerShape(28.dp)
@@ -1038,5 +1151,139 @@ fun ProfileInfoCard(
                 trailingIcon()
             }
         }
+    }
+}
+/**
+ * Academic standing at a glance: attendance, running grade, and any early-warning flags.
+ *
+ * Everything here comes from GradeCalculator and StudentInsights rather than being recomputed,
+ * so the profile can never contradict the gradebook or the Early Warning list.
+ */
+@Composable
+private fun AcademicStandingCard(
+    insight: StudentInsights.Insight?,
+    gradedColumns: List<AssessmentColumnEntity>,
+    scores: List<AssessmentScoreEntity>
+) {
+    if (insight == null) return
+
+    var expanded by remember { mutableStateOf(false) }
+    val attendance = insight.attendance
+    val hasAnything = attendance.total > 0 || insight.gradePercent != null
+
+    if (!hasAnything) return
+
+    val riskColor = when (insight.riskLevel) {
+        StudentInsights.RiskLevel.AT_RISK -> MaterialTheme.colorScheme.error
+        StudentInsights.RiskLevel.WATCH -> Color(0xFFEF6C00)
+        StudentInsights.RiskLevel.NONE -> Color(0xFF2E7D32)
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { expanded = !expanded },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(R.string.profile_academic_standing),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = stringResource(R.string.cd_expand),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                ProfileStat(
+                    label = stringResource(R.string.profile_stat_attendance),
+                    value = attendance.attendanceRate?.let { String.format(Locale.US, "%.0f%%", it) } ?: "--"
+                )
+                ProfileStat(
+                    label = stringResource(R.string.profile_stat_grade),
+                    value = insight.gradePercent?.let { String.format(Locale.US, "%.1f%%", it) } ?: "--"
+                )
+                ProfileStat(
+                    label = stringResource(R.string.profile_stat_absences),
+                    value = attendance.absent.toString()
+                )
+                ProfileStat(
+                    label = stringResource(R.string.profile_stat_notes),
+                    value = insight.incidentCount.toString()
+                )
+            }
+
+            if (insight.reasons.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                insight.reasons.forEach { reason ->
+                    Text(
+                        text = "• $reason",
+                        fontSize = 11.sp,
+                        color = riskColor
+                    )
+                }
+            }
+
+            if (expanded) {
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (attendance.unmarked > 0) {
+                    Text(
+                        text = stringResource(R.string.profile_unmarked_note, attendance.unmarked),
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                if (gradedColumns.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.profile_no_graded_work),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    gradedColumns.forEach { column ->
+                        val raw = scores.firstOrNull { it.columnId == column.id }?.score.orEmpty()
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 3.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(column.name, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                text = "$raw / ${String.format(Locale.US, "%.0f", column.maxPoints)}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileStat(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Text(label, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

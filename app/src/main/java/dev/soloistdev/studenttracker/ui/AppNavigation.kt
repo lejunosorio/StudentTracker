@@ -1,5 +1,6 @@
 package dev.soloistdev.studenttracker.ui
 
+import android.net.Uri
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.security.PdfGeneratorHelper
 import kotlinx.coroutines.launch
@@ -63,7 +64,9 @@ fun AppNavigation() {
         composable(ScreenRoute.VIEW_ALL) {
             ViewAllScreen(
                 onAddStudent = { id, defaultClass ->
-                    val route = if (defaultClass != null) "add_edit/$id?defaultClass=$defaultClass" else "add_edit/$id"
+                    // Class names are free text and may contain spaces or slashes, which would break the
+                    // route pattern. Encode before it becomes part of a URI.
+                    val route = if (defaultClass != null) "add_edit/$id?defaultClass=${Uri.encode(defaultClass)}" else "add_edit/$id"
                     if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
                         navController.navigate(route)
                     }
@@ -71,6 +74,11 @@ fun AppNavigation() {
                 onStudentClick = { id ->
                     if (navController.currentDestination?.route == "view_all") {
                         navController.navigate("profile/$id")
+                    }
+                },
+                onOpenRubrics = {
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                        navController.navigate(ScreenRoute.RUBRICS)
                     }
                 },
                 onOpenTemplates = {
@@ -93,6 +101,11 @@ fun AppNavigation() {
                         navController.navigate(ScreenRoute.APP_SETTINGS)
                     }
                 },
+                onOpenScanAttendance = {
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                        navController.navigate(ScreenRoute.SCAN_ATTENDANCE)
+                    }
+                },
                 onOpenAttendance = {
                     if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
                         navController.navigate(ScreenRoute.ATTENDANCE)
@@ -101,6 +114,11 @@ fun AppNavigation() {
                 onOpenAttendanceWithArgs = { recordId, dateMillis ->
                     if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
                         navController.navigate("attendance?recordId=$recordId&dateMillis=$dateMillis")
+                    }
+                },
+                onOpenInsights = {
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                        navController.navigate(ScreenRoute.INSIGHTS)
                     }
                 },
                 onOpenGradebook = {
@@ -120,7 +138,7 @@ fun AppNavigation() {
                 },
                 onOpenSeatingChart = { className ->
                     if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
-                        navController.navigate("seating_chart/$className")
+                        navController.navigate("seating_chart/${Uri.encode(className)}")
                     }
                 }
             )
@@ -187,6 +205,16 @@ fun AppNavigation() {
             )
         }
 
+
+        composable(ScreenRoute.RUBRICS) {
+            RubricManagerScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
+            )
+        }
         composable(ScreenRoute.TEMPLATES) {
             TemplateManagerScreen(
                 onBack = {
@@ -281,6 +309,11 @@ fun AppNavigation() {
                         navController.navigate(ScreenRoute.BIOMETRICS_PRIVACY)
                     }
                 },
+                onNavigateToCsvImport = {
+                    if (navController.currentDestination?.route == ScreenRoute.APP_SETTINGS) {
+                        navController.navigate(ScreenRoute.CSV_IMPORT)
+                    }
+                },
                 onNavigateToSync = {
                     if (navController.currentDestination?.route == ScreenRoute.APP_SETTINGS) {
                         navController.navigate(ScreenRoute.SYNC)
@@ -289,6 +322,16 @@ fun AppNavigation() {
             )
         }
 
+
+        composable(ScreenRoute.CSV_IMPORT) {
+            CsvImportScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
+            )
+        }
         composable(ScreenRoute.SYNC) {
             SyncScreen(
                 onBack = {
@@ -321,6 +364,18 @@ fun AppNavigation() {
                 }
             )
         ) { backStackEntry ->
+            // A QR deep link opens this destination directly, bypassing the normal start route.
+            // The session gatekeeper deliberately does not redirect away from it (that would
+            // discard the incoming payload), so the lock is enforced in place instead: scanning
+            // a badge must never reveal roster data without unlocking first.
+            if (!isUnlocked) {
+                SecurityGateScreen(
+                    onUnlockSuccess = { /* Unlocking re-composes this destination in place */ },
+                    viewModel = securityViewModel
+                )
+                return@composable
+            }
+
             val first = backStackEntry.arguments?.getString("first") ?: ""
             val last = backStackEntry.arguments?.getString("last") ?: ""
             val gender = backStackEntry.arguments?.getString("gender") ?: "F"
@@ -378,6 +433,29 @@ fun AppNavigation() {
             )
         }
 
+
+        composable(ScreenRoute.INSIGHTS) {
+            InsightsScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                },
+                onStudentClick = { id ->
+                    navController.navigate("profile/$id")
+                }
+            )
+        }
+
+        composable(ScreenRoute.SCAN_ATTENDANCE) {
+            ScanAttendanceScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) {
+                        navController.popBackStack()
+                    }
+                }
+            )
+        }
         composable(ScreenRoute.GRADEBOOK) {
             GradebookScreen(
                 onBack = {
@@ -457,6 +535,7 @@ object ScreenRoute {
     const val PROFILE = "profile/{studentId}"
     const val ADD_EDIT = "add_edit/{studentId}?defaultClass={defaultClass}"
     const val TEMPLATES = "templates"
+    const val RUBRICS = "rubrics"
     const val RECYCLE_BIN = "recycle_bin"
     const val SAVED_FILTERS = "saved_filters"
     const val BIOMETRICS_PRIVACY = "biometrics_privacy"
@@ -464,10 +543,14 @@ object ScreenRoute {
     const val APP_SETTINGS = "app_settings"
     const val IMPORT_STUDENT = "import_student?id={id}&first={first}&last={last}&gender={gender}&birthday={birthday}&address={address}&contact={contact}&guardians={guardians}&custom={custom}&class={class}&seatingX={seatingX}&seatingY={seatingY}"
     const val SYNC = "sync" // Registered Running Sync route constant cleanly
+    const val CSV_IMPORT = "csv_import"
 
     const val MESSAGE_TEMPLATES = "message_templates"
 
     const val GRADEBOOK = "gradebook"
+
+    const val INSIGHTS = "insights"
+    const val SCAN_ATTENDANCE = "scan_attendance"
 
     const val CLASSROOMS = "classrooms"
 

@@ -58,16 +58,30 @@ object GradeCalculator {
         val scopedColumns = if (termId == 0) columns else columns.filter { it.termId == termId }
         val scoreByColumn = scores.filter { it.studentId == studentId }.associateBy { it.columnId }
 
-        val categoryById = categories.associateBy { it.id }
-        val assignedWeight = categories.sumOf { it.weight }
-        val isWeighted = categories.any { it.weight > 0.0 }
+        // Weights can differ between periods - a quarter may value exams more heavily than the
+        // one before it. A category with termId 0 applies everywhere; anything else only counts
+        // toward the period it belongs to.
+        val scopedCategories = if (termId == 0) {
+            categories
+        } else {
+            categories.filter { it.termId == 0 || it.termId == termId }
+        }
+
+        val categoryById = scopedCategories.associateBy { it.id }
+        val assignedWeight = scopedCategories.sumOf { it.weight }
+        val isWeighted = scopedCategories.any { it.weight > 0.0 }
 
         // Leftover weight carries the uncategorised bucket, so ungrouped work is not silently
         // dropped from a weighted term.
         val leftoverWeight = (100.0 - assignedWeight).coerceAtLeast(0.0)
 
         val breakdown = scopedColumns
-            .groupBy { it.categoryId }
+            // A column can point at a category that has since been deleted, or at one belonging
+            // to another grading period. Such a category resolves to no weight, and the weighted
+            // branch below only averages categories carrying weight - so without this the
+            // assessments would vanish from the running grade with nothing said. Folding them
+            // into the uncategorised bucket keeps them counted under the leftover weight.
+            .groupBy { if (categoryById.containsKey(it.categoryId)) it.categoryId else UNCATEGORISED_ID }
             .map { (categoryId, columnsInCategory) ->
                 var earned = 0.0
                 var possible = 0.0

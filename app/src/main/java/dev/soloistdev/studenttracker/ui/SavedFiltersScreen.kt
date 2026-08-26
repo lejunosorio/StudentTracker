@@ -37,7 +37,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.Guardian
+import dev.soloistdev.studenttracker.data.MessageMerge
 import dev.soloistdev.studenttracker.data.MessageTemplateEntity
+import dev.soloistdev.studenttracker.data.StudentInsights
 import dev.soloistdev.studenttracker.data.SavedFilterEntity
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
@@ -65,6 +67,10 @@ fun SavedFiltersScreen(
     val filters by viewModel.filters.collectAsState()
     val students by viewModel.students.collectAsState()
     val messageTemplates by viewModel.messageTemplates.collectAsState()
+    val insights by viewModel.insights.collectAsState()
+
+    // Non-empty while stepping through a personalised send
+    var personalisedQueue by remember { mutableStateOf<List<PersonalisedMessage>>(emptyList()) }
     val templates by viewModel.templates.collectAsState()
 
     var selectedFilterForView by remember { mutableStateOf<SavedFilterEntity?>(null) }
@@ -141,18 +147,18 @@ fun SavedFiltersScreen(
                             bulkSmsTarget = "Students"
                             showBulkSmsDialog = true
                         }) {
-                            Icon(Icons.Default.SettingsCell, contentDescription = "SMS Students", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Default.SettingsCell, contentDescription = stringResource(R.string.cd_sms_students), tint = MaterialTheme.colorScheme.primary)
                         }
                         IconButton(onClick = {
                             bulkSmsTarget = "Guardians"
                             showBulkSmsDialog = true
                         }) {
-                            Icon(Icons.Default.Group, contentDescription = "SMS Guardians", tint = MaterialTheme.colorScheme.secondary)
+                            Icon(Icons.Default.Group, contentDescription = stringResource(R.string.cd_sms_guardians), tint = MaterialTheme.colorScheme.secondary)
                         }
                         IconButton(onClick = { showCreateAttendanceDialog = true }) {
                             Icon(
                                 imageVector = Icons.Default.EventAvailable,
-                                contentDescription = "Create Attendance Record",
+                                contentDescription = stringResource(R.string.cd_create_attendance_record),
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -171,7 +177,7 @@ fun SavedFiltersScreen(
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Filter")
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.cd_add_filter))
                 }
             }
         }
@@ -211,7 +217,7 @@ fun SavedFiltersScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(filters) { filter ->
+                        items(filters, key = { it.id }) { filter ->
                             val criteriaDesc = filterSummaryLabel(
                                 filter.fieldName,
                                 filter.comparison,
@@ -240,12 +246,12 @@ fun SavedFiltersScreen(
                                             editingFilter = filter
                                             showFilterDialog = true
                                         }) {
-                                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+                                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.cd_edit), tint = MaterialTheme.colorScheme.primary)
                                         }
                                         IconButton(onClick = {
                                             viewModel.deleteFilter(filter.id)
                                         }) {
-                                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.cd_delete), tint = MaterialTheme.colorScheme.error)
                                         }
                                     }
                                 }
@@ -299,7 +305,7 @@ fun SavedFiltersScreen(
                     }
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(matchingStudents) { studentState ->
+                        items(matchingStudents, key = { it.student.id }) { studentState ->
                             StudentCard(
                                 uiState = studentState,
                                 isSelected = false,
@@ -376,7 +382,7 @@ fun SavedFiltersScreen(
                                 value = dropdownLabel,
                                 onValueChange = {},
                                 readOnly = true,
-                                label = { Text("Choose Pre-fill Template") },
+                                label = { Text(stringResource(R.string.s_choose_pre_fill_template)) },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownExpanded) },
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -388,7 +394,7 @@ fun SavedFiltersScreen(
                                 onDismissRequest = { dropdownExpanded = false }
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("Custom (Blank Textarea)") },
+                                    text = { Text(stringResource(R.string.s_custom_blank_textarea)) },
                                     onClick = {
                                         selectedTemplate = null
                                         textBody = ""
@@ -412,11 +418,23 @@ fun SavedFiltersScreen(
                         OutlinedTextField(
                             value = textBody,
                             onValueChange = { textBody = it },
-                            label = { Text("Message Body") },
+                            label = { Text(stringResource(R.string.s_message_body)) },
                             placeholder = { Text(stringResource(R.string.notify_custom_placeholder)) },
                             minLines = 4,
                             maxLines = 8,
                             modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Text(
+                            text = if (MessageMerge.hasTokens(textBody)) {
+                                "Personalised: each recipient gets their own message, sent one at a time so no number is shared."
+                            } else {
+                                "Tip: insert {{first_name}}, {{guardian}}, {{absences}}, {{attendance_rate}} or {{grade}} to personalise. Custom fields work too."
+                            },
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp,
+                            color = if (MessageMerge.hasTokens(textBody)) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
 
                         Spacer(modifier = Modifier.height(4.dp))
@@ -442,6 +460,14 @@ fun SavedFiltersScreen(
 
                                     if (targetPhones.isEmpty()) {
                                         Toast.makeText(context, R.string.bulk_sms_no_recipients, Toast.LENGTH_SHORT).show()
+                                    } else if (MessageMerge.hasTokens(textBody)) {
+                                        personalisedQueue = buildPersonalisedQueue(
+                                            students = matchingStudents.map { it.student },
+                                            insights = insights,
+                                            template = textBody,
+                                            toGuardians = bulkSmsTarget != "Students"
+                                        )
+                                        showBulkSmsDialog = false
                                     } else {
                                         val separator = if (android.os.Build.MANUFACTURER.equals("Samsung", ignoreCase = true)) ";" else ","
                                         val numbers = targetPhones.joinToString(separator)
@@ -517,7 +543,7 @@ fun SavedFiltersScreen(
                             ) {
                                 val formattedStart = selectionSdf.format(Date(startDateMillis))
                                 Text(stringResource(R.string.attendance_start_date_label, formattedStart), color = MaterialTheme.colorScheme.onSurface)
-                                Icon(Icons.Default.CalendarToday, contentDescription = "Select Start Date", tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                Icon(Icons.Default.CalendarToday, contentDescription = stringResource(R.string.cd_select_start_date), tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                             }
                         }
 
@@ -534,7 +560,7 @@ fun SavedFiltersScreen(
                             ) {
                                 val formattedEnd = selectionSdf.format(Date(endDateMillis))
                                 Text(stringResource(R.string.attendance_end_date_label, formattedEnd), color = MaterialTheme.colorScheme.onSurface)
-                                Icon(Icons.Default.CalendarToday, contentDescription = "Select End Date", tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                Icon(Icons.Default.CalendarToday, contentDescription = stringResource(R.string.cd_select_end_date), tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                             }
                         }
 
@@ -599,7 +625,7 @@ fun SavedFiltersScreen(
                         },
                         enabled = attendanceRecordName.isNotBlank() && !isDateRangeInvalid
                     ) {
-                        Text("Create")
+                        Text(stringResource(R.string.s_create))
                     }
                 },
                 dismissButton = {
@@ -653,6 +679,13 @@ fun SavedFiltersScreen(
                 }
             )
         }
+    }
+
+    if (personalisedQueue.isNotEmpty()) {
+        PersonalisedSendDialog(
+            messages = personalisedQueue,
+            onDismiss = { personalisedQueue = emptyList() }
+        )
     }
 }
 
@@ -708,7 +741,7 @@ fun FilterDialogForm(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Filter Group Name *") },
+                    label = { Text(stringResource(R.string.s_filter_group_name)) },
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -718,7 +751,7 @@ fun FilterDialogForm(
                         value = field.replace("_", " "),
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Select Field") },
+                        label = { Text(stringResource(R.string.s_select_field)) },
                         trailingIcon = { Icon(Icons.Default.ArrowDropDown, null, Modifier.clickable { fieldExpanded = true }) },
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -751,7 +784,7 @@ fun FilterDialogForm(
                             value = comparison,
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("Comparison") },
+                            label = { Text(stringResource(R.string.s_comparison)) },
                             trailingIcon = { Icon(Icons.Default.ArrowDropDown, null, Modifier.clickable { compExpanded = true }) },
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -789,7 +822,7 @@ fun FilterDialogForm(
                             value = selectedTypeName,
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("Birthday Filter Type") },
+                            label = { Text(stringResource(R.string.s_birthday_filter_type)) },
                             trailingIcon = { Icon(Icons.Default.ArrowDropDown, null, Modifier.clickable { typeExpanded = true }) },
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -815,7 +848,7 @@ fun FilterDialogForm(
                             OutlinedTextField(
                                 value = val1,
                                 onValueChange = { if (it.length <= 4) val1 = it.filter { c -> c.isDigit() } },
-                                label = { Text("Birth Year (YYYY) *") },
+                                label = { Text(stringResource(R.string.s_birth_year_yyyy)) },
                                 isError = isFutureYear1,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 modifier = Modifier.fillMaxWidth()
@@ -834,7 +867,7 @@ fun FilterDialogForm(
                                     value = selectedMonthName,
                                     onValueChange = {},
                                     readOnly = true,
-                                    label = { Text("Select Birth Month *") },
+                                    label = { Text(stringResource(R.string.s_select_birth_month)) },
                                     trailingIcon = { Icon(Icons.Default.ArrowDropDown, null, Modifier.clickable { monthExpanded = true }) },
                                     modifier = Modifier.fillMaxWidth()
                                 )
@@ -865,7 +898,7 @@ fun FilterDialogForm(
                                         value = selectedMonthName,
                                         onValueChange = {},
                                         readOnly = true,
-                                        label = { Text("Month *") },
+                                        label = { Text(stringResource(R.string.s_month)) },
                                         trailingIcon = { Icon(Icons.Default.ArrowDropDown, null, Modifier.clickable { monthExpanded = true }) },
                                         modifier = Modifier.fillMaxWidth()
                                     )
@@ -885,7 +918,7 @@ fun FilterDialogForm(
                                 OutlinedTextField(
                                     value = val2,
                                     onValueChange = { if (it.length <= 4) val2 = it.filter { c -> c.isDigit() } },
-                                    label = { Text("Year (YYYY) *") },
+                                    label = { Text(stringResource(R.string.s_year_yyyy)) },
                                     isError = isFutureYear2,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     modifier = Modifier.weight(1f)
@@ -924,7 +957,7 @@ fun FilterDialogForm(
                         FilterChip(
                             selected = val1 == "Female",
                             onClick = { val1 = "Female" },
-                            label = { Text("Female") },
+                            label = { Text(stringResource(R.string.s_female)) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                                 selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -935,7 +968,7 @@ fun FilterDialogForm(
                         FilterChip(
                             selected = val1 == "Male",
                             onClick = { val1 = "Male" },
-                            label = { Text("Male") },
+                            label = { Text(stringResource(R.string.s_male)) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                                 selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -955,7 +988,7 @@ fun FilterDialogForm(
                                 OutlinedTextField(
                                     value = val1,
                                     onValueChange = { val1 = it },
-                                    label = { Text("Value 1 (Min) *") },
+                                    label = { Text(stringResource(R.string.s_value_1_min)) },
                                     isError = isValidationError,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     modifier = Modifier.weight(1f)
@@ -963,7 +996,7 @@ fun FilterDialogForm(
                                 OutlinedTextField(
                                     value = val2,
                                     onValueChange = { val2 = it },
-                                    label = { Text("Value 2 (Max) *") },
+                                    label = { Text(stringResource(R.string.s_value_2_max)) },
                                     isError = isValidationError,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     modifier = Modifier.weight(1f)
@@ -982,7 +1015,7 @@ fun FilterDialogForm(
                             OutlinedTextField(
                                 value = val1,
                                 onValueChange = { val1 = it },
-                                label = { Text("Value *") },
+                                label = { Text(stringResource(R.string.s_value)) },
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -1011,10 +1044,10 @@ fun FilterDialogForm(
                     }
                 },
                 enabled = !isValidationError && (comparison == "empty" || comparison == "not empty" || val1.isNotBlank())
-            ) { Text("Save") }
+            ) { Text(stringResource(R.string.s_save)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.s_cancel)) }
         },
         shape = RoundedCornerShape(28.dp)
     )
@@ -1036,7 +1069,7 @@ fun FilterDialogForm(
                 TextButton(onClick = {
                     dateState1.selectedDateMillis?.let { val1 = it.toString() }
                     showDatePicker1 = false
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.s_ok)) }
             }
         ) { DatePicker(state = dateState1, showModeToggle = false) }
     }

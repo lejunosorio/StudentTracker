@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.soloistdev.studenttracker.R
+import dev.soloistdev.studenttracker.data.AttendanceRecordEntity
 import dev.soloistdev.studenttracker.data.JsonSyncEngine
 import dev.soloistdev.studenttracker.data.ImportResult
 import dev.soloistdev.studenttracker.data.LocalSyncEngine
@@ -64,15 +65,40 @@ fun SyncScreen(onBack: () -> Unit) {
 
     val peerToastSuccess = stringResource(R.string.toast_p2p_transmission_success)
 
+    // When armed, the next transmission is a scoped substitute packet rather than the full roster
+    var handoffClass by remember { mutableStateOf<String?>(null) }
+    var handoffRecord by remember { mutableStateOf<AttendanceRecordEntity?>(null) }
+    var handoffDate by remember { mutableLongStateOf(0L) }
+    var showHandoffPicker by remember { mutableStateOf(false) }
+
     // Serializes the active roster and hands it to the engine, which seals it under [code]
     fun sendRosterToPeer(peer: NsdServiceInfo, code: String) {
         scope.launch(Dispatchers.IO) {
             try {
-                val activeRoster = repository.getAllActiveStudents()
-                val activeLogs = repository.getAllAttendanceLogs()
-
                 val cacheDir = File(context.cacheDir, "backups").apply { mkdirs() }
                 val tempFile = File(cacheDir, "temp_p2p_transmit.json")
+
+                val armedClass = handoffClass
+                val armedRecord = handoffRecord
+                if (armedClass != null && armedRecord != null) {
+                    val packet = JsonSyncEngine.buildSubstitutePacket(
+                        repository, armedClass, armedRecord, handoffDate
+                    )
+                    FileOutputStream(tempFile).use { fos ->
+                        fos.write(packet.toString().toByteArray())
+                        fos.flush()
+                    }
+                    localSyncEngine.transmitBackupToPeer(peer, tempFile, code) { success ->
+                        if (success) {
+                            Toast.makeText(context, peerToastSuccess, Toast.LENGTH_SHORT).show()
+                        }
+                        tempFile.delete()
+                    }
+                    return@launch
+                }
+
+                val activeRoster = repository.getAllActiveStudents()
+                val activeLogs = repository.getAllAttendanceLogs()
 
                 val payloadObj = JSONObject().apply {
                     val studentsArr = JSONArray()
@@ -234,6 +260,49 @@ fun SyncScreen(onBack: () -> Unit) {
                         }
                     }
 
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                    if (handoffClass != null && handoffRecord != null) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = "Substitute packet armed",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                                Text(
+                                    text = "$handoffClass  •  ${handoffRecord!!.name}",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                                Text(
+                                    text = "Sends names, class and seats only. No addresses, guardians, contact numbers, grades or behaviour notes.",
+                                    fontSize = 10.sp,
+                                    lineHeight = 14.sp,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f)
+                                )
+                                TextButton(onClick = {
+                                    handoffClass = null
+                                    handoffRecord = null
+                                }) {
+                                    Text("Send full database instead", fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = { showHandoffPicker = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Prepare substitute handoff", fontSize = 11.sp, textAlign = TextAlign.Center)
+                        }
+                    }
                     if (syncState == "Listening" || syncState == "Scanning") {
                         OutlinedButton(
                             onClick = { localSyncEngine.stopActiveSession() },
@@ -344,7 +413,7 @@ fun SyncScreen(onBack: () -> Unit) {
                                 isImportDone = false
                             }
                         ) {
-                            Text("Done")
+                            Text(stringResource(R.string.s_done))
                         }
                     }
                 },
@@ -398,6 +467,19 @@ fun SyncScreen(onBack: () -> Unit) {
             )
         }
 
+
+        if (showHandoffPicker) {
+            SubstituteHandoffPicker(
+                repository = repository,
+                onArm = { className, record, date ->
+                    handoffClass = className
+                    handoffRecord = record
+                    handoffDate = date
+                    showHandoffPicker = false
+                },
+                onDismiss = { showHandoffPicker = false }
+            )
+        }
         if (showHelpDialog) {
             AlertDialog(
                 onDismissRequest = { showHelpDialog = false },
@@ -444,4 +526,96 @@ private fun getFileName(context: Context, uri: Uri): String? {
             if (idx != -1) it.getString(idx) else null
         } else null
     }
-}
+}
+/**
+ * Chooses which class and which day are handed to the substitute.
+ *
+ * Both are required: a packet without a day would give the substitute a roster and nowhere to
+ * record it, and the return trip needs the same sheet to merge back into.
+ */
+@Composable
+private fun SubstituteHandoffPicker(
+    repository: StudentRepository,
+    onArm: (String, AttendanceRecordEntity, Long) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var classes by remember { mutableStateOf<List<String>>(emptyList()) }
+    var records by remember { mutableStateOf<List<AttendanceRecordEntity>>(emptyList()) }
+    var chosenClass by remember { mutableStateOf<String?>(null) }
+    var chosenRecord by remember { mutableStateOf<AttendanceRecordEntity?>(null) }
+
+    val sdf = remember { java.text.SimpleDateFormat("EEE, MMM dd", java.util.Locale.US) }
+
+    LaunchedEffect(Unit) {
+        classes = repository.getAllActiveStudents()
+            .flatMap { it.getClassNamesList() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+        records = repository.getAllAttendanceRecords()
+    }
+
+    val title = when {
+        chosenClass == null -> "Choose Class"
+        chosenRecord == null -> "Choose Attendance Sheet"
+        else -> "Choose Day"
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 380.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                when {
+                    chosenClass == null -> classes.forEach { name ->
+                        HandoffOption(name) { chosenClass = name }
+                    }
+                    chosenRecord == null -> {
+                        if (records.isEmpty()) {
+                            Text("No attendance sheets exist yet.", fontSize = 13.sp)
+                        }
+                        records.forEach { record ->
+                            HandoffOption("${record.name}  •  ${sdf.format(java.util.Date(record.startDate))}") {
+                                chosenRecord = record
+                            }
+                        }
+                    }
+                    else -> generateDateList(chosenRecord!!.startDate, chosenRecord!!.endDate).forEach { day ->
+                        HandoffOption(sdf.format(java.util.Date(day))) {
+                            onArm(chosenClass!!, chosenRecord!!, day)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (chosenClass != null) {
+                TextButton(onClick = {
+                    if (chosenRecord != null) chosenRecord = null else chosenClass = null
+                }) { Text(stringResource(R.string.s_back)) }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+        shape = RoundedCornerShape(28.dp)
+    )
+}
+
+@Composable
+private fun HandoffOption(label: String, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Text(label, fontSize = 13.sp, modifier = Modifier.padding(12.dp))
+    }
+}

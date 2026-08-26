@@ -110,7 +110,7 @@ fun StudentImportScreen(
                             Button(
                                 onClick = {
                                     scope.launch {
-                                        repository.insertStudent(tempStudent)
+                                        repository.saveStudent(tempStudent)
                                         Toast.makeText(context, importSuccessMessage, Toast.LENGTH_SHORT).show()
                                         onDismiss()
                                     }
@@ -160,7 +160,7 @@ fun StudentImportScreen(
 
                 val sdf = SimpleDateFormat("MMMM dd, yyyy", Locale.US)
                 val bdayFormatted = sdf.format(Date(tempStudent.birthday))
-                val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = tempStudent.birthday }.get(Calendar.YEAR)
+                val age = dev.soloistdev.studenttracker.data.AgeCalculator.ageInYears(tempStudent.birthday)
                 val genderFull = if (tempStudent.gender == "F") stringResource(R.string.gender_female) else stringResource(R.string.gender_male)
 
                 Text(

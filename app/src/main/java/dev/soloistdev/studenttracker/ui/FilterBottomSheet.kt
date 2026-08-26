@@ -109,7 +109,8 @@ fun FilterBottomSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(24.dp)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState()) // Keyboard-safe layout scroll
+                .imePadding(), // Keyboard-safe layout height constraints
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(stringResource(R.string.filter_directory_title), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)

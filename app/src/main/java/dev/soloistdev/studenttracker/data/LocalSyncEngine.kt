@@ -21,6 +21,12 @@ class LocalSyncEngine(private val context: Context) {
     private var registrationListener: NsdManager.RegistrationListener? = null
     private var discoveryListener: NsdManager.DiscoveryListener? = null
     private var serverJob: Job? = null
+    private var transferJob: Job? = null
+
+    // One scope the engine owns, so stopping a session actually stops everything it started.
+    // Transfers previously launched into a bare CoroutineScope with no handle kept, which meant
+    // an in-flight send carried on writing to a socket after the screen had torn the session down.
+    private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _discoveredPeers = MutableStateFlow<List<NsdServiceInfo>>(emptyList())
     val discoveredPeers: StateFlow<List<NsdServiceInfo>> = _discoveredPeers
@@ -41,7 +47,7 @@ class LocalSyncEngine(private val context: Context) {
         _syncState.value = "Listening"
         onBackupReceivedCallback = onBackupReceived
 
-        serverJob = CoroutineScope(Dispatchers.IO).launch {
+        serverJob = engineScope.launch {
             try {
                 serverSocket = ServerSocket(0) // Dynamic port allocation
                 val localPort = serverSocket!!.localPort
@@ -50,7 +56,10 @@ class LocalSyncEngine(private val context: Context) {
 
                 while (isActive) {
                     val clientSocket = serverSocket?.accept() ?: break
-                    handleIncomingPayload(clientSocket)
+                    // The pairing code is documented as single-use, so stop listening once a
+                    // payload has actually been accepted under it. A failed attempt - wrong code,
+                    // tampered bytes - leaves the session open so the sender can retry.
+                    if (handleIncomingPayload(clientSocket)) break
                 }
             } catch (e: Exception) {
                 _syncState.value = "Error: ${e.message}"
@@ -111,7 +120,7 @@ class LocalSyncEngine(private val context: Context) {
         onComplete: (Boolean) -> Unit
     ) {
         _syncState.value = "Connecting"
-        CoroutineScope(Dispatchers.IO).launch {
+        transferJob = engineScope.launch {
             try {
                 val sealedPayload = SyncCrypto.encrypt(backupFile.readBytes(), pairingCode)
 
@@ -138,6 +147,8 @@ class LocalSyncEngine(private val context: Context) {
         _pairingCode.value = null
         serverJob?.cancel()
         serverJob = null
+        transferJob?.cancel()
+        transferJob = null
 
         try {
             serverSocket?.close()
@@ -181,9 +192,10 @@ class LocalSyncEngine(private val context: Context) {
         nsdManager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
     }
 
-    private fun handleIncomingPayload(socket: Socket) {
+    /** @return true when a payload was authenticated and handed to the import callback. */
+    private fun handleIncomingPayload(socket: Socket): Boolean {
         _syncState.value = "Syncing"
-        try {
+        return try {
             val activeCode = _pairingCode.value
                 ?: throw IllegalStateException("No active pairing session.")
 
@@ -208,8 +220,10 @@ class LocalSyncEngine(private val context: Context) {
             }
             _syncState.value = "Success"
             onBackupReceivedCallback?.invoke(receivedFile)
+            true
         } catch (e: Exception) {
             _syncState.value = "Error: ${e.message}"
+            false
         } finally {
             try { socket.close() } catch (_: Exception) {}
         }

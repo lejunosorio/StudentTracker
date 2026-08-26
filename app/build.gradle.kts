@@ -22,7 +22,11 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // Shrink, obfuscate and strip unused code. This app holds identifiable data about
+            // minors; shipping it with full symbol names and every unreachable branch intact
+            // makes it needlessly easy to read.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -39,12 +43,20 @@ android {
         buildConfig = true
     }
 
-    // Force native library compression for 16KB Android 15+ compatibility
+    // 16 KB page-size support needs native libraries stored UNCOMPRESSED and page-aligned, which
+    // is useLegacyPackaging = false - the default. The previous `true` did the opposite: it
+    // compressed them and had them extracted at install time, which is the packaging 16 KB
+    // devices reject.
     packaging {
         jniLibs {
-            useLegacyPackaging = true
+            useLegacyPackaging = false
         }
     }
+}
+
+ksp {
+    // Writes schemas/<db>/<version>.json so migrations have a reference to test against
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 // KOTLIN STDLIB FORCE RESOLUTION STRATEGY
@@ -81,6 +93,15 @@ dependencies {
     // Android Biometric Library (Fingerprint/Face Unlock)
     implementation(libs.androidx.biometric)
 
+    // Pinned ahead of what biometric asks for.
+    //
+    // biometric 1.2.0-alpha05 pulls in fragment 1.2.5, whose FragmentActivity still validates that
+    // a startActivityForResult request code fits in 16 bits. The modern ActivityResultRegistry in
+    // activity 1.8.x deliberately generates codes above that range, so with MainActivity extending
+    // FragmentActivity - which BiometricPrompt requires - every file picker, photo picker and
+    // scanner launch threw "Can only use lower 16 bits for requestCode" and killed the app.
+    implementation(libs.androidx.fragment)
+
     // Room Database
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
@@ -94,6 +115,9 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
 
     testImplementation(libs.junit)
+    // Must come before the mockable android.jar so JSON calls run for real in unit tests.
+    testImplementation(libs.org.json)
+    testImplementation(libs.sqlite.jdbc)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
@@ -101,4 +125,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
     implementation(libs.zxing.core)
+
+    // Camera barcode scanning for QR attendance
+    implementation(libs.zxing.android.embedded)
 }

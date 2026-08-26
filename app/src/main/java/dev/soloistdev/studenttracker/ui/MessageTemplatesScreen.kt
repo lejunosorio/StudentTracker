@@ -95,7 +95,7 @@ fun MessageTemplatesScreen(onBack: () -> Unit) {
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(templates) { template ->
+                items(templates, key = { it.id }) { template ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -125,7 +125,7 @@ fun MessageTemplatesScreen(onBack: () -> Unit) {
                                     editingTemplate = template
                                     showDialog = true
                                 }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+                                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.cd_edit), tint = MaterialTheme.colorScheme.primary)
                                 }
                                 IconButton(onClick = {
                                     scope.launch {
@@ -134,7 +134,7 @@ fun MessageTemplatesScreen(onBack: () -> Unit) {
                                         Toast.makeText(context, R.string.toast_template_deleted, Toast.LENGTH_SHORT).show()
                                     }
                                 }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.cd_delete), tint = MaterialTheme.colorScheme.error)
                                 }
                             }
                         }

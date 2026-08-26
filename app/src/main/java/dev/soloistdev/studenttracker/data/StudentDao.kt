@@ -16,13 +16,35 @@ interface StudentDao {
     @Query("SELECT * FROM students WHERE id = :studentId")
     fun getStudentById(studentId: Int): StudentEntity?
 
+    // Only ever for a row that does not exist yet. Everything else goes through upsertStudent:
+    // see the note there for why writing an existing student this way destroys their data.
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insertStudent(student: StudentEntity): Long
+    fun insertNewStudent(student: StudentEntity): Long
 
     // In-place update. Avoids the INSERT OR REPLACE delete+insert, which would cascade
     // away the behavior incidents and assessment scores that reference this student.
     @Update
     fun updateStudent(student: StudentEntity)
+
+    /**
+     * The single supported way to write a student, insert or edit.
+     *
+     * @Insert(REPLACE) resolves a primary-key conflict by DELETING the existing row and
+     * inserting a new one. Foreign keys are on, and both assessment_scores and
+     * behavior_incidents cascade on delete, so re-inserting a student over themselves silently
+     * erases their entire gradebook and incident history. Correcting a spelling in a name is
+     * not supposed to do that, so the choice is made here rather than at each call site.
+     *
+     * @return the row id the student now lives at.
+     */
+    @Transaction
+    fun upsertStudent(student: StudentEntity): Int {
+        if (student.id != 0 && getStudentById(student.id) != null) {
+            updateStudent(student)
+            return student.id
+        }
+        return insertNewStudent(student).toInt()
+    }
 
     @Query("UPDATE students SET isDeleted = 1 WHERE id = :studentId")
     fun softDeleteStudent(studentId: Int)
@@ -111,8 +133,35 @@ interface StudentDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertAttendanceLog(log: AttendanceLogEntity): Long
 
+    // Creating a sheet writes one row per student per day - a term across a few classes is tens
+    // of thousands. One statement per row, each in its own implicit transaction, made that take
+    // long enough to look frozen; this commits the lot once.
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertAttendanceLogs(logs: List<AttendanceLogEntity>)
+
     @Query("UPDATE attendance_logs SET status = :status, lastModified = :lastModified WHERE recordId = :recordId AND dateMillis = :dateMillis AND studentId = :studentId")
     fun updateAttendanceStatus(recordId: Int, dateMillis: Long, studentId: Int, status: String, lastModified: Long): Int
+
+    /** Sets one status across many students on a single day, in one transaction. */
+    @Query("UPDATE attendance_logs SET status = :status, lastModified = :lastModified WHERE recordId = :recordId AND dateMillis = :dateMillis AND studentId IN (:studentIds)")
+    fun updateAttendanceStatusForStudents(
+        recordId: Int,
+        dateMillis: Long,
+        studentIds: List<Int>,
+        status: String,
+        lastModified: Long
+    ): Int
+
+    /** Applies a per-student status map for one day in a single transaction. */
+    @Transaction
+    fun applyAttendanceStatuses(recordId: Int, dateMillis: Long, statusByStudent: Map<Int, String>) {
+        val now = System.currentTimeMillis()
+        statusByStudent.entries
+            .groupBy({ it.value }, { it.key })
+            .forEach { (status, studentIds) ->
+                updateAttendanceStatusForStudents(recordId, dateMillis, studentIds, status, now)
+            }
+    }
 
     @Query("SELECT * FROM attendance_logs WHERE recordId = :recordId")
     fun getLogsForRecord(recordId: Int): List<AttendanceLogEntity>
@@ -122,6 +171,10 @@ interface StudentDao {
     // --- BEHAVIOR INCIDENTS QUERIES ---
     @Query("SELECT * FROM behavior_incidents WHERE studentId = :studentId ORDER BY timestamp DESC")
     fun getIncidentsForStudent(studentId: Int): List<BehaviorIncidentEntity>
+
+    // Bulk read for analytics, which needs every incident at once rather than N per-student queries
+    @Query("SELECT * FROM behavior_incidents")
+    fun getAllIncidents(): List<BehaviorIncidentEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertIncident(incident: BehaviorIncidentEntity): Long
@@ -178,8 +231,8 @@ interface StudentDao {
     fun updateStudentSeatingForClass(studentId: Int, className: String, x: Float, y: Float) {
         val student = getStudentById(studentId)
         if (student != null) {
-            val updatedStudent = student.withUpdatedSeating(className, x, y)
-            insertStudent(updatedStudent)
+            // In-place: dragging a seat must not cascade the student's scores away.
+            updateStudent(student.withUpdatedSeating(className, x, y))
         }
     }
 
@@ -231,4 +284,84 @@ interface StudentDao {
             )
         )
     }
+
+    // --- RUBRICS ---
+    @Query("SELECT * FROM rubrics WHERE isDeleted = 0 ORDER BY name ASC")
+    fun getAllRubrics(): List<RubricEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertRubric(rubric: RubricEntity): Long
+
+    @Query("UPDATE rubrics SET isDeleted = 1 WHERE id = :rubricId")
+    fun softDeleteRubric(rubricId: Int)
+
+    @Query("SELECT * FROM rubric_levels ORDER BY rubricId ASC, displayOrder ASC")
+    fun getAllRubricLevels(): List<RubricLevelEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertRubricLevel(level: RubricLevelEntity): Long
+
+    @Query("DELETE FROM rubric_levels WHERE id = :levelId")
+    fun deleteRubricLevel(levelId: Int)
+
+    // --- PARTICIPATION EQUITY ---
+    @Query("SELECT * FROM participation_counts WHERE className = :className")
+    fun getParticipationForClass(className: String): List<ParticipationCountEntity>
+
+    @Query("SELECT * FROM participation_counts WHERE studentId = :studentId AND className = :className LIMIT 1")
+    fun getParticipationFor(studentId: Int, className: String): ParticipationCountEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertParticipation(entry: ParticipationCountEntity): Long
+
+    @Query("DELETE FROM participation_counts WHERE className = :className")
+    fun resetParticipationForClass(className: String)
+
+    /** Restores a counter to a known value, as opposed to counting one more call. */
+    @Transaction
+    fun setParticipation(studentId: Int, className: String, timesCalled: Int, lastCalledMillis: Long) {
+        val existing = getParticipationFor(studentId, className)
+        insertParticipation(
+            ParticipationCountEntity(
+                id = existing?.id ?: 0,
+                studentId = studentId,
+                className = className,
+                timesCalled = timesCalled,
+                lastCalledMillis = lastCalledMillis
+            )
+        )
+    }
+
+    @Transaction
+    fun recordParticipation(studentId: Int, className: String) {
+        val existing = getParticipationFor(studentId, className)
+        insertParticipation(
+            ParticipationCountEntity(
+                id = existing?.id ?: 0,
+                studentId = studentId,
+                className = className,
+                timesCalled = (existing?.timesCalled ?: 0) + 1,
+                lastCalledMillis = System.currentTimeMillis()
+            )
+        )
+    }
+
+    // --- IN-PLACE UPDATES ---
+    // All of these exist because @Insert(REPLACE) deletes the row before re-inserting it, which
+    // fires ON DELETE CASCADE on anything that references it. Renaming a rubric that way would
+    // destroy its levels; editing an attendance sheet would destroy its logs.
+    @Update
+    fun updateAttendanceRecord(record: AttendanceRecordEntity)
+
+    @Update
+    fun updateGradingTerm(term: GradingTermEntity)
+
+    @Update
+    fun updateAssessmentCategory(category: AssessmentCategoryEntity)
+
+    @Update
+    fun updateRubric(rubric: RubricEntity)
+
+    @Update
+    fun updateRubricLevel(level: RubricLevelEntity)
 }

@@ -59,11 +59,6 @@ fun BiometricsPrivacyScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
-                actions = {
-                    IconButton(onClick = {}) {
-                        Icon(Icons.Default.Security, contentDescription = stringResource(R.string.menu_biometrics_privacy))
-                    }
-                }
             )
         }
     ) { paddingValues ->

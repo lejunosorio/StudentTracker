@@ -51,6 +51,16 @@ fun QueryResultsScreen(
     val queryRules = viewModel.queryRules
     val matchOperator = viewModel.matchOperator
     val messageTemplates by viewModel.messageTemplates.collectAsState()
+    val insights by viewModel.insights.collectAsState()
+
+    // Non-empty while stepping through a personalised send
+    var personalisedQueue by remember { mutableStateOf<List<PersonalisedMessage>>(emptyList()) }
+
+    // Re-read on every entry: the ViewModel outlives this composable, so returning here after
+    // changing data elsewhere would otherwise show a stale snapshot.
+    LaunchedEffect(Unit) {
+        viewModel.loadData()
+    }
 
     var showBulkSmsDialog by remember { mutableStateOf(false) }
     var bulkSmsTarget by remember { mutableStateOf("Students") }
@@ -67,13 +77,12 @@ fun QueryResultsScreen(
 
     // Convert raw entities to UI State List
     val students = remember(rawStudents) {
-        val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+        val today = java.time.LocalDate.now()
         val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.US)
         rawStudents.map { student ->
             val genderStr = if (student.gender == "F") "Female" else "Male"
             val bdayFormatted = sdf.format(Date(student.birthday))
-            val cal = Calendar.getInstance().apply { timeInMillis = student.birthday }
-            val age = currentYear - cal.get(Calendar.YEAR)
+            val age = dev.soloistdev.studenttracker.data.AgeCalculator.ageInYears(student.birthday, today)
             StudentUiState(
                 student = student,
                 genderString = genderStr,
@@ -111,28 +120,28 @@ fun QueryResultsScreen(
                 title = { Text(stringResource(R.string.query_results_title), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBackToBuilder) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Edit Query")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_edit_query))
                     }
                 },
                 actions = {
                     if (matchedRoster.isNotEmpty()) {
                         IconButton(onClick = { showSaveFilterDialog = true }) {
-                            Icon(Icons.Default.Save, contentDescription = "Save Query as Filter", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Default.Save, contentDescription = stringResource(R.string.cd_save_query_as_filter), tint = MaterialTheme.colorScheme.primary)
                         }
                         IconButton(onClick = {
                             bulkSmsTarget = "Students"
                             showBulkSmsDialog = true
                         }) {
-                            Icon(Icons.Default.SettingsCell, contentDescription = "SMS Students", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Default.SettingsCell, contentDescription = stringResource(R.string.cd_sms_students), tint = MaterialTheme.colorScheme.primary)
                         }
                         IconButton(onClick = {
                             bulkSmsTarget = "Guardians"
                             showBulkSmsDialog = true
                         }) {
-                            Icon(Icons.Default.Group, contentDescription = "SMS Guardians", tint = MaterialTheme.colorScheme.secondary)
+                            Icon(Icons.Default.Group, contentDescription = stringResource(R.string.cd_sms_guardians), tint = MaterialTheme.colorScheme.secondary)
                         }
                         IconButton(onClick = { showCreateAttendanceDialog = true }) {
-                            Icon(Icons.Default.EventAvailable, contentDescription = "Create Attendance", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Default.EventAvailable, contentDescription = stringResource(R.string.cd_create_attendance), tint = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -164,7 +173,7 @@ fun QueryResultsScreen(
                         onClick = onBackToBuilder,
                         colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit Query", tint = MaterialTheme.colorScheme.onPrimary)
+                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.cd_edit_query), tint = MaterialTheme.colorScheme.onPrimary)
                     }
                 }
             }
@@ -178,7 +187,7 @@ fun QueryResultsScreen(
             )
 
             LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 80.dp)) {
-                items(matchedRoster) { studentState ->
+                items(matchedRoster, key = { it.student.id }) { studentState ->
                     StudentCard(
                         uiState = studentState,
                         isSelected = false,
@@ -201,7 +210,7 @@ fun QueryResultsScreen(
                         OutlinedTextField(
                             value = filterName,
                             onValueChange = { filterName = it },
-                            label = { Text("Filter Name *") },
+                            label = { Text(stringResource(R.string.s_filter_name)) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -295,7 +304,7 @@ fun QueryResultsScreen(
                                 value = dropdownLabel,
                                 onValueChange = {},
                                 readOnly = true,
-                                label = { Text("Choose Pre-fill Template") },
+                                label = { Text(stringResource(R.string.s_choose_pre_fill_template)) },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownExpanded) },
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -307,7 +316,7 @@ fun QueryResultsScreen(
                                 onDismissRequest = { dropdownExpanded = false }
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("Custom (Blank Textarea)") },
+                                    text = { Text(stringResource(R.string.s_custom_blank_textarea)) },
                                     onClick = {
                                         selectedTemplate = null
                                         textBody = ""
@@ -331,11 +340,23 @@ fun QueryResultsScreen(
                         OutlinedTextField(
                             value = textBody,
                             onValueChange = { textBody = it },
-                            label = { Text("Message Body") },
+                            label = { Text(stringResource(R.string.s_message_body)) },
                             placeholder = { Text(stringResource(R.string.notify_custom_placeholder)) },
                             minLines = 4,
                             maxLines = 8,
                             modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Text(
+                            text = if (MessageMerge.hasTokens(textBody)) {
+                                "Personalised: each recipient gets their own message, sent one at a time so no number is shared."
+                            } else {
+                                "Tip: insert {{first_name}}, {{guardian}}, {{absences}}, {{attendance_rate}} or {{grade}} to personalise. Custom fields work too."
+                            },
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp,
+                            color = if (MessageMerge.hasTokens(textBody)) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
 
                         Spacer(modifier = Modifier.height(4.dp))
@@ -361,6 +382,16 @@ fun QueryResultsScreen(
 
                                     if (targetPhones.isEmpty()) {
                                         Toast.makeText(context, R.string.bulk_sms_no_recipients, Toast.LENGTH_SHORT).show()
+                                    } else if (MessageMerge.hasTokens(textBody)) {
+                                        // Personalised: one rendered message per recipient, sent
+                                        // one at a time so no parent sees another parent number.
+                                        personalisedQueue = buildPersonalisedQueue(
+                                            students = matchedRoster.map { it.student },
+                                            insights = insights,
+                                            template = textBody,
+                                            toGuardians = bulkSmsTarget != "Students"
+                                        )
+                                        showBulkSmsDialog = false
                                     } else {
                                         val separator = if (android.os.Build.MANUFACTURER.equals("Samsung", ignoreCase = true)) ";" else ","
                                         val numbers = targetPhones.joinToString(separator)
@@ -450,7 +481,7 @@ fun QueryResultsScreen(
                             ) {
                                 val formattedStart = sdf.format(Date(startDateMillis))
                                 Text(stringResource(R.string.attendance_start_date_label, formattedStart), color = MaterialTheme.colorScheme.onSurface)
-                                Icon(Icons.Default.CalendarToday, contentDescription = "Select Start Date", tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                Icon(Icons.Default.CalendarToday, contentDescription = stringResource(R.string.cd_select_start_date), tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                             }
                         }
 
@@ -467,7 +498,7 @@ fun QueryResultsScreen(
                             ) {
                                 val formattedEnd = sdf.format(Date(endDateMillis))
                                 Text(stringResource(R.string.attendance_end_date_label, formattedEnd), color = MaterialTheme.colorScheme.onSurface)
-                                Icon(Icons.Default.CalendarToday, contentDescription = "Select End Date", tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                Icon(Icons.Default.CalendarToday, contentDescription = stringResource(R.string.cd_select_end_date), tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                             }
                         }
 
@@ -578,4 +609,61 @@ fun QueryResultsScreen(
             ) { DatePicker(state = pickerState, showModeToggle = false) }
         }
     }
+
+    if (personalisedQueue.isNotEmpty()) {
+        PersonalisedSendDialog(
+            messages = personalisedQueue,
+            onDismiss = { personalisedQueue = emptyList() }
+        )
+    }
+}
+
+/**
+ * Renders one message per recipient. Guardians expand to one entry per phone number, so a student
+ * with two contactable guardians produces two separately-addressed messages rather than a group
+ * thread that shows each of them the other number.
+ */
+fun buildPersonalisedQueue(
+    students: List<StudentEntity>,
+    insights: Map<Int, StudentInsights.Insight>,
+    template: String,
+    toGuardians: Boolean
+): List<PersonalisedMessage> {
+    val queue = mutableListOf<PersonalisedMessage>()
+
+    students.forEach { student ->
+        val insight = insights[student.id]
+        val baseData = MessageMerge.MergeData(
+            student = student,
+            absences = insight?.attendance?.absent,
+            present = insight?.attendance?.present,
+            attendanceRate = insight?.attendance?.attendanceRate,
+            grade = insight?.gradePercent?.let { String.format(Locale.US, "%.1f%%", it) }
+        )
+
+        if (toGuardians) {
+            Guardian.listFromJsonString(student.guardiansJson).forEach { guardian ->
+                guardian.phones.filter { it.isNotBlank() }.forEach { phone ->
+                    val data = baseData.copy(guardianName = guardian.name)
+                    queue.add(
+                        PersonalisedMessage(
+                            recipientLabel = "${guardian.name.ifBlank { "Guardian" }} — ${student.firstName} ${student.lastName}",
+                            phone = phone,
+                            body = MessageMerge.render(template, data)
+                        )
+                    )
+                }
+            }
+        } else if (student.contactNumber.isNotBlank()) {
+            queue.add(
+                PersonalisedMessage(
+                    recipientLabel = "${student.firstName} ${student.lastName}",
+                    phone = student.contactNumber,
+                    body = MessageMerge.render(template, baseData)
+                )
+            )
+        }
+    }
+
+    return queue
 }

@@ -164,7 +164,7 @@ class AddEditViewModel(application: Application) : AndroidViewModel(application)
                 classNamesJson = classesJsonArray.toString(),
                 seatingJson = updatedSeatingJson
             )
-            repository.insertStudent(student)
+            repository.saveStudent(student)
             _saveSuccess.value = true
         }
     }

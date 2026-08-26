@@ -15,14 +15,15 @@ class StudentRepository(private val context: Context) {
         studentDao.getAllActiveStudents()
     }
 
-    suspend fun insertStudent(student: StudentEntity): Long = withContext(Dispatchers.IO) {
-        studentDao.insertStudent(student)
-    }
-
-    // In-place update used by the backup merge, so refreshing an existing student does not
-    // cascade-delete their behavior incidents and assessment scores.
-    suspend fun updateStudent(student: StudentEntity) = withContext(Dispatchers.IO) {
-        studentDao.updateStudent(student)
+    /**
+     * Writes a student, new or existing, and returns the id they live at.
+     *
+     * There is deliberately no raw insert on this surface. A plain REPLACE insert over an
+     * existing student cascade-deletes their scores and behavior incidents, and that mistake was
+     * easy to make when both spellings were available; [StudentDao.upsertStudent] decides.
+     */
+    suspend fun saveStudent(student: StudentEntity): Int = withContext(Dispatchers.IO) {
+        studentDao.upsertStudent(student)
     }
 
     suspend fun softDeleteStudent(studentId: Int) = withContext(Dispatchers.IO) {
@@ -144,6 +145,20 @@ class StudentRepository(private val context: Context) {
         studentDao.insertAttendanceLog(log)
     }
 
+    /** Bulk sheet creation. One transaction rather than one per cell. */
+    suspend fun insertAttendanceLogs(logs: List<AttendanceLogEntity>) = withContext(Dispatchers.IO) {
+        studentDao.insertAttendanceLogs(logs)
+    }
+
+    /** Bulk status write for a single day, e.g. "mark all present" or a reset. */
+    suspend fun applyAttendanceStatuses(
+        recordId: Int,
+        dateMillis: Long,
+        statusByStudent: Map<Int, String>
+    ) = withContext(Dispatchers.IO) {
+        studentDao.applyAttendanceStatuses(recordId, dateMillis, statusByStudent)
+    }
+
     suspend fun updateAttendanceStatus(recordId: Int, dateMillis: Long, studentId: Int, status: String) = withContext(Dispatchers.IO) {
         studentDao.updateAttendanceStatus(recordId, dateMillis, studentId, status, System.currentTimeMillis())
     }
@@ -158,6 +173,10 @@ class StudentRepository(private val context: Context) {
     // Behavior Incidents Accessors
     suspend fun getIncidentsForStudent(studentId: Int): List<BehaviorIncidentEntity> = withContext(Dispatchers.IO) {
         studentDao.getIncidentsForStudent(studentId)
+    }
+
+    suspend fun getAllIncidents(): List<BehaviorIncidentEntity> = withContext(Dispatchers.IO) {
+        studentDao.getAllIncidents()
     }
 
     suspend fun insertIncident(incident: BehaviorIncidentEntity): Long = withContext(Dispatchers.IO) {
@@ -260,5 +279,73 @@ class StudentRepository(private val context: Context) {
 
     suspend fun upsertAssessmentScore(columnId: Int, studentId: Int, score: String) = withContext(Dispatchers.IO) {
         studentDao.upsertAssessmentScore(columnId, studentId, score)
+    }
+
+    // Rubrics
+    suspend fun getAllRubrics(): List<RubricEntity> = withContext(Dispatchers.IO) {
+        studentDao.getAllRubrics()
+    }
+
+    suspend fun insertRubric(rubric: RubricEntity): Long = withContext(Dispatchers.IO) {
+        studentDao.insertRubric(rubric)
+    }
+
+    suspend fun softDeleteRubric(rubricId: Int) = withContext(Dispatchers.IO) {
+        studentDao.softDeleteRubric(rubricId)
+    }
+
+    suspend fun getAllRubricLevels(): List<RubricLevelEntity> = withContext(Dispatchers.IO) {
+        studentDao.getAllRubricLevels()
+    }
+
+    suspend fun insertRubricLevel(level: RubricLevelEntity): Long = withContext(Dispatchers.IO) {
+        studentDao.insertRubricLevel(level)
+    }
+
+    suspend fun deleteRubricLevel(levelId: Int) = withContext(Dispatchers.IO) {
+        studentDao.deleteRubricLevel(levelId)
+    }
+
+    // Participation equity
+    suspend fun getParticipationForClass(className: String): List<ParticipationCountEntity> = withContext(Dispatchers.IO) {
+        studentDao.getParticipationForClass(className)
+    }
+
+    suspend fun recordParticipation(studentId: Int, className: String) = withContext(Dispatchers.IO) {
+        studentDao.recordParticipation(studentId, className)
+    }
+
+    /** Sets a counter outright rather than incrementing it. Used when restoring a backup. */
+    suspend fun setParticipation(
+        studentId: Int,
+        className: String,
+        timesCalled: Int,
+        lastCalledMillis: Long
+    ) = withContext(Dispatchers.IO) {
+        studentDao.setParticipation(studentId, className, timesCalled, lastCalledMillis)
+    }
+
+    suspend fun resetParticipationForClass(className: String) = withContext(Dispatchers.IO) {
+        studentDao.resetParticipationForClass(className)
+    }
+
+    suspend fun updateAttendanceRecord(record: AttendanceRecordEntity) = withContext(Dispatchers.IO) {
+        studentDao.updateAttendanceRecord(record)
+    }
+
+    suspend fun updateGradingTerm(term: GradingTermEntity) = withContext(Dispatchers.IO) {
+        studentDao.updateGradingTerm(term)
+    }
+
+    suspend fun updateAssessmentCategory(category: AssessmentCategoryEntity) = withContext(Dispatchers.IO) {
+        studentDao.updateAssessmentCategory(category)
+    }
+
+    suspend fun updateRubric(rubric: RubricEntity) = withContext(Dispatchers.IO) {
+        studentDao.updateRubric(rubric)
+    }
+
+    suspend fun updateRubricLevel(level: RubricLevelEntity) = withContext(Dispatchers.IO) {
+        studentDao.updateRubricLevel(level)
     }
 }

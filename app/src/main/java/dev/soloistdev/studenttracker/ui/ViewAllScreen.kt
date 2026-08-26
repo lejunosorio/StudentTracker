@@ -28,6 +28,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,10 +48,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.soloistdev.studenttracker.R
+import dev.soloistdev.studenttracker.data.ClassSchedule
+import dev.soloistdev.studenttracker.data.ClassroomEntity
+import dev.soloistdev.studenttracker.data.GradingTermEntity
 import dev.soloistdev.studenttracker.data.ImportResult
 import dev.soloistdev.studenttracker.data.JsonSyncEngine
 import dev.soloistdev.studenttracker.data.StudentRepository
 import dev.soloistdev.studenttracker.security.ClassPdfGeneratorHelper
+import dev.soloistdev.studenttracker.security.ProgressSlipGenerator
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -61,12 +67,15 @@ fun ViewAllScreen(
     onAddStudent: (Int, String?) -> Unit, // Direct classroom cohort navigation parameter mapping
     onStudentClick: (Int) -> Unit,
     onOpenTemplates: () -> Unit,
+    onOpenRubrics: () -> Unit,
     onOpenMap: () -> Unit,
     onOpenRecycleBin: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenAttendance: () -> Unit,
+    onOpenScanAttendance: () -> Unit,
     onOpenAttendanceWithArgs: (Int, Long) -> Unit,
     onOpenGradebook: () -> Unit,
+    onOpenInsights: () -> Unit,
     onOpenClassrooms: () -> Unit,
     onOpenQueryBuilder: () -> Unit,
     onOpenSeatingChart: (String) -> Unit,
@@ -78,6 +87,17 @@ fun ViewAllScreen(
     val activeFilter by viewModel.activeFilter.collectAsState()
     val pinnedFilters by viewModel.pinnedFilters.collectAsState()
     val availableTemplates by viewModel.availableTemplates.collectAsState()
+    val classrooms by viewModel.classrooms.collectAsState()
+
+    // Re-reads the wall clock every minute so the "teaching now" card stays truthful without
+    // the teacher having to pull to refresh.
+    var nowMinute by remember { mutableIntStateOf(ClassSchedule.nowMinuteOfDay()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            nowMinute = ClassSchedule.nowMinuteOfDay()
+            delay(60_000)
+        }
+    }
 
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedStudentIds by viewModel.selectedStudentIds.collectAsState()
@@ -154,6 +174,13 @@ fun ViewAllScreen(
         }
     }
 
+
+    // Re-read on every entry. The ViewModel is scoped to the back-stack entry and survives
+    // navigation, so without this the roster is stale after adding, editing, importing or
+    // scanning anywhere else in the app.
+    LaunchedEffect(Unit) {
+        viewModel.loadData()
+    }
     var showFilterSheet by remember { mutableStateOf(false) }
     var showSortSheet by remember { mutableStateOf(false) }
     var showBulkDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -184,6 +211,10 @@ fun ViewAllScreen(
     var showBulkEditSheet by remember { mutableStateOf(false) }
     var showAddStudentsToClassDialog by remember { mutableStateOf(false) }
     var showClassroomAddOptionsDialog by remember { mutableStateOf(false) }
+    var showColdCallDialog by remember { mutableStateOf(false) }
+    var showProgressSlipDialog by remember { mutableStateOf(false) }
+    var showShareClassesDialog by remember { mutableStateOf(false) }
+    var isGeneratingSlips by remember { mutableStateOf(false) }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -268,6 +299,20 @@ fun ViewAllScreen(
                     )
 
                     NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.QrCodeScanner, contentDescription = null) },
+                        label = { Text(stringResource(R.string.s_scan_attendance)) },
+                        selected = false,
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                onOpenScanAttendance()
+                            }
+                        },
+                        colors = drawerItemColors,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                    )
+
+                    NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Book, contentDescription = null) },
                         label = { Text(stringResource(R.string.menu_gradebook_matrix)) },
                         selected = false,
@@ -275,6 +320,20 @@ fun ViewAllScreen(
                             scope.launch {
                                 drawerState.close()
                                 onOpenGradebook()
+                            }
+                        },
+                        colors = drawerItemColors,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                    )
+
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.Insights, contentDescription = null) },
+                        label = { Text(stringResource(R.string.s_early_warning)) },
+                        selected = false,
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                onOpenInsights()
                             }
                         },
                         colors = drawerItemColors,
@@ -307,10 +366,29 @@ fun ViewAllScreen(
                     )
 
                     NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.Rule, contentDescription = null) },
+                        label = { Text(stringResource(R.string.s_rubrics)) },
+                        selected = false,
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                onOpenRubrics()
+                            }
+                        },
+                        colors = drawerItemColors,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                    )
+
+                    NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Bookmarks, contentDescription = null) },
                         label = { Text(stringResource(R.string.menu_saved_filters)) },
                         selected = false,
-                        onClick = onOpenMap,
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                onOpenMap()
+                            }
+                        },
                         colors = drawerItemColors,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
@@ -390,7 +468,7 @@ fun ViewAllScreen(
 
                             Box {
                                 IconButton(onClick = { actionsMenuExpanded = true }) {
-                                    Icon(Icons.Default.MoreVert, contentDescription = "Selection Actions")
+                                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.cd_selection_actions))
                                 }
 
                                 DropdownMenu(
@@ -398,7 +476,7 @@ fun ViewAllScreen(
                                     onDismissRequest = { actionsMenuExpanded = false }
                                 ) {
                                     DropdownMenuItem(
-                                        text = { Text("Create Attendance") },
+                                        text = { Text(stringResource(R.string.s_create_attendance)) },
                                         leadingIcon = { Icon(Icons.Default.EventAvailable, null) },
                                         onClick = {
                                             actionsMenuExpanded = false
@@ -406,7 +484,7 @@ fun ViewAllScreen(
                                         }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Create Gradebook") },
+                                        text = { Text(stringResource(R.string.s_create_gradebook)) },
                                         leadingIcon = { Icon(Icons.Default.Book, null) },
                                         onClick = {
                                             actionsMenuExpanded = false
@@ -414,7 +492,7 @@ fun ViewAllScreen(
                                         }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Edit Students") },
+                                        text = { Text(stringResource(R.string.s_edit_students)) },
                                         leadingIcon = { Icon(Icons.Default.EditNote, null) },
                                         onClick = {
                                             actionsMenuExpanded = false
@@ -423,7 +501,7 @@ fun ViewAllScreen(
                                     )
                                     if (selectedClassroomForView != null && selectedClassroomForView != "All") {
                                         DropdownMenuItem(
-                                            text = { Text("Remove Student from Class") },
+                                            text = { Text(stringResource(R.string.s_remove_student_from_class)) },
                                             leadingIcon = { Icon(Icons.Default.PersonRemove, null, tint = MaterialTheme.colorScheme.error) },
                                             onClick = {
                                                 actionsMenuExpanded = false
@@ -432,7 +510,7 @@ fun ViewAllScreen(
                                         )
                                     }
                                     DropdownMenuItem(
-                                        text = { Text("Delete Student") },
+                                        text = { Text(stringResource(R.string.s_delete_student)) },
                                         leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
                                         onClick = {
                                             actionsMenuExpanded = false
@@ -481,7 +559,7 @@ fun ViewAllScreen(
                                     if (isGeneratingClassReportPdf) {
                                         CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                                     } else {
-                                        Icon(Icons.Default.MoreVert, contentDescription = "More Actions")
+                                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.cd_more_actions))
                                     }
                                 }
 
@@ -491,7 +569,7 @@ fun ViewAllScreen(
                                 ) {
                                     if (selectedClassroomForView != null && selectedClassroomForView != "All") {
                                         DropdownMenuItem(
-                                            text = { Text("Assign seats") },
+                                            text = { Text(stringResource(R.string.s_assign_seats)) },
                                             leadingIcon = { Icon(Icons.Default.DirectionsBus, null, tint = MaterialTheme.colorScheme.primary) },
                                             onClick = {
                                                 normalMenuExpanded = false
@@ -499,7 +577,7 @@ fun ViewAllScreen(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Export PDF") },
+                                            text = { Text(stringResource(R.string.s_export_pdf)) },
                                             leadingIcon = { Icon(Icons.Default.Description, null, tint = MaterialTheme.colorScheme.primary) },
                                             onClick = {
                                                 normalMenuExpanded = false
@@ -512,7 +590,34 @@ fun ViewAllScreen(
                                         )
                                     }
                                     DropdownMenuItem(
-                                        text = { Text("Create Gradebook") },
+                                        text = { Text(stringResource(R.string.s_progress_slips)) },
+                                        leadingIcon = { Icon(Icons.Default.Assignment, null, tint = MaterialTheme.colorScheme.primary) },
+                                        onClick = {
+                                            normalMenuExpanded = false
+                                            // Report day is a per-period document, so ask which
+                                            // grading period the slip covers rather than always
+                                            // spanning the whole year.
+                                            showProgressSlipDialog = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.s_cold_call)) },
+                                        leadingIcon = { Icon(Icons.Default.Casino, null, tint = MaterialTheme.colorScheme.primary) },
+                                        onClick = {
+                                            normalMenuExpanded = false
+                                            showColdCallDialog = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.share_classes_title)) },
+                                        leadingIcon = { Icon(Icons.Default.Share, null, tint = MaterialTheme.colorScheme.primary) },
+                                        onClick = {
+                                            normalMenuExpanded = false
+                                            showShareClassesDialog = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.s_create_gradebook)) },
                                         leadingIcon = { Icon(Icons.Default.Book, null, tint = MaterialTheme.colorScheme.primary) },
                                         onClick = {
                                             normalMenuExpanded = false
@@ -520,7 +625,7 @@ fun ViewAllScreen(
                                         }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Create Attendance record") },
+                                        text = { Text(stringResource(R.string.s_create_attendance_record)) },
                                         leadingIcon = { Icon(Icons.Default.EventAvailable, null, tint = MaterialTheme.colorScheme.primary) },
                                         onClick = {
                                             normalMenuExpanded = false
@@ -528,7 +633,7 @@ fun ViewAllScreen(
                                         }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Refresh") },
+                                        text = { Text(stringResource(R.string.s_refresh)) },
                                         leadingIcon = { Icon(Icons.Default.Refresh, null) },
                                         onClick = {
                                             normalMenuExpanded = false
@@ -602,6 +707,16 @@ fun ViewAllScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         item {
+                            NowTeachingCard(
+                                classrooms = classrooms,
+                                nowMinute = nowMinute,
+                                studentCountFor = { name -> getStudentCountForClass(name) },
+                                onOpenClass = { name -> selectedClassroomForView = name },
+                                onOpenSeating = { name -> onOpenSeatingChart(name) }
+                            )
+                        }
+
+                        item {
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -643,7 +758,7 @@ fun ViewAllScreen(
                                 }
                             }
                         } else {
-                            items(distinctClassrooms) { className ->
+                            items(distinctClassrooms, key = { it }) { className ->
                                 val count = getStudentCountForClass(className)
                                 Card(
                                     modifier = Modifier
@@ -689,7 +804,7 @@ fun ViewAllScreen(
                             trailingIcon = {
                                 if (searchQuery.isNotEmpty()) {
                                     IconButton(onClick = { viewModel.onSearchQueryChanged("") }) {
-                                        Icon(Icons.Default.Clear, contentDescription = "Clear", tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                        Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.cd_clear), tint = MaterialTheme.colorScheme.onSecondaryContainer)
                                     }
                                 }
                             },
@@ -714,7 +829,7 @@ fun ViewAllScreen(
                             ),
                             modifier = Modifier.size(48.dp)
                         ) {
-                            Icon(Icons.Default.FilterList, contentDescription = "Filter")
+                            Icon(Icons.Default.FilterList, contentDescription = stringResource(R.string.cd_filter))
                         }
 
                         IconButton(
@@ -725,7 +840,7 @@ fun ViewAllScreen(
                             ),
                             modifier = Modifier.size(48.dp)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
+                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = stringResource(R.string.cd_sort))
                         }
                     }
 
@@ -767,7 +882,7 @@ fun ViewAllScreen(
                                         onClick = { viewModel.removePinnedFilter(pinnedFilter) },
                                         modifier = Modifier.size(16.dp)
                                     ) {
-                                        Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(12.dp))
+                                        Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.cd_clear), modifier = Modifier.size(12.dp))
                                     }
                                 },
                                 colors = InputChipDefaults.inputChipColors(
@@ -1024,7 +1139,7 @@ fun ViewAllScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                items(nonClassroomStudents) { studentUi ->
+                                items(nonClassroomStudents, key = { it.student.id }) { studentUi ->
                                     val isChecked = checkedStudentIds.contains(studentUi.student.id)
                                     Row(
                                         modifier = Modifier
@@ -1076,11 +1191,11 @@ fun ViewAllScreen(
                             viewModel.addStudentsToClassroom(checkedStudentIds.toList(), selectedClassroomForView!!)
                             showAddStudentsToClassDialog = false
                             checkedStudentIds = emptySet()
-                            Toast.makeText(context, "Roster successfully enrolled!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.toast_roster_successfully_enrolled), Toast.LENGTH_SHORT).show()
                         },
                         enabled = checkedStudentIds.isNotEmpty()
                     ) {
-                        Text("Add")
+                        Text(stringResource(R.string.s_add))
                     }
                 },
                 dismissButton = {
@@ -1090,7 +1205,7 @@ fun ViewAllScreen(
                             checkedStudentIds = emptySet()
                         }
                     ) {
-                        Text("Close")
+                        Text(stringResource(R.string.s_close))
                     }
                 },
                 shape = RoundedCornerShape(28.dp)
@@ -1169,7 +1284,7 @@ fun ViewAllScreen(
                                 Text(stringResource(R.string.attendance_start_date_label, formattedStart), color = MaterialTheme.colorScheme.onSurface)
                                 Icon(
                                     imageVector = Icons.Default.CalendarToday,
-                                    contentDescription = "Select Start Date",
+                                    contentDescription = stringResource(R.string.cd_select_start_date),
                                     tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(16.dp)
                                 )
@@ -1195,7 +1310,7 @@ fun ViewAllScreen(
                                 Text(stringResource(R.string.attendance_end_date_label, formattedEnd), color = MaterialTheme.colorScheme.onSurface)
                                 Icon(
                                     imageVector = Icons.Default.CalendarToday,
-                                    contentDescription = "Select End Date",
+                                    contentDescription = stringResource(R.string.cd_select_end_date),
                                     tint = if (isDateRangeInvalid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(16.dp)
                                 )
@@ -1297,7 +1412,7 @@ fun ViewAllScreen(
                         OutlinedTextField(
                             value = gradebookRecordName,
                             onValueChange = { gradebookRecordName = it },
-                            label = { Text("Sheet Name * (e.g. Midterm)") },
+                            label = { Text(stringResource(R.string.s_sheet_name_e_g_midterm)) },
                             colors = m3TextFieldColors,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -1305,7 +1420,7 @@ fun ViewAllScreen(
                         OutlinedTextField(
                             value = gradebookMaxPoints,
                             onValueChange = { gradebookMaxPoints = it },
-                            label = { Text("Max Points *") },
+                            label = { Text(stringResource(R.string.s_max_points)) },
                             colors = m3TextFieldColors,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
@@ -1325,7 +1440,7 @@ fun ViewAllScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(sdf.format(Date(gradebookExamDate)), color = MaterialTheme.colorScheme.onSurface)
-                                Icon(Icons.Default.CalendarToday, contentDescription = "Select Exam Date", tint = MaterialTheme.colorScheme.primary)
+                                Icon(Icons.Default.CalendarToday, contentDescription = stringResource(R.string.cd_select_exam_date), tint = MaterialTheme.colorScheme.primary)
                             }
                         }
 
@@ -1341,7 +1456,7 @@ fun ViewAllScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(sdf.format(Date(gradebookCheckDate)), color = MaterialTheme.colorScheme.onSurface)
-                                Icon(Icons.Default.CalendarToday, contentDescription = "Select Check Date", tint = MaterialTheme.colorScheme.primary)
+                                Icon(Icons.Default.CalendarToday, contentDescription = stringResource(R.string.cd_select_check_date), tint = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
@@ -1447,13 +1562,13 @@ fun ViewAllScreen(
                 title = { Text("Welcome to Student Tracker", fontWeight = FontWeight.Bold) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("No student records found in your secure local database. Choose an action to begin setting up your roster:")
+                        Text(stringResource(R.string.s_no_student_records_found_in_your_secure_lo))
 
                         Button(
                             onClick = { onboardingFilePicker.launch("application/json") },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Import JSON Backup")
+                            Text(stringResource(R.string.s_import_json_backup))
                         }
 
                         Button(
@@ -1464,13 +1579,13 @@ fun ViewAllScreen(
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                         ) {
-                            Text("Add Student manually")
+                            Text(stringResource(R.string.s_add_student_manually))
                         }
                     }
                 },
                 confirmButton = {
                     TextButton(onClick = { showOnboardingDialog = false }) {
-                        Text("Just Browse App")
+                        Text(stringResource(R.string.s_just_browse_app))
                     }
                 },
                 shape = RoundedCornerShape(28.dp)
@@ -1518,7 +1633,7 @@ fun ViewAllScreen(
                                 isImportDone = false
                             }
                         ) {
-                            Text("Done")
+                            Text(stringResource(R.string.s_done))
                         }
                     }
                 },
@@ -1526,6 +1641,38 @@ fun ViewAllScreen(
             )
         }
 
+
+
+
+        if (showShareClassesDialog) {
+            ShareClassesDialog(
+                availableClasses = distinctClassrooms,
+                onDismiss = { showShareClassesDialog = false }
+            )
+        }
+        if (showProgressSlipDialog) {
+            ProgressSlipTermDialog(
+                onPick = { termId, termLabel ->
+                    showProgressSlipDialog = false
+                    isGeneratingSlips = true
+                    val roster = filteredDirectoryStudents.map { it.student }
+                    val classLabel = selectedClassroomForView ?: "All Students"
+                    val title = if (termLabel.isBlank()) classLabel else "$classLabel — $termLabel"
+                    scope.launch {
+                        ProgressSlipGenerator.generateAndShare(context, roster, title, termId)
+                        isGeneratingSlips = false
+                    }
+                },
+                onDismiss = { showProgressSlipDialog = false }
+            )
+        }
+        if (showColdCallDialog) {
+            ColdCallDialog(
+                className = selectedClassroomForView.takeIf { it != null && it != "All" } ?: "",
+                students = filteredDirectoryStudents.map { it.student },
+                onDismiss = { showColdCallDialog = false }
+            )
+        }
         // DATABASE BULK REMOVE FROM CLASS COHORT DIALOG
         if (showRemoveFromClassConfirmDialog && selectedClassroomForView != null && selectedClassroomForView != "All") {
             AlertDialog(
@@ -1537,11 +1684,11 @@ fun ViewAllScreen(
                         onClick = {
                             showRemoveFromClassConfirmDialog = false
                             viewModel.removeStudentsFromClassroom(selectedStudentIds.toList(), selectedClassroomForView!!)
-                            Toast.makeText(context, "Students successfully removed from classroom.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.toast_students_successfully_removed_from_classro), Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
-                        Text("Remove")
+                        Text(stringResource(R.string.s_remove))
                     }
                 },
                 dismissButton = {
@@ -1563,7 +1710,7 @@ fun ViewAllScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Would you like to enroll an existing student from the directory or create a new student profile for this class?")
+                        Text(stringResource(R.string.s_would_you_like_to_enroll_an_existing_stude))
 
                         Button(
                             onClick = {
@@ -1572,7 +1719,7 @@ fun ViewAllScreen(
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Enroll existing student to class")
+                            Text(stringResource(R.string.s_enroll_existing_student_to_class))
                         }
 
                         Button(
@@ -1583,18 +1730,186 @@ fun ViewAllScreen(
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                         ) {
-                            Text("Add new student to class")
+                            Text(stringResource(R.string.s_add_new_student_to_class))
                         }
                     }
                 },
                 confirmButton = {},
                 dismissButton = {
                     TextButton(onClick = { showClassroomAddOptionsDialog = false }) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.s_cancel))
                     }
                 },
                 shape = RoundedCornerShape(28.dp)
             )
         }
     }
+}
+/**
+ * Answers "what am I teaching right now" from the session times on each classroom.
+ *
+ * Those times were stored but never read anywhere in the app, so a teacher opening the app
+ * mid-period still had to find their class by hand. The card collapses to nothing when no
+ * classroom carries a parseable schedule, so it never occupies space it has not earned.
+ */
+@Composable
+private fun NowTeachingCard(
+    classrooms: List<ClassroomEntity>,
+    nowMinute: Int,
+    studentCountFor: (String) -> Int,
+    onOpenClass: (String) -> Unit,
+    onOpenSeating: (String) -> Unit
+) {
+    val current = remember(classrooms, nowMinute) { ClassSchedule.inSession(classrooms, nowMinute) }
+    val next = remember(classrooms, nowMinute) { ClassSchedule.upNext(classrooms, nowMinute) }
+
+    val target = current ?: next ?: return
+    val isLive = current != null
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onOpenClass(target.classroom.name) },
+        colors = CardDefaults.cardColors(
+            containerColor = if (isLive) MaterialTheme.colorScheme.tertiaryContainer
+            else MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = if (isLive) Icons.Default.Schedule else Icons.Default.Upcoming,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = if (isLive) MaterialTheme.colorScheme.onTertiaryContainer
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = when {
+                        isLive -> "IN SESSION NOW"
+                        target.isTomorrow -> "UP NEXT • TOMORROW"
+                        else -> "UP NEXT"
+                    },
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isLive) MaterialTheme.colorScheme.onTertiaryContainer
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = target.classroom.name,
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp,
+                color = if (isLive) MaterialTheme.colorScheme.onTertiaryContainer
+                else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            val minutesAway = target.minutesUntilStart(nowMinute)
+            Text(
+                text = buildString {
+                    append("${target.classroom.startTime} - ${target.classroom.endTime}")
+                    append("  •  ${studentCountFor(target.classroom.name)} students")
+                    // Only worth counting down when it is close enough to act on. "starts in
+                    // 700m" is noise, and the header already says it is tomorrow.
+                    if (!isLive && !target.isTomorrow && minutesAway in 1..180) {
+                        append("  •  starts in ${minutesAway}m")
+                    }
+                },
+                fontSize = 12.sp,
+                color = (if (isLive) MaterialTheme.colorScheme.onTertiaryContainer
+                else MaterialTheme.colorScheme.onSurfaceVariant).copy(alpha = 0.8f)
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { onOpenClass(target.classroom.name) },
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Open class", fontSize = 12.sp)
+                }
+                OutlinedButton(
+                    onClick = { onOpenSeating(target.classroom.name) },
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Take roll", fontSize = 12.sp)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Chooses which grading period a batch of progress slips covers.
+ *
+ * The generator has always supported scoping to a term; the call site simply never asked, so
+ * every slip spanned the whole year. On report day that is the wrong document.
+ */
+@Composable
+private fun ProgressSlipTermDialog(
+    onPick: (Int, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val repository = remember { StudentRepository(context) }
+    var terms by remember { mutableStateOf<List<GradingTermEntity>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        terms = repository.getAllGradingTerms()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.slips_pick_period), fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 380.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPick(0, "") },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Text(
+                        text = stringResource(R.string.slips_whole_year),
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+
+                terms.forEach { term ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onPick(term.id, term.name) },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (term.isActive) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Text(term.name, fontSize = 13.sp, modifier = Modifier.padding(12.dp))
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+        shape = RoundedCornerShape(28.dp)
+    )
 }

@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Exposes our private internal app cache folder under a secure virtual path named shared_files -->
+    <!--
+        Everything offered for sharing is staged here first, including a rolling snapshot, which
+        is decrypted into the cache at the moment the teacher shares it. The stored snapshots in
+        external app storage are deliberately NOT exposed as a provider root.
+    -->
     <cache-path name="shared_files" path="." />
 </paths>

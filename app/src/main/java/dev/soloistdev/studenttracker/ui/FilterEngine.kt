@@ -1,5 +1,6 @@
 package dev.soloistdev.studenttracker.ui
 
+import dev.soloistdev.studenttracker.data.AgeCalculator
 import dev.soloistdev.studenttracker.data.Guardian
 import dev.soloistdev.studenttracker.data.StudentEntity
 import org.json.JSONArray
@@ -31,11 +32,7 @@ object FilterEngine {
             "Student Contact" -> student.contactNumber
             // Returns the raw JSON array so evaluateCondition can apply set-membership logic
             "Class", "Classroom" -> student.classNamesJson
-            "Age" -> {
-                val currentYear = Calendar.getInstance().get(Calendar.YEAR)
-                val birthYear = Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
-                (currentYear - birthYear).toString()
-            }
+            "Age" -> AgeCalculator.ageInYears(student.birthday).toString()
             "Birthday" -> student.birthday.toString()
             "Guardian Name" -> {
                 val guardians = Guardian.listFromJsonString(student.guardiansJson)

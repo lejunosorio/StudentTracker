@@ -46,6 +46,27 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         loadRecords()
     }
 
+
+    /**
+     * Renames a sheet or moves its date range.
+     *
+     * updateAttendanceRecord, not insert: attendance_logs cascade from this row, so an
+     * INSERT OR REPLACE would delete every mark on the sheet before writing the new name.
+     *
+     * Logs already recorded outside a narrowed range are left in place rather than deleted -
+     * silently discarding marks because a date was corrected would be the worse failure.
+     */
+    fun updateRecordDetails(record: AttendanceRecordEntity, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                repository.updateAttendanceRecord(record)
+                loadRecords()
+                onDone()
+            } catch (_: Exception) {
+                onDone()
+            }
+        }
+    }
     fun loadRecords() {
         viewModelScope.launch {
             try {
@@ -89,19 +110,21 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                         FilterEngine.evaluateCondition(value, filter.comparison, filter.value1, filter.value2)
                     }
 
+                    // Built in memory and committed once. A term-long sheet is thousands of
+                    // cells, and inserting them one statement at a time took long enough that
+                    // creating a record looked like the app had hung.
                     val daysList = generateDateList(start, end)
-                    daysList.forEach { date ->
-                        matchedStudents.forEach { student ->
-                            repository.insertAttendanceLog(
-                                AttendanceLogEntity(
-                                    recordId = recordId,
-                                    dateMillis = date,
-                                    studentId = student.id,
-                                    status = "NOT_SET"
-                                )
+                    val logs = daysList.flatMap { date ->
+                        matchedStudents.map { student ->
+                            AttendanceLogEntity(
+                                recordId = recordId,
+                                dateMillis = date,
+                                studentId = student.id,
+                                status = "NOT_SET"
                             )
                         }
                     }
+                    repository.insertAttendanceLogs(logs)
                 }
                 loadRecords()
             } catch (_: Exception) {
@@ -154,11 +177,10 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
     fun markAllUnmarkedPresent(recordId: Int, dateMillis: Long) {
         viewModelScope.launch {
             try {
-                _currentLogs.value.forEach { log ->
-                    if (log.status == "NOT_SET") {
-                        repository.updateAttendanceStatus(recordId, dateMillis, log.studentId, "PRESENT")
-                    }
-                }
+                val toMark = _currentLogs.value
+                    .filter { it.status == "NOT_SET" }
+                    .associate { it.studentId to "PRESENT" }
+                repository.applyAttendanceStatuses(recordId, dateMillis, toMark)
                 _currentLogs.value = repository.getLogsForDate(recordId, dateMillis)
                 _recordLogs.value = repository.getLogsForRecord(recordId)
             } catch (_: Exception) {
@@ -167,12 +189,63 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    /**
+     * Copies the previous marked day of this sheet onto [dateMillis].
+     *
+     * Rolls back through the sheet looking for the most recent day that actually has marks, so a
+     * weekend or a skipped day does not produce an empty copy. Only unmarked slots are filled -
+     * anything already marked today is a deliberate act and is never overwritten.
+     */
+    fun copyPreviousDay(recordId: Int, dateMillis: Long, onResult: (Int) -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val allLogs = repository.getLogsForRecord(recordId)
+                val previousDate = allLogs
+                    .map { it.dateMillis }
+                    .filter { it < dateMillis }
+                    .distinct()
+                    .sortedDescending()
+                    .firstOrNull { candidate ->
+                        allLogs.any { it.dateMillis == candidate && it.status != "NOT_SET" }
+                    }
+
+                if (previousDate == null) {
+                    onResult(0)
+                    return@launch
+                }
+
+                val previousByStudent = allLogs
+                    .filter { it.dateMillis == previousDate }
+                    .associateBy { it.studentId }
+
+                val toCopy = _currentLogs.value
+                    .filter { it.status == "NOT_SET" }
+                    .mapNotNull { log ->
+                        previousByStudent[log.studentId]?.status
+                            ?.takeIf { it != "NOT_SET" }
+                            ?.let { log.studentId to it }
+                    }
+                    .toMap()
+                repository.applyAttendanceStatuses(recordId, dateMillis, toCopy)
+                val copied = toCopy.size
+
+                _currentLogs.value = repository.getLogsForDate(recordId, dateMillis)
+                _recordLogs.value = repository.getLogsForRecord(recordId)
+                onResult(copied)
+            } catch (_: Exception) {
+                onResult(0)
+            }
+        }
+    }
+
     fun resetAllMarks(recordId: Int, dateMillis: Long) {
         viewModelScope.launch {
             try {
-                _currentLogs.value.forEach { log ->
-                    repository.updateAttendanceStatus(recordId, dateMillis, log.studentId, "NOT_SET")
-                }
+                repository.applyAttendanceStatuses(
+                    recordId,
+                    dateMillis,
+                    _currentLogs.value.associate { it.studentId to "NOT_SET" }
+                )
                 _currentLogs.value = repository.getLogsForDate(recordId, dateMillis)
                 _recordLogs.value = repository.getLogsForRecord(recordId)
             } catch (_: Exception) {

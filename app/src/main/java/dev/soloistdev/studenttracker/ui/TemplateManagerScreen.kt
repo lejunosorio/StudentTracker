@@ -2,6 +2,8 @@ package dev.soloistdev.studenttracker.ui
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -91,7 +93,7 @@ fun TemplateManagerScreen(
                                 BadgedBox(
                                     badge = { Badge { Text(unconfiguredFields.size.toString()) } }
                                 ) {
-                                    Icon(Icons.Default.Notifications, contentDescription = "Unconfigured Fields Found")
+                                    Icon(Icons.Default.Notifications, contentDescription = stringResource(R.string.cd_unconfigured_fields_found))
                                 }
                             }
                         }
@@ -126,7 +128,7 @@ fun TemplateManagerScreen(
                         modifier = Modifier.padding(16.dp)
                     )
                 }
-                items(templates) { template ->
+                items(templates, key = { it.id }) { template ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -195,7 +197,9 @@ fun TemplateManagerScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(24.dp),
+                            .padding(24.dp)
+                            .verticalScroll(rememberScrollState()) // Keyboard-safe layout scroll
+                            .imePadding(), // Keyboard-safe layout height constraints
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Text(
@@ -294,7 +298,7 @@ fun TemplateManagerScreen(
                             onClick = {
                                 viewModel.deleteTemplate(template.id)
                                 templateToDelete = null
-                                Toast.makeText(context, "Field moved to Recycle Bin.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.toast_field_moved_to_recycle_bin), Toast.LENGTH_SHORT).show()
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                         ) {

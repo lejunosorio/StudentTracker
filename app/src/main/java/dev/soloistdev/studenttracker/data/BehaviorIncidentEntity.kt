@@ -24,5 +24,6 @@ data class BehaviorIncidentEntity(
     val category: String,       // "Positive", "Negative", or "Neutral"
     val description: String,
     val timestamp: Long = System.currentTimeMillis(),
-    val incidentDate: Long = System.currentTimeMillis()
+    val incidentDate: Long = System.currentTimeMillis(),
+    val photoPath: String = ""
 )

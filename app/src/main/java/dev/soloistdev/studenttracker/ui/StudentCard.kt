@@ -11,10 +11,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.StudentEntity
 
 // Private, high-performance base layout [1]
@@ -57,14 +59,15 @@ private fun BaseStudentCard(
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                         Icon(
                             imageVector = Icons.Default.Check,
-                            contentDescription = "Selected",
+                            contentDescription = stringResource(R.string.cd_selected),
                             tint = MaterialTheme.colorScheme.onPrimary
                         )
                     }
                 } else {
                     LocalImageLoader(
                         imagePath = student.picturePath,
-                        contentDescription = "Student Photo",
+                        contentDescription = stringResource(R.string.cd_student_photo),
+                        displaySize = 48.dp,
                         fallback = {
                             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                                 val initials = if (student.firstName.isNotEmpty() && student.lastName.isNotEmpty()) {

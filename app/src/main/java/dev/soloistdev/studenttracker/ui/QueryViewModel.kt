@@ -25,6 +25,10 @@ class QueryViewModel(application: Application) : AndroidViewModel(application) {
     private val _messageTemplates = MutableStateFlow<List<MessageTemplateEntity>>(emptyList())
     val messageTemplates: StateFlow<List<MessageTemplateEntity>> = _messageTemplates
 
+    // Backs the {{absences}} / {{grade}} merge tokens in the bulk message composer
+    private val _insights = MutableStateFlow<Map<Int, StudentInsights.Insight>>(emptyMap())
+    val insights: StateFlow<Map<Int, StudentInsights.Insight>> = _insights
+
     init {
         loadData()
     }
@@ -33,6 +37,14 @@ class QueryViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _students.value = repository.getAllActiveStudents()
             _messageTemplates.value = repository.getAllMessageTemplates()
+            _insights.value = StudentInsights.compute(
+                students = _students.value,
+                logs = repository.getAllAttendanceLogs(),
+                columns = repository.getAllAssessmentColumns(),
+                scores = repository.getAllAssessmentScores(),
+                categories = repository.getAllAssessmentCategories(),
+                incidents = repository.getAllIncidents()
+            )
         }
     }
 

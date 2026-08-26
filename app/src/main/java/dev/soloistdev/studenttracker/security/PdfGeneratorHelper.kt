@@ -117,7 +117,7 @@ object PdfGeneratorHelper {
 
         val sdf = SimpleDateFormat("MMMM dd, yyyy", Locale.US)
         val birthdayFormatted = sdf.format(Date(student.birthday))
-        val age = Calendar.getInstance().get(Calendar.YEAR) - Calendar.getInstance().apply { timeInMillis = student.birthday }.get(Calendar.YEAR)
+        val age = dev.soloistdev.studenttracker.data.AgeCalculator.ageInYears(student.birthday)
         val genderFull = if (student.gender == "F") "Female" else "Male"
 
         canvas1.drawText("Gender: $genderFull | Age: $age | Birthday: $birthdayFormatted", 40f, yPosition, textPaint)

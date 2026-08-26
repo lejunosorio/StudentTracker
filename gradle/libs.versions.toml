@@ -2,8 +2,11 @@
 agp = "9.3.0"
 androidDatabaseSqlcipher = "4.5.4"
 biometric = "1.2.0-alpha05"
+fragment = "1.8.6"
 coreKtx = "1.10.1"
 junit = "4.13.2"
+orgJson = "20250107"
+sqliteJdbc = "3.47.1.0"
 junitVersion = "1.1.5"
 espressoCore = "3.5.1"
 lifecycleRuntimeKtx = "2.6.1"
@@ -21,11 +24,15 @@ securityCrypto = "1.1.0"
 sqliteKtx = "2.7.0"
 uiText = "1.11.4"
 zxing = "3.5.3"
+zxingAndroidEmbedded = "4.3.0"
 foundation = "1.11.4"
 
 [libraries]
 android-database-sqlcipher = { module = "net.zetetic:android-database-sqlcipher", version.ref = "androidDatabaseSqlcipher" }
 androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
+# Pinned explicitly: biometric drags in fragment 1.2.5, whose FragmentActivity rejects the
+# request codes the modern ActivityResultRegistry generates. See the note in build.gradle.kts.
+androidx-fragment = { module = "androidx.fragment:fragment", version.ref = "fragment" }
 androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
@@ -38,6 +45,12 @@ androidx-security-crypto = { module = "androidx.security:security-crypto", versi
 androidx-sqlite-ktx = { module = "androidx.sqlite:sqlite-ktx", version.ref = "sqliteKtx" }
 github-rootbeer-lib = { module = "com.github.rootbeer:rootbeer-lib", version.ref = "rootbeerLibVersion" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+# Real org.json on the unit-test classpath. The android.jar stub throws on every call, so any
+# logic touching JSON would otherwise be untestable without Robolectric.
+org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
+# A real SQLite engine on the JVM, so migration SQL can be executed and asserted on in a unit
+# test rather than only on a device.
+sqlite-jdbc = { group = "org.xerial", name = "sqlite-jdbc", version.ref = "sqliteJdbc" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
@@ -54,6 +67,7 @@ osmdroid-android = { module = "org.osmdroid:osmdroid-android", version.ref = "os
 rootbeer-lib = { module = "com.scottyab:rootbeer-lib", version.ref = "rootbeerLib" }
 androidx-compose-ui-text = { group = "androidx.compose.ui", name = "ui-text", version.ref = "uiText" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+zxing-android-embedded = { module = "com.journeyapps:zxing-android-embedded", version.ref = "zxingAndroidEmbedded" }
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
 
 [plugins]

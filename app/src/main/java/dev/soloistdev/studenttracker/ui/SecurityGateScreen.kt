@@ -4,7 +4,9 @@ import android.widget.Toast
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -115,10 +117,23 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
         }
     ) { paddingValues ->
         if (isSecurityGateEnabled) {
-            Column(
+            // The keyboard is open for the whole of this screen's job, and on first run the screen
+            // is at its tallest - two PIN fields and the save button. The app targets an SDK where
+            // the system no longer resizes the window for the IME, so without imePadding the
+            // keyboard simply draws over the confirm field and the button, with no way to reach
+            // them. imePadding shrinks the area; the scroll makes what is left reachable, and
+            // focusing a field scrolls it into view on its own.
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
+                    .imePadding()
+            ) {
+            Column(
+                modifier = Modifier
+                    // Centred while it fits, scrollable once the keyboard leaves too little room.
+                    .align(Alignment.Center)
+                    .verticalScroll(rememberScrollState())
                     .padding(24.dp),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -126,7 +141,7 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
                 if (isAlreadyConfigured) {
                     Icon(
                         imageVector = Icons.Default.Lock,
-                        contentDescription = "Locked",
+                        contentDescription = stringResource(R.string.cd_locked),
                         tint = Color(0xFF6750A4),
                         modifier = Modifier.size(64.dp)
                     )
@@ -283,6 +298,7 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
                         color = Color.White
                     )
                 }
+            }
             }
         } else {
             // Render a standard material loading indicator during instant background transitions [1]

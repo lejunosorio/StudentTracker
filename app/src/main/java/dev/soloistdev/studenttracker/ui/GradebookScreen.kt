@@ -55,6 +55,8 @@ fun GradebookScreen(
     val grades by viewModel.grades.collectAsState()
     val classAverage by viewModel.classAverage.collectAsState()
     val assignedWeight by viewModel.assignedWeight.collectAsState()
+    val rubrics by viewModel.rubrics.collectAsState()
+    val rubricLevels by viewModel.rubricLevels.collectAsState()
 
     var showGradesView by remember { mutableStateOf(false) }
     var showTermEditor by remember { mutableStateOf(false) }
@@ -110,14 +112,37 @@ fun GradebookScreen(
                 },
                 actions = {
                     if (activeColumn == null && !showGradesView) {
+                        // Whole-gradebook export, scoped to the selected period. The engine has
+                        // always taken a list of columns; only the single-sheet call site existed,
+                        // so the export teachers actually want was unreachable.
+                        IconButton(
+                            enabled = visibleColumns.isNotEmpty() && students.isNotEmpty(),
+                            onClick = {
+                                val scopedIds = visibleColumns.map { it.id }.toSet()
+                                val scopedScores = scores.filter { it.columnId in scopedIds }
+                                val rosterIds = scopedScores.map { it.studentId }.distinct()
+                                val roster = students.filter { it.id in rosterIds }
+                                scope.launch {
+                                    GradebookExportEngine.exportGradebookToCsv(
+                                        context, roster, visibleColumns, scopedScores
+                                    )
+                                }
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.Download,
+                                contentDescription = stringResource(R.string.gradebook_export_all),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                         IconButton(onClick = { showGradesView = true }) {
-                            Icon(Icons.Default.Leaderboard, contentDescription = "Running grades", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Default.Leaderboard, contentDescription = stringResource(R.string.cd_running_grades), tint = MaterialTheme.colorScheme.primary)
                         }
                         IconButton(onClick = { showCategoryEditor = true }) {
-                            Icon(Icons.Default.PieChart, contentDescription = "Category weights", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Default.PieChart, contentDescription = stringResource(R.string.cd_category_weights), tint = MaterialTheme.colorScheme.primary)
                         }
                         IconButton(onClick = { showTermEditor = true }) {
-                            Icon(Icons.Default.DateRange, contentDescription = "Grading periods", tint = MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Default.DateRange, contentDescription = stringResource(R.string.cd_grading_periods), tint = MaterialTheme.colorScheme.primary)
                         }
                     }
                     if (activeColumn != null && students.isNotEmpty()) {
@@ -204,7 +229,7 @@ fun GradebookScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(visibleColumns) { col ->
+                        items(visibleColumns, key = { it.id }) { col ->
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -248,12 +273,12 @@ fun GradebookScreen(
                                         }
                                     }
                                     IconButton(onClick = { editingColumn = col }) {
-                                        Icon(Icons.Default.Edit, contentDescription = "Edit sheet", tint = MaterialTheme.colorScheme.primary)
+                                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.cd_edit_sheet), tint = MaterialTheme.colorScheme.primary)
                                     }
                                     IconButton(onClick = {
                                         viewModel.softDeleteColumn(col.id)
                                     }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.cd_delete), tint = MaterialTheme.colorScheme.error)
                                     }
                                 }
                             }
@@ -339,7 +364,7 @@ fun GradebookScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 80.dp)
                     ) {
-                        items(filteredRoster) { student ->
+                        items(filteredRoster, key = { it.id }) { student ->
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -366,13 +391,39 @@ fun GradebookScreen(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                         )
                                     }
-                                    OutlinedTextField(
-                                        value = inputScores[student.id] ?: "",
-                                        onValueChange = { inputScores[student.id] = it },
-                                        label = { Text(stringResource(R.string.gradebook_label_score)) },
-                                        singleLine = true,
-                                        modifier = Modifier.weight(0.9f)
-                                    )
+                                    val activeRubricLevels = rubricLevels
+                                        .filter { it.rubricId == currentColumn.rubricId }
+                                        .sortedBy { it.displayOrder }
+
+                                    if (activeRubricLevels.isEmpty()) {
+                                        OutlinedTextField(
+                                            value = inputScores[student.id] ?: "",
+                                            onValueChange = { inputScores[student.id] = it },
+                                            label = { Text(stringResource(R.string.gradebook_label_score)) },
+                                            singleLine = true,
+                                            modifier = Modifier.weight(0.9f)
+                                        )
+                                    } else {
+                                        // Rubric marking: tap a level, store the points behind it
+                                        // so every average keeps working unchanged.
+                                        Column(
+                                            modifier = Modifier.weight(0.9f),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            activeRubricLevels.forEach { level ->
+                                                val levelValue = String.format(Locale.US, "%.1f", level.points)
+                                                val isSelected = (inputScores[student.id] ?: "").toDoubleOrNull() == level.points
+                                                FilterChip(
+                                                    selected = isSelected,
+                                                    onClick = {
+                                                        inputScores[student.id] = if (isSelected) "" else levelValue
+                                                    },
+                                                    label = { Text(level.label, fontSize = 11.sp) },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -386,6 +437,7 @@ fun GradebookScreen(
                 column = target,
                 terms = terms,
                 categories = categories,
+                rubrics = rubrics,
                 onSave = { updated ->
                     viewModel.updateColumn(updated)
                     editingColumn = null
@@ -400,6 +452,7 @@ fun GradebookScreen(
                 onSave = { viewModel.saveTerm(it) },
                 onDelete = { viewModel.deleteTerm(it) },
                 onSetActive = { viewModel.setActiveTerm(it) },
+                onUpdate = { viewModel.updateTerm(it) },
                 onDismiss = { showTermEditor = false }
             )
         }
@@ -407,6 +460,7 @@ fun GradebookScreen(
         if (showCategoryEditor) {
             CategoryEditorDialog(
                 categories = categories,
+                terms = terms,
                 assignedWeight = assignedWeight,
                 onSave = { viewModel.saveCategory(it) },
                 onDelete = { viewModel.deleteCategory(it) },
@@ -425,6 +479,7 @@ fun GradebookScreen(
             // Defaults to the period currently in view, so the common case needs no extra taps
             var selectedTermForSheet by remember { mutableIntStateOf(selectedTermId) }
             var selectedCategoryForSheet by remember { mutableIntStateOf(0) }
+            var selectedRubricForSheet by remember { mutableIntStateOf(0) }
 
             var examDate by remember { mutableLongStateOf(System.currentTimeMillis()) }
             var checkDate by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -475,7 +530,7 @@ fun GradebookScreen(
                                 FilterChip(
                                     selected = selectedTermForSheet == 0,
                                     onClick = { selectedTermForSheet = 0 },
-                                    label = { Text("None") }
+                                    label = { Text(stringResource(R.string.s_none)) }
                                 )
                                 terms.forEach { term ->
                                     FilterChip(
@@ -503,13 +558,41 @@ fun GradebookScreen(
                                 FilterChip(
                                     selected = selectedCategoryForSheet == 0,
                                     onClick = { selectedCategoryForSheet = 0 },
-                                    label = { Text("Uncategorised") }
+                                    label = { Text(stringResource(R.string.s_uncategorised)) }
                                 )
                                 categories.forEach { category ->
                                     FilterChip(
                                         selected = selectedCategoryForSheet == category.id,
                                         onClick = { selectedCategoryForSheet = category.id },
                                         label = { Text("${category.name} ${String.format(Locale.US, "%.0f", category.weight)}%") }
+                                    )
+                                }
+                            }
+                        }
+
+                        if (rubrics.isNotEmpty()) {
+                            Text(
+                                text = "Marking scale",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilterChip(
+                                    selected = selectedRubricForSheet == 0,
+                                    onClick = { selectedRubricForSheet = 0 },
+                                    label = { Text(stringResource(R.string.s_numeric)) }
+                                )
+                                rubrics.forEach { rubric ->
+                                    FilterChip(
+                                        selected = selectedRubricForSheet == rubric.id,
+                                        onClick = { selectedRubricForSheet = rubric.id },
+                                        label = { Text(rubric.name) }
                                     )
                                 }
                             }
@@ -577,7 +660,7 @@ fun GradebookScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(displayDateSdf.format(Date(examDate)), color = MaterialTheme.colorScheme.onSurface)
-                                Icon(Icons.Default.CalendarToday, contentDescription = "Select Exam Date", tint = MaterialTheme.colorScheme.primary)
+                                Icon(Icons.Default.CalendarToday, contentDescription = stringResource(R.string.cd_select_exam_date), tint = MaterialTheme.colorScheme.primary)
                             }
                         }
 
@@ -599,7 +682,7 @@ fun GradebookScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(displayDateSdf.format(Date(checkDate)), color = MaterialTheme.colorScheme.onSurface)
-                                Icon(Icons.Default.CalendarToday, contentDescription = "Select Check Date", tint = MaterialTheme.colorScheme.primary)
+                                Icon(Icons.Default.CalendarToday, contentDescription = stringResource(R.string.cd_select_check_date), tint = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
@@ -616,7 +699,8 @@ fun GradebookScreen(
                                     checkDate = checkDate,
                                     filterId = selectedFilterId,
                                     termId = selectedTermForSheet,
-                                    categoryId = selectedCategoryForSheet
+                                    categoryId = selectedCategoryForSheet,
+                                    rubricId = selectedRubricForSheet
                                 )
                                 showCreateSheetDialog = false
                                 colName = ""
@@ -681,7 +765,7 @@ private fun TermFilterRow(
         FilterChip(
             selected = selectedTermId == 0,
             onClick = { onSelectTerm(0) },
-            label = { Text("All terms") }
+            label = { Text(stringResource(R.string.s_all_terms)) }
         )
         terms.forEach { term ->
             FilterChip(
@@ -766,7 +850,7 @@ private fun GradesRoster(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(students) { student ->
+            items(students, key = { it.id }) { student ->
                 val grade = grades[student.id]
                 val isExpanded = expandedStudentId == student.id
 
@@ -860,17 +944,25 @@ private fun TermEditorDialog(
     onSave: (GradingTermEntity) -> Unit,
     onDelete: (Int) -> Unit,
     onSetActive: (Int) -> Unit,
+    onUpdate: (GradingTermEntity) -> Unit,
     onDismiss: () -> Unit
 ) {
     var newName by remember { mutableStateOf("") }
+    var editingTerm by remember { mutableStateOf<GradingTermEntity?>(null) }
     val sdf = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Grading Periods", fontWeight = FontWeight.Bold) },
         text = {
+            // Scrollable: an AlertDialog clips its content, so without this the list of periods
+            // pushes the name field and Add button off the bottom once there are enough of them,
+            // which reads as a hard cap on how many periods you can create.
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
@@ -902,10 +994,18 @@ private fun TermEditorDialog(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                 )
                             }
+                            IconButton(onClick = { editingTerm = term }, modifier = Modifier.size(32.dp)) {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = stringResource(R.string.cd_edit),
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
                             IconButton(onClick = { onSetActive(term.id) }, modifier = Modifier.size(32.dp)) {
                                 Icon(
                                     if (term.isActive) Icons.Default.Star else Icons.Default.StarBorder,
-                                    contentDescription = "Set active",
+                                    contentDescription = stringResource(R.string.cd_set_active),
                                     modifier = Modifier.size(18.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
@@ -913,7 +1013,7 @@ private fun TermEditorDialog(
                             IconButton(onClick = { onDelete(term.id) }, modifier = Modifier.size(32.dp)) {
                                 Icon(
                                     Icons.Default.Delete,
-                                    contentDescription = "Delete",
+                                    contentDescription = stringResource(R.string.cd_delete),
                                     modifier = Modifier.size(18.dp),
                                     tint = MaterialTheme.colorScheme.error
                                 )
@@ -927,8 +1027,8 @@ private fun TermEditorDialog(
                 OutlinedTextField(
                     value = newName,
                     onValueChange = { newName = it },
-                    label = { Text("New period name") },
-                    placeholder = { Text("Quarter 1") },
+                    label = { Text(stringResource(R.string.s_new_period_name)) },
+                    placeholder = { Text(stringResource(R.string.s_quarter_1)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -956,20 +1056,32 @@ private fun TermEditorDialog(
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Add period")
+                    Text(stringResource(R.string.s_add_period))
                 }
             }
         },
         confirmButton = {
-            Button(onClick = onDismiss) { Text("Done") }
+            Button(onClick = onDismiss) { Text(stringResource(R.string.s_done)) }
         },
         shape = RoundedCornerShape(28.dp)
     )
+
+    editingTerm?.let { target ->
+        EditTermDialog(
+            term = target,
+            onSave = {
+                onUpdate(it)
+                editingTerm = null
+            },
+            onDismiss = { editingTerm = null }
+        )
+    }
 }
 
 @Composable
 private fun CategoryEditorDialog(
     categories: List<AssessmentCategoryEntity>,
+    terms: List<GradingTermEntity>,
     assignedWeight: Double,
     onSave: (AssessmentCategoryEntity) -> Unit,
     onDelete: (Int) -> Unit,
@@ -977,6 +1089,7 @@ private fun CategoryEditorDialog(
 ) {
     var newName by remember { mutableStateOf("") }
     var newWeight by remember { mutableStateOf("") }
+    var newTermScope by remember { mutableIntStateOf(0) }
 
     val remaining = 100.0 - assignedWeight
     val overAllocated = assignedWeight > 100.0
@@ -985,8 +1098,13 @@ private fun CategoryEditorDialog(
         onDismissRequest = onDismiss,
         title = { Text("Category Weights", fontWeight = FontWeight.Bold) },
         text = {
+            // Same clipping problem as the period editor: without a scroller the add controls
+            // fall off the bottom once a few categories exist.
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
@@ -1007,12 +1125,21 @@ private fun CategoryEditorDialog(
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = category.name,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                modifier = Modifier.weight(1f)
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = category.name,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                                // Scope matters: a category limited to one period is silently
+                                // absent from every other period's grade, so say which.
+                                Text(
+                                    text = terms.firstOrNull { it.id == category.termId }?.name
+                                        ?: stringResource(R.string.category_all_periods),
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
                             Text(
                                 text = String.format(Locale.US, "%.0f%%", category.weight),
                                 fontWeight = FontWeight.Bold,
@@ -1022,7 +1149,7 @@ private fun CategoryEditorDialog(
                             IconButton(onClick = { onDelete(category.id) }, modifier = Modifier.size(32.dp)) {
                                 Icon(
                                     Icons.Default.Delete,
-                                    contentDescription = "Delete",
+                                    contentDescription = stringResource(R.string.cd_delete),
                                     modifier = Modifier.size(18.dp),
                                     tint = MaterialTheme.colorScheme.error
                                 )
@@ -1049,8 +1176,8 @@ private fun CategoryEditorDialog(
                 OutlinedTextField(
                     value = newName,
                     onValueChange = { newName = it },
-                    label = { Text("Category name") },
-                    placeholder = { Text("Quizzes") },
+                    label = { Text(stringResource(R.string.s_category_name)) },
+                    placeholder = { Text(stringResource(R.string.s_quizzes)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1058,11 +1185,39 @@ private fun CategoryEditorDialog(
                 OutlinedTextField(
                     value = newWeight,
                     onValueChange = { input -> newWeight = input.filter { it.isDigit() || it == '.' } },
-                    label = { Text("Weight %") },
+                    label = { Text(stringResource(R.string.s_weight)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                if (terms.isNotEmpty()) {
+                    Text(
+                        text = stringResource(R.string.category_applies_to),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = newTermScope == 0,
+                            onClick = { newTermScope = 0 },
+                            label = { Text(stringResource(R.string.category_all_periods)) }
+                        )
+                        terms.forEach { term ->
+                            FilterChip(
+                                selected = newTermScope == term.id,
+                                onClick = { newTermScope = term.id },
+                                label = { Text(term.name) }
+                            )
+                        }
+                    }
+                }
 
                 Button(
                     enabled = newName.isNotBlank() && newWeight.toDoubleOrNull() != null,
@@ -1070,20 +1225,22 @@ private fun CategoryEditorDialog(
                         onSave(
                             AssessmentCategoryEntity(
                                 name = newName.trim(),
-                                weight = newWeight.toDoubleOrNull() ?: 0.0
+                                weight = newWeight.toDoubleOrNull() ?: 0.0,
+                                termId = newTermScope
                             )
                         )
                         newName = ""
                         newWeight = ""
+                        newTermScope = 0
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Add category")
+                    Text(stringResource(R.string.s_add_category))
                 }
             }
         },
         confirmButton = {
-            Button(onClick = onDismiss) { Text("Done") }
+            Button(onClick = onDismiss) { Text(stringResource(R.string.s_done)) }
         },
         shape = RoundedCornerShape(28.dp)
     )
@@ -1099,6 +1256,7 @@ private fun EditSheetDialog(
     column: AssessmentColumnEntity,
     terms: List<GradingTermEntity>,
     categories: List<AssessmentCategoryEntity>,
+    rubrics: List<RubricEntity>,
     onSave: (AssessmentColumnEntity) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -1106,6 +1264,7 @@ private fun EditSheetDialog(
     var maxPointsInput by remember(column.id) { mutableStateOf(column.maxPoints.toString()) }
     var termId by remember(column.id) { mutableIntStateOf(column.termId) }
     var categoryId by remember(column.id) { mutableIntStateOf(column.categoryId) }
+    var rubricId by remember(column.id) { mutableIntStateOf(column.rubricId) }
 
     val parsedMax = maxPointsInput.toDoubleOrNull()
     val isValid = name.isNotBlank() && parsedMax != null && parsedMax > 0.0
@@ -1161,7 +1320,7 @@ private fun EditSheetDialog(
                         FilterChip(
                             selected = termId == 0,
                             onClick = { termId = 0 },
-                            label = { Text("None") }
+                            label = { Text(stringResource(R.string.s_none)) }
                         )
                         terms.forEach { term ->
                             FilterChip(
@@ -1189,13 +1348,41 @@ private fun EditSheetDialog(
                         FilterChip(
                             selected = categoryId == 0,
                             onClick = { categoryId = 0 },
-                            label = { Text("Uncategorised") }
+                            label = { Text(stringResource(R.string.s_uncategorised)) }
                         )
                         categories.forEach { category ->
                             FilterChip(
                                 selected = categoryId == category.id,
                                 onClick = { categoryId = category.id },
                                 label = { Text("${category.name} ${String.format(Locale.US, "%.0f", category.weight)}%") }
+                            )
+                        }
+                    }
+                }
+
+                if (rubrics.isNotEmpty()) {
+                    Text(
+                        text = "Marking scale",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = rubricId == 0,
+                            onClick = { rubricId = 0 },
+                            label = { Text("Numeric") }
+                        )
+                        rubrics.forEach { rubric ->
+                            FilterChip(
+                                selected = rubricId == rubric.id,
+                                onClick = { rubricId = rubric.id },
+                                label = { Text(rubric.name) }
                             )
                         }
                     }
@@ -1220,7 +1407,8 @@ private fun EditSheetDialog(
                             name = name.trim(),
                             maxPoints = parsedMax ?: column.maxPoints,
                             termId = termId,
-                            categoryId = categoryId
+                            categoryId = categoryId,
+                            rubricId = rubricId
                         )
                     )
                 }
@@ -1233,4 +1421,110 @@ private fun EditSheetDialog(
         },
         shape = RoundedCornerShape(28.dp)
     )
+}
+
+/**
+ * Renames a grading period and sets its real date range.
+ *
+ * The range was previously hardcoded to "today plus three months" with no way to change it, which
+ * made a period little more than a label. Nothing computes from these dates yet, but a report that
+ * names its own coverage is worth more than one that guesses.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditTermDialog(
+    term: GradingTermEntity,
+    onSave: (GradingTermEntity) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember(term.id) { mutableStateOf(term.name) }
+    var startMillis by remember(term.id) { mutableLongStateOf(term.startDate) }
+    var endMillis by remember(term.id) { mutableLongStateOf(term.endDate) }
+    var showStartPicker by remember { mutableStateOf(false) }
+    var showEndPicker by remember { mutableStateOf(false) }
+
+    val sdf = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
+    val rangeInvalid = startMillis > endMillis
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.term_edit_title), fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(stringResource(R.string.term_name_label)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedButton(
+                    onClick = { showStartPicker = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(stringResource(R.string.attendance_start_date_label, sdf.format(Date(startMillis))), fontSize = 12.sp)
+                }
+
+                OutlinedButton(
+                    onClick = { showEndPicker = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(stringResource(R.string.attendance_end_date_label, sdf.format(Date(endMillis))), fontSize = 12.sp)
+                }
+
+                if (rangeInvalid) {
+                    Text(
+                        text = stringResource(R.string.attendance_date_range_error),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = name.isNotBlank() && !rangeInvalid,
+                onClick = { onSave(term.copy(name = name.trim(), startDate = startMillis, endDate = endMillis)) }
+            ) { Text(stringResource(R.string.action_save)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+        shape = RoundedCornerShape(28.dp)
+    )
+
+    if (showStartPicker) {
+        val state = rememberDatePickerState(initialSelectedDateMillis = startMillis)
+        DatePickerDialog(
+            onDismissRequest = { showStartPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { startMillis = it }
+                    showStartPicker = false
+                }) { Text(stringResource(R.string.action_ok)) }
+            }
+        ) { DatePicker(state = state, showModeToggle = false) }
+    }
+
+    if (showEndPicker) {
+        val state = rememberDatePickerState(initialSelectedDateMillis = endMillis)
+        DatePickerDialog(
+            onDismissRequest = { showEndPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { endMillis = it }
+                    showEndPicker = false
+                }) { Text(stringResource(R.string.action_ok)) }
+            }
+        ) { DatePicker(state = state, showModeToggle = false) }
+    }
 }

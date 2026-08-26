@@ -46,6 +46,7 @@ data class AssessmentColumnEntity(
     val savedFilterId: Int = 0,        // Links to SavedFilterEntity.id (0 = All active students)
     val termId: Int = 0,               // Links to GradingTermEntity.id (0 = unassigned)
     val categoryId: Int = 0,           // Links to AssessmentCategoryEntity.id (0 = uncategorised)
+    val rubricId: Int = 0,             // Links to RubricEntity.id (0 = plain numeric marking)
     val isDeleted: Boolean = false,
     val lastModified: Long = System.currentTimeMillis()
 )

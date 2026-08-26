@@ -114,7 +114,7 @@ fun CustomFieldSelectorScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(fields) { field ->
+                items(fields, key = { it }) { field ->
                     val isSelected = selectedFields.contains(field)
                     Card(
                         modifier = Modifier

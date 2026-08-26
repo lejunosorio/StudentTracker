@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,16 +65,21 @@ fun AddEditStudentScreen(
 
     val validationErrorMessage = stringResource(R.string.validation_error_fields)
     val errorSavingImageMessage = stringResource(R.string.error_saving_image)
+    val imageScope = rememberCoroutineScope()
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let {
-            val privatePath = ImageCompressor.compressAndSaveImage(context, it)
-            if (privatePath != null) {
-                viewModel.picturePath = privatePath
-            } else {
-                Toast.makeText(context, errorSavingImageMessage, Toast.LENGTH_SHORT).show()
+            // Off the main thread: decoding and re-encoding a camera-sized photo here froze the
+            // form for as long as it took.
+            imageScope.launch {
+                val privatePath = ImageCompressor.compressAndSaveImage(context, it)
+                if (privatePath != null) {
+                    viewModel.picturePath = privatePath
+                } else {
+                    Toast.makeText(context, errorSavingImageMessage, Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -146,7 +152,8 @@ fun AddEditStudentScreen(
                 ) {
                     LocalImageLoader(
                         imagePath = viewModel.picturePath,
-                        contentDescription = "Student Photo",
+                        contentDescription = stringResource(R.string.cd_student_photo),
+                        displaySize = 100.dp,
                         fallback = {
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -226,7 +233,7 @@ fun AddEditStudentScreen(
                 ) {
                     if (classrooms.isEmpty()) {
                         DropdownMenuItem(
-                            text = { Text("No classrooms registered. Set them up in the navigation drawer.") },
+                            text = { Text(stringResource(R.string.s_no_classrooms_registered_set_them_up_in_th)) },
                             onClick = { classDropdownExpanded = false }
                         )
                     } else {
@@ -470,7 +477,7 @@ fun AddEditStudentScreen(
                     Button(
                         onClick = {
                             if (newGuardianName.isBlank() || newGuardianContact.isBlank()) {
-                                Toast.makeText(context, "Name and Contact are required.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.toast_name_and_contact_are_required), Toast.LENGTH_SHORT).show()
                             } else {
                                 viewModel.addGuardian(newGuardianName, newGuardianRelationship, newGuardianContact)
                                 newGuardianName = ""

@@ -17,8 +17,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,6 +35,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.soloistdev.studenttracker.R
+import dev.soloistdev.studenttracker.data.AttendanceLogEntity
+import dev.soloistdev.studenttracker.data.AttendanceRecordEntity
 import dev.soloistdev.studenttracker.data.BehaviorIncidentEntity
 import dev.soloistdev.studenttracker.data.StudentEntity
 import dev.soloistdev.studenttracker.data.StudentRepository
@@ -64,6 +65,52 @@ fun SeatingChartScreen(
     // Placement Dialog state controllers
     var showLayoutSelectorDialog by remember { mutableStateOf(false) }
     var showCustomGridDialog by remember { mutableStateOf(false) }
+
+    // --- Attendance mode ---
+    // Taking the roll from the chart matches how a teacher actually scans a room: read the
+    // seats, mark the gaps. Seats become status swatches and dragging is suspended so a roll
+    // call cannot accidentally rearrange the layout.
+    var attendanceMode by remember { mutableStateOf(false) }
+    var showRecordPicker by remember { mutableStateOf(false) }
+    var attendanceRecords by remember { mutableStateOf<List<AttendanceRecordEntity>>(emptyList()) }
+    var activeRecord by remember { mutableStateOf<AttendanceRecordEntity?>(null) }
+    var activeDateMillis by remember { mutableLongStateOf(0L) }
+    val seatStatuses = remember { mutableStateMapOf<Int, String>() }
+
+    fun loadSeatStatuses() {
+        val record = activeRecord ?: return
+        scope.launch {
+            val logs = repository.getLogsForDate(record.id, activeDateMillis)
+            seatStatuses.clear()
+            logs.forEach { seatStatuses[it.studentId] = it.status }
+        }
+    }
+
+    fun cycleSeatStatus(studentId: Int) {
+        val record = activeRecord ?: return
+        val next = when (seatStatuses[studentId] ?: "NOT_SET") {
+            "NOT_SET" -> "PRESENT"
+            "PRESENT" -> "ABSENT"
+            "ABSENT" -> "EXCUSED"
+            else -> "NOT_SET"
+        }
+        seatStatuses[studentId] = next
+        scope.launch {
+            // The roster for a sheet is materialised as logs up front, but a student added to
+            // the class afterwards has no row yet, so fall back to an insert.
+            val updated = repository.updateAttendanceStatus(record.id, activeDateMillis, studentId, next)
+            if (updated == 0) {
+                repository.insertAttendanceLog(
+                    AttendanceLogEntity(
+                        recordId = record.id,
+                        dateMillis = activeDateMillis,
+                        studentId = studentId,
+                        status = next
+                    )
+                )
+            }
+        }
+    }
 
     // Tracks the active row and column grid counts to draw the background grid
     var activeGridRows by remember { mutableIntStateOf(0) }
@@ -172,11 +219,31 @@ fun SeatingChartScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showLayoutSelectorDialog = true }) {
+                    IconButton(onClick = {
+                        if (attendanceMode) {
+                            attendanceMode = false
+                            activeRecord = null
+                            seatStatuses.clear()
+                        } else {
+                            scope.launch {
+                                attendanceRecords = repository.getAllAttendanceRecords()
+                                showRecordPicker = true
+                            }
+                        }
+                    }) {
                         Icon(
-                            imageVector = Icons.Default.Apps,
-                            contentDescription = "Choose Seating Layout"
+                            imageVector = if (attendanceMode) Icons.Default.Close else Icons.Default.EventAvailable,
+                            contentDescription = if (attendanceMode) "Leave attendance mode" else "Take attendance from chart",
+                            tint = if (attendanceMode) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                         )
+                    }
+                    if (!attendanceMode) {
+                        IconButton(onClick = { showLayoutSelectorDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Apps,
+                                contentDescription = stringResource(R.string.cd_choose_seating_layout)
+                            )
+                        }
                     }
                 }
             )
@@ -187,8 +254,29 @@ fun SeatingChartScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Unplaced Students Shelf (Horizontal Drawer)
-            Card(
+            if (attendanceMode && activeRecord != null) {
+                AttendanceSeatBanner(
+                    recordName = activeRecord!!.name,
+                    dateMillis = activeDateMillis,
+                    placedCount = placedStudents.size,
+                    unplacedCount = unplacedStudents.size,
+                    presentCount = placedStudents.count { seatStatuses[it.id] == "PRESENT" },
+                    absentCount = placedStudents.count { seatStatuses[it.id] == "ABSENT" },
+                    excusedCount = placedStudents.count { seatStatuses[it.id] == "EXCUSED" },
+                    onMarkRestPresent = {
+                        placedStudents.forEach { student ->
+                            if ((seatStatuses[student.id] ?: "NOT_SET") == "NOT_SET") {
+                                // Cycling once from NOT_SET lands on PRESENT
+                                cycleSeatStatus(student.id)
+                            }
+                        }
+                    }
+                )
+            }
+
+            // Unplaced Students Shelf (Horizontal Drawer). Hidden during a roll call so the
+            // chart itself gets the screen.
+            if (!attendanceMode) Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
@@ -214,7 +302,7 @@ fun SeatingChartScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            items(unplacedStudents) { student ->
+                            items(unplacedStudents, key = { it.id }) { student ->
                                 Surface(
                                     modifier = Modifier
                                         .width(100.dp)
@@ -335,9 +423,22 @@ fun SeatingChartScreen(
                         val topOffset = (localOffsetY * maxHeight.value).dp
 
                         val isOverlapping = overlappingStudentIds.contains(student.id)
-                        val nodeContainerColor = if (isOverlapping) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                        val nodeContentColor = if (isOverlapping) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary
-                        val nodeBorderStroke = if (isOverlapping) BorderStroke(2.dp, MaterialTheme.colorScheme.onErrorContainer) else null
+                        val seatStatus = seatStatuses[student.id] ?: "NOT_SET"
+                        val nodeContainerColor = when {
+                            attendanceMode -> attendanceSeatColor(seatStatus)
+                            isOverlapping -> MaterialTheme.colorScheme.error
+                            else -> MaterialTheme.colorScheme.primary
+                        }
+                        val nodeContentColor = when {
+                            attendanceMode -> Color.White
+                            isOverlapping -> MaterialTheme.colorScheme.onError
+                            else -> MaterialTheme.colorScheme.onPrimary
+                        }
+                        // Overlap warning is suppressed during a roll call: the colour channel
+                        // is carrying attendance status instead.
+                        val nodeBorderStroke = if (isOverlapping && !attendanceMode) {
+                            BorderStroke(2.dp, MaterialTheme.colorScheme.onErrorContainer)
+                        } else null
 
                         Box(
                             modifier = Modifier
@@ -346,15 +447,21 @@ fun SeatingChartScreen(
                                 .clip(CircleShape)
                                 .background(nodeContainerColor)
                                 .then(if (nodeBorderStroke != null) Modifier.border(nodeBorderStroke, CircleShape) else Modifier)
-                                .pointerInput(student.id) {
+                                .pointerInput(student.id, attendanceMode) {
                                     detectTapGestures(
                                         onTap = {
-                                            selectedStudentForAction = student
-                                            showActionSheet = true
+                                            if (attendanceMode) {
+                                                cycleSeatStatus(student.id)
+                                            } else {
+                                                selectedStudentForAction = student
+                                                showActionSheet = true
+                                            }
                                         }
                                     )
                                 }
-                                .pointerInput(student.id) {
+                                .pointerInput(student.id, attendanceMode) {
+                                    // Seats are frozen while taking the roll
+                                    if (attendanceMode) return@pointerInput
                                     detectDragGestures(
                                         onDrag = { change, dragAmount ->
                                             change.consume()
@@ -400,6 +507,21 @@ fun SeatingChartScreen(
             }
         }
 
+        // ATTENDANCE SHEET AND DATE PICKER
+        if (showRecordPicker) {
+            AttendanceRecordPickerDialog(
+                records = attendanceRecords,
+                onPick = { record, dateMillis ->
+                    activeRecord = record
+                    activeDateMillis = dateMillis
+                    attendanceMode = true
+                    showRecordPicker = false
+                    loadSeatStatuses()
+                },
+                onDismiss = { showRecordPicker = false }
+            )
+        }
+
         // QUICK ACTION SELECTION SHEET
         if (showActionSheet && selectedStudentForAction != null) {
             val student = selectedStudentForAction!!
@@ -415,7 +537,7 @@ fun SeatingChartScreen(
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("View Student Profile")
+                            Text(stringResource(R.string.s_view_student_profile))
                         }
                         Button(
                             onClick = {
@@ -425,7 +547,7 @@ fun SeatingChartScreen(
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                         ) {
-                            Text("Log Behavior / Milestone")
+                            Text(stringResource(R.string.s_log_behavior_milestone))
                         }
                         OutlinedButton(
                             onClick = {
@@ -441,13 +563,13 @@ fun SeatingChartScreen(
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
                         ) {
-                            Text("Unplace Student Seat")
+                            Text(stringResource(R.string.s_unplace_student_seat))
                         }
                     }
                 },
                 confirmButton = {
                     TextButton(onClick = { showActionSheet = false }) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.s_cancel))
                     }
                 },
                 shape = RoundedCornerShape(28.dp)
@@ -580,7 +702,7 @@ fun SeatingChartScreen(
                                         activeGridCols = 0
                                         refreshStudents()
                                         showLayoutSelectorDialog = false
-                                        Toast.makeText(context, "Arrangement reset to manual draft!", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, context.getString(R.string.toast_arrangement_reset_to_manual_draft), Toast.LENGTH_SHORT).show()
                                     }
                                 },
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -641,7 +763,7 @@ fun SeatingChartScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = { showLayoutSelectorDialog = false }) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.s_cancel))
                     }
                 },
                 shape = RoundedCornerShape(28.dp)
@@ -661,12 +783,12 @@ fun SeatingChartScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxWidth().imePadding()
                     ) {
-                        Text("Define the dimensions of your custom grid. Roster student size must fit within your Row x Column limits.")
+                        Text(stringResource(R.string.s_define_the_dimensions_of_your_custom_grid))
 
                         OutlinedTextField(
                             value = customRows,
                             onValueChange = { customRows = it.filter { c -> c.isDigit() } },
-                            label = { Text("Grid Rows *") },
+                            label = { Text(stringResource(R.string.s_grid_rows)) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -674,7 +796,7 @@ fun SeatingChartScreen(
                         OutlinedTextField(
                             value = customCols,
                             onValueChange = { customCols = it.filter { c -> c.isDigit() } },
-                            label = { Text("Grid Columns *") },
+                            label = { Text(stringResource(R.string.s_grid_columns)) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -708,16 +830,199 @@ fun SeatingChartScreen(
                             }
                         }
                     ) {
-                        Text("Apply Grid")
+                        Text(stringResource(R.string.s_apply_grid))
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showCustomGridDialog = false }) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.s_cancel))
                     }
                 },
                 shape = RoundedCornerShape(28.dp)
             )
         }
     }
+}
+/** Seat colour during a roll call. Fixed hues, since the theme carries no present/absent pair. */
+@Composable
+private fun attendanceSeatColor(status: String): Color = when (status) {
+    "PRESENT" -> Color(0xFF2E7D32)
+    "ABSENT" -> MaterialTheme.colorScheme.error
+    "EXCUSED" -> Color(0xFFEF6C00)
+    else -> Color(0xFF9E9E9E)
+}
+
+@Composable
+private fun AttendanceSeatBanner(
+    recordName: String,
+    dateMillis: Long,
+    placedCount: Int,
+    unplacedCount: Int,
+    presentCount: Int,
+    absentCount: Int,
+    excusedCount: Int,
+    onMarkRestPresent: () -> Unit
+) {
+    val sdf = remember { java.text.SimpleDateFormat("EEE, MMM dd yyyy", java.util.Locale.US) }
+    val unmarked = placedCount - presentCount - absentCount - excusedCount
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(recordName, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text(
+                text = sdf.format(java.util.Date(dateMillis)),
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                SeatStatusTally("Present", presentCount, attendanceSeatColor("PRESENT"))
+                SeatStatusTally("Absent", absentCount, attendanceSeatColor("ABSENT"))
+                SeatStatusTally("Excused", excusedCount, attendanceSeatColor("EXCUSED"))
+                SeatStatusTally("Unmarked", unmarked, attendanceSeatColor("NOT_SET"))
+            }
+
+            Text(
+                text = "Tap a seat to cycle present, absent, excused. Seats are locked while marking.",
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
+
+            if (unplacedCount > 0) {
+                Text(
+                    text = "$unplacedCount student(s) have no seat and cannot be marked here. Use the attendance screen for those.",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            if (unmarked > 0) {
+                OutlinedButton(
+                    onClick = onMarkRestPresent,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Mark remaining $unmarked present", fontSize = 12.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeatStatusTally(label: String, count: Int, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(count.toString(), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = color)
+        Text(label, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/**
+ * Picks which attendance sheet and which day the roll call writes to. Dates are constrained to
+ * the range the sheet covers, so a tap can never file a mark outside its own sheet.
+ */
+@Composable
+private fun AttendanceRecordPickerDialog(
+    records: List<AttendanceRecordEntity>,
+    onPick: (AttendanceRecordEntity, Long) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var chosen by remember { mutableStateOf<AttendanceRecordEntity?>(null) }
+    val sdf = remember { java.text.SimpleDateFormat("EEE, MMM dd", java.util.Locale.US) }
+
+    val dates = remember(chosen) {
+        chosen?.let { generateDateList(it.startDate, it.endDate) } ?: emptyList()
+    }
+
+    // Preselect today when the sheet covers it, which is the overwhelmingly common case
+    val todayMillis = remember {
+        java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (chosen == null) "Choose Attendance Sheet" else "Choose Day", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (records.isEmpty()) {
+                    Text(
+                        text = "No attendance sheets exist yet. Create one from the attendance screen first.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else if (chosen == null) {
+                    records.forEach { record ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { chosen = record },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(record.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text(
+                                    text = "${sdf.format(java.util.Date(record.startDate))} - ${sdf.format(java.util.Date(record.endDate))}",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    dates.forEach { dateMillis ->
+                        val isToday = dateMillis == todayMillis
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onPick(chosen!!, dateMillis) },
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isToday) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(sdf.format(java.util.Date(dateMillis)), fontSize = 13.sp)
+                                if (isToday) {
+                                    Text("Today", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (chosen != null) {
+                TextButton(onClick = { chosen = null }) { Text(stringResource(R.string.s_back)) }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+        shape = RoundedCornerShape(28.dp)
+    )
 }
