@@ -662,4 +662,13 @@
     <string name="toast_roster_successfully_enrolled">Roster successfully enrolled!</string>
     <string name="toast_students_successfully_removed_from_classro">Students successfully removed from classroom.</string>
     <string name="warning_rooted_device">This device appears to be rooted. Student data on it is easier for other apps to reach — take care with what you store here.</string>
+    <string name="s_share">Share</string>
+    <string name="share_action_p2p">Send to device</string>
+    <string name="share_student_title">Share this student</string>
+    <string name="share_student_body">A PDF is for reading. Sending to a nearby device transfers the record itself, so the other phone can open and edit it.</string>
+    <string name="share_student_needs_class">Add this student to a class before sending them to another device.</string>
+    <string name="sync_outbox_ready">Ready to send: %1$s</string>
+    <string name="sync_outbox_detail">%1$d student(s), exactly as selected when you shared. Pick a device below.</string>
+    <string name="sync_outbox_clear">Send full roster instead</string>
+    <string name="insights_whole_year">Whole year</string>
 </resources>

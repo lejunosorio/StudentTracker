@@ -136,6 +136,11 @@ fun AppNavigation() {
                         navController.navigate(ScreenRoute.QUERY_BUILDER)
                     }
                 },
+                onOpenSync = {
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                        navController.navigate(ScreenRoute.SYNC)
+                    }
+                },
                 onOpenSeatingChart = { className ->
                     if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
                         navController.navigate("seating_chart/${Uri.encode(className)}")
@@ -168,6 +173,11 @@ fun AppNavigation() {
                 onSharePdf = { studentEntity ->
                     scope.launch {
                         PdfGeneratorHelper.generateAndShareStudentPdf(context, studentEntity)
+                    }
+                },
+                onShareViaP2p = {
+                    if (navController.currentDestination?.route == ScreenRoute.PROFILE) {
+                        navController.navigate(ScreenRoute.SYNC)
                     }
                 },
                 onDeleteStudent = { id ->

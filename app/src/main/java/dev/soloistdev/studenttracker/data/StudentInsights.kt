@@ -12,13 +12,29 @@ package dev.soloistdev.studenttracker.data
  */
 object StudentInsights {
 
-    /** Absence share at which most systems treat a student as chronically absent. */
+    /**
+     * Absence share at which most systems treat a student as chronically absent.
+     *
+     * The usual definition is missing ten percent of days *or more*, so the comparison is
+     * inclusive: exactly 10% counts. It used to be strictly greater, which quietly let the
+     * textbook case - 2 days missed in 20 - through unflagged.
+     */
     const val CHRONIC_ABSENCE_THRESHOLD = 0.10
 
     /** Percentage below which a running grade counts as failing for flagging purposes. */
     const val FAILING_GRADE_THRESHOLD = 60.0
 
     private const val REPEATED_INCIDENTS_THRESHOLD = 2
+
+    /**
+     * Marked days needed before an absence rate means anything.
+     *
+     * Without this, one absence on the only day taken so far reads as 100% absent and the student
+     * is flagged at risk on a single data point - most visibly on the first day of a new sheet,
+     * when every rate is 0% or 100%. A flag that behaves like that is one a teacher stops
+     * believing, and it is a real child it is being attached to.
+     */
+    const val MIN_MARKED_DAYS_FOR_ABSENCE_FLAG = 10
 
     enum class RiskLevel { NONE, WATCH, AT_RISK }
 
@@ -39,7 +55,8 @@ object StudentInsights {
             get() = if (marked == 0) null else absent.toDouble() / marked.toDouble()
 
         val isChronicallyAbsent: Boolean
-            get() = (absenceRate ?: 0.0) > CHRONIC_ABSENCE_THRESHOLD && marked > 0
+            get() = marked >= MIN_MARKED_DAYS_FOR_ABSENCE_FLAG &&
+                    (absenceRate ?: 0.0) >= CHRONIC_ABSENCE_THRESHOLD
     }
 
     data class Insight(
@@ -52,6 +69,14 @@ object StudentInsights {
         val reasons: List<String>
     )
 
+    /**
+     * @param term restricts every part of the picture to one grading period. Grades are scoped by
+     *   the period an assessment belongs to; attendance and behaviour by the period's dates, since
+     *   those rows carry a date rather than a term. Null means the whole year.
+     *
+     *   Passing a term used to scope only the grade, so a Q3 percentage sat beside a year's worth
+     *   of absences and behaviour notes and read as though they described the same weeks.
+     */
     fun compute(
         students: List<StudentEntity>,
         logs: List<AttendanceLogEntity>,
@@ -59,10 +84,16 @@ object StudentInsights {
         scores: List<AssessmentScoreEntity>,
         categories: List<AssessmentCategoryEntity>,
         incidents: List<BehaviorIncidentEntity>,
-        termId: Int = 0
+        term: GradingTermEntity? = null
     ): Map<Int, Insight> {
-        val logsByStudent = logs.groupBy { it.studentId }
-        val incidentsByStudent = incidents.groupBy { it.studentId }
+        val window = term?.let { dateWindowOf(it) }
+        val termId = term?.id ?: 0
+
+        val scopedLogs = if (window == null) logs else logs.filter { it.dateMillis in window }
+        val scopedIncidents = if (window == null) incidents else incidents.filter { it.incidentDate in window }
+
+        val logsByStudent = scopedLogs.groupBy { it.studentId }
+        val incidentsByStudent = scopedIncidents.groupBy { it.studentId }
 
         return students.associate { student ->
             val studentLogs = logsByStudent[student.id].orEmpty()
@@ -114,8 +145,39 @@ object StudentInsights {
      * Per-day status for one student, oldest first. Feeds the attendance heatmap, where a run of
      * absences is visible at a glance in a way a percentage is not.
      */
-    fun attendanceTimeline(studentId: Int, logs: List<AttendanceLogEntity>): List<Pair<Long, String>> =
-        logs.filter { it.studentId == studentId }
+    fun attendanceTimeline(
+        studentId: Int,
+        logs: List<AttendanceLogEntity>,
+        term: GradingTermEntity? = null
+    ): List<Pair<Long, String>> {
+        val window = term?.let { dateWindowOf(it) }
+        return logs.filter { it.studentId == studentId && (window == null || it.dateMillis in window) }
             .sortedBy { it.dateMillis }
             .map { it.dateMillis to it.status }
+    }
+
+    /**
+     * The period as a millisecond range covering whole days, or null when it has no usable dates.
+     *
+     * The end is pushed to the last moment of its day on purpose: attendance rows are stored at
+     * midnight, but a behaviour note carries the time it was written, so an incident logged on the
+     * final afternoon of a term would otherwise fall outside it. A term with no dates set filters
+     * nothing rather than filtering everything away.
+     */
+    private fun dateWindowOf(term: GradingTermEntity): LongRange? {
+        if (term.startDate <= 0L || term.endDate <= 0L) return null
+        if (term.endDate < term.startDate) return null
+        return startOfDay(term.startDate)..(startOfDay(term.endDate) + DAY_MILLIS - 1)
+    }
+
+    private const val DAY_MILLIS = 24L * 60L * 60L * 1000L
+
+    private fun startOfDay(millis: Long): Long =
+        java.util.Calendar.getInstance().apply {
+            timeInMillis = millis
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
 }

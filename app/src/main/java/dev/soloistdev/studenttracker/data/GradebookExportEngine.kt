@@ -20,21 +20,20 @@ object GradebookExportEngine {
         val csvContent = StringBuilder()
 
         // 1. Build Header: Name + Assessment Task Columns
-        val header = StringBuilder("Last Name,First Name")
-        columns.forEach { col ->
-            header.append(",${col.name} (Max: ${col.maxPoints})")
-        }
-        csvContent.append(header.toString()).append("\n")
+        csvContent.append(
+            CsvWriter.row(
+                listOf("Last Name", "First Name") +
+                        columns.map { "${it.name} (Max: ${it.maxPoints})" }
+            )
+        )
 
         // 2. Build Rows: Map scores sequentially per student
         students.forEach { student ->
-            val row = StringBuilder("${student.lastName},${student.firstName}")
-            columns.forEach { col ->
-                val matchedScore = scores.find { it.studentId == student.id && it.columnId == col.id }
-                val scoreVal = matchedScore?.score?.replace(",", " ") ?: ""
-                row.append(",$scoreVal")
-            }
-            csvContent.append(row.toString()).append("\n")
+            val fields = listOf(student.lastName, student.firstName) +
+                    columns.map { col ->
+                        scores.find { it.studentId == student.id && it.columnId == col.id }?.score ?: ""
+                    }
+            csvContent.append(CsvWriter.row(fields))
         }
 
         val cacheDir = File(context.cacheDir, "csv_exports").apply { mkdirs() }

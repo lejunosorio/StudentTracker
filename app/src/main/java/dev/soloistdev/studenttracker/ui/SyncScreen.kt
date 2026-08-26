@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.soloistdev.studenttracker.R
+import dev.soloistdev.studenttracker.data.P2pOutbox
 import dev.soloistdev.studenttracker.data.AttendanceRecordEntity
 import dev.soloistdev.studenttracker.data.JsonSyncEngine
 import dev.soloistdev.studenttracker.data.ImportResult
@@ -71,12 +72,30 @@ fun SyncScreen(onBack: () -> Unit) {
     var handoffDate by remember { mutableLongStateOf(0L) }
     var showHandoffPicker by remember { mutableStateOf(false) }
 
+    // Set when the teacher arrived here from a share dialog, which already decided what to send.
+    var outbox by remember { mutableStateOf(P2pOutbox.peek()) }
+
     // Serializes the active roster and hands it to the engine, which seals it under [code]
     fun sendRosterToPeer(peer: NsdServiceInfo, code: String) {
         scope.launch(Dispatchers.IO) {
             try {
                 val cacheDir = File(context.cacheDir, "backups").apply { mkdirs() }
                 val tempFile = File(cacheDir, "temp_p2p_transmit.json")
+
+                // A staged payload wins over everything else. It was built from an explicit
+                // selection - these classes, this student, with these disclosure switches - and
+                // quietly sending the whole roster instead would override all of it.
+                val staged = P2pOutbox.peek()
+                if (staged != null) {
+                    localSyncEngine.transmitBackupToPeer(peer, staged.file, code) { success ->
+                        if (success) {
+                            Toast.makeText(context, peerToastSuccess, Toast.LENGTH_SHORT).show()
+                            P2pOutbox.clear()
+                            outbox = null
+                        }
+                    }
+                    return@launch
+                }
 
                 val armedClass = handoffClass
                 val armedRecord = handoffRecord
@@ -156,6 +175,10 @@ fun SyncScreen(onBack: () -> Unit) {
     DisposableEffect(Unit) {
         onDispose {
             localSyncEngine.stopActiveSession()
+            // Leaving without sending abandons the staged payload. Keeping it would mean a later
+            // visit to this screen - to receive a file, say - silently transmits a selection made
+            // hours ago, and would leave the roster sitting in the cache as plaintext until then.
+            P2pOutbox.clear()
         }
     }
 
@@ -184,6 +207,44 @@ fun SyncScreen(onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+
+            // Arriving from a share dialog means what to send is already settled. Saying so, and
+            // saying how much, is the difference between a deliberate transfer and a surprise.
+            outbox?.let { staged ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.sync_outbox_ready, staged.label),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Text(
+                            text = stringResource(R.string.sync_outbox_detail, staged.studentCount),
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f)
+                        )
+                        TextButton(
+                            onClick = {
+                                P2pOutbox.clear()
+                                outbox = null
+                            },
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text(stringResource(R.string.sync_outbox_clear), fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
 
             Text(
                 text = stringResource(R.string.sync_local_p2p_title),

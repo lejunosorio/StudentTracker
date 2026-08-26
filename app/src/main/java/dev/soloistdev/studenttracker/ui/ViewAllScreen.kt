@@ -78,6 +78,7 @@ fun ViewAllScreen(
     onOpenInsights: () -> Unit,
     onOpenClassrooms: () -> Unit,
     onOpenQueryBuilder: () -> Unit,
+    onOpenSync: () -> Unit,
     onOpenSeatingChart: (String) -> Unit,
     viewModel: StudentListViewModel = viewModel()
 ) {
@@ -1647,7 +1648,8 @@ fun ViewAllScreen(
         if (showShareClassesDialog) {
             ShareClassesDialog(
                 availableClasses = distinctClassrooms,
-                onDismiss = { showShareClassesDialog = false }
+                onDismiss = { showShareClassesDialog = false },
+                onShareViaP2p = onOpenSync
             )
         }
         if (showProgressSlipDialog) {

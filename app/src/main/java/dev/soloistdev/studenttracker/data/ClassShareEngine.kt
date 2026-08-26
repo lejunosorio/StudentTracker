@@ -113,6 +113,56 @@ object ClassShareEngine {
     }
 
     /**
+     * Prepares the same document [shareClasses] would send, for the sync screen to transmit.
+     *
+     * Staged rather than sent here because the two halves happen on different screens: the choice
+     * of what to disclose is made in the share dialog, and the choice of which device to send it
+     * to is made on the sync screen. Carrying the built payload across means the disclosure
+     * switches still hold - a peer-to-peer transfer sends the selected classes, not the roster.
+     */
+    suspend fun stageClassesForP2p(
+        context: Context,
+        repository: StudentRepository,
+        classNames: Set<String>,
+        options: ShareOptions
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (classNames.isEmpty()) return@withContext false
+        val roster = rosterFor(repository, classNames)
+        val label = classNames.sorted().joinToString(", ")
+        stage(context, buildPayload(repository, classNames, options), label, roster.size)
+    }
+
+    /** The single-student counterpart, carrying only that student. */
+    suspend fun stageStudentForP2p(
+        context: Context,
+        repository: StudentRepository,
+        student: StudentEntity,
+        options: ShareOptions
+    ): Boolean = withContext(Dispatchers.IO) {
+        val classNames = student.getClassNamesList().toSet()
+        if (classNames.isEmpty()) return@withContext false
+        val payload = buildPayload(repository, classNames, options, restrictToStudentIds = setOf(student.id))
+        stage(context, payload, "${student.firstName} ${student.lastName}", 1)
+    }
+
+    private fun stage(context: Context, payload: JSONObject, label: String, studentCount: Int): Boolean =
+        try {
+            val cacheDir = File(context.cacheDir, "shares").apply { mkdirs() }
+            val file = File(cacheDir, "p2p_outbound.json")
+            if (file.exists()) file.delete()
+            FileOutputStream(file).use { fos ->
+                fos.write(payload.toString().toByteArray(Charsets.UTF_8))
+                fos.flush()
+            }
+            file.deleteOnExit()
+            P2pOutbox.stage(file, label, studentCount)
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+
+    /**
      * Builds the export document.
      *
      * Emits the standard backup schema so the receiving device restores it through the same
@@ -122,10 +172,14 @@ object ClassShareEngine {
     private suspend fun buildPayload(
         repository: StudentRepository,
         classNames: Set<String>,
-        options: ShareOptions
+        options: ShareOptions,
+        // Narrows the export to specific students within those classes. Sharing one student uses
+        // this so their classmates do not travel with them.
+        restrictToStudentIds: Set<Int>? = null
     ): JSONObject = withContext(Dispatchers.IO) {
         val sdf = SimpleDateFormat("MM-dd-yyyy", Locale.US)
         val roster = rosterFor(repository, classNames)
+            .let { full -> if (restrictToStudentIds == null) full else full.filter { it.id in restrictToStudentIds } }
         val ids = roster.map { it.id }.toSet()
 
         JSONObject().apply {

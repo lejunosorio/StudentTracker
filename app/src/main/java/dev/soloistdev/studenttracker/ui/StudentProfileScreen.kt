@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.soloistdev.studenttracker.R
+import dev.soloistdev.studenttracker.data.ClassShareEngine
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.Guardian
 import dev.soloistdev.studenttracker.data.StudentEntity
@@ -62,6 +63,8 @@ fun StudentProfileScreen(
     onBack: () -> Unit,
     onEdit: (Int) -> Unit,
     onSharePdf: (StudentEntity) -> Unit,
+    /** Opens the sync screen once this student has been staged for a peer-to-peer transfer. */
+    onShareViaP2p: () -> Unit = {},
     onDeleteStudent: (Int) -> Unit,
     repository: StudentRepository = StudentRepository(LocalContext.current)
 ) {
@@ -82,6 +85,7 @@ fun StudentProfileScreen(
     var myScores by remember { mutableStateOf<List<AssessmentScoreEntity>>(emptyList()) }
     var behaviorExpanded by remember { mutableStateOf(false) }
     var showAddIncidentDialog by remember { mutableStateOf(false) }
+    var showShareChoice by remember { mutableStateOf(false) }
 
     // Automated Communication States
     var showNotificationDialog by remember { mutableStateOf(false) }
@@ -226,14 +230,14 @@ fun StudentProfileScreen(
                     }
 
                     OutlinedButton(
-                        onClick = { onSharePdf(currentStudent) },
+                        onClick = { showShareChoice = true },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(20.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.cd_share_pdf))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.s_share_pdf))
+                            Text(stringResource(R.string.s_share))
                         }
                     }
                 }
@@ -1091,6 +1095,65 @@ fun StudentProfileScreen(
                     }
                 )
             }
+        }
+
+        if (showShareChoice && student != null) {
+            val target = student!!
+            AlertDialog(
+                onDismissRequest = { showShareChoice = false },
+                title = { Text(stringResource(R.string.share_student_title), fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(stringResource(R.string.share_student_body), fontSize = 13.sp)
+
+                        OutlinedButton(
+                            onClick = {
+                                showShareChoice = false
+                                onSharePdf(target)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(stringResource(R.string.s_share_pdf), fontSize = 13.sp)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                showShareChoice = false
+                                scope.launch {
+                                    // The profile record itself, so the receiving device merges a
+                                    // student rather than filing away a document it cannot read.
+                                    val staged = ClassShareEngine.stageStudentForP2p(
+                                        context,
+                                        repository,
+                                        target,
+                                        ClassShareEngine.ShareOptions()
+                                    )
+                                    if (staged) {
+                                        onShareViaP2p()
+                                    } else {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.share_student_needs_class),
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(stringResource(R.string.share_action_p2p), fontSize = 13.sp)
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showShareChoice = false }) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
         }
 
         if (showDeleteDialog && student != null) {

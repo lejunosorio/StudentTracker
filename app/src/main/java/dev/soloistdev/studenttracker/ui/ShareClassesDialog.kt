@@ -30,7 +30,9 @@ import kotlinx.coroutines.launch
 @Composable
 fun ShareClassesDialog(
     availableClasses: List<String>,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    /** Opens the sync screen once the selection has been staged for a peer-to-peer transfer. */
+    onShareViaP2p: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val repository = remember { StudentRepository(context) }
@@ -133,21 +135,42 @@ fun ShareClassesDialog(
             }
         },
         confirmButton = {
-            Button(
-                enabled = selected.isNotEmpty() && !isSharing,
-                onClick = {
-                    isSharing = true
-                    scope.launch {
-                        ClassShareEngine.shareClasses(context, repository, selected.toSet(), options)
-                        isSharing = false
-                        onDismiss()
+            // Two destinations, not two formats: the same document either goes out through the
+            // system share sheet or straight to a nearby device. Both honour the switches above.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    enabled = selected.isNotEmpty() && !isSharing,
+                    onClick = {
+                        isSharing = true
+                        scope.launch {
+                            val staged = ClassShareEngine.stageClassesForP2p(
+                                context, repository, selected.toSet(), options
+                            )
+                            isSharing = false
+                            onDismiss()
+                            if (staged) onShareViaP2p()
+                        }
                     }
+                ) {
+                    Text(stringResource(R.string.share_action_p2p), fontSize = 13.sp)
                 }
-            ) {
-                if (isSharing) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                } else {
-                    Text(stringResource(R.string.share_classes_action))
+
+                Button(
+                    enabled = selected.isNotEmpty() && !isSharing,
+                    onClick = {
+                        isSharing = true
+                        scope.launch {
+                            ClassShareEngine.shareClasses(context, repository, selected.toSet(), options)
+                            isSharing = false
+                            onDismiss()
+                        }
+                    }
+                ) {
+                    if (isSharing) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text(stringResource(R.string.share_classes_action), fontSize = 13.sp)
+                    }
                 }
             }
         },

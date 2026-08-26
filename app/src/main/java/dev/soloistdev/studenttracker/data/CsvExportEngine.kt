@@ -37,12 +37,12 @@ object CsvExportEngine {
         val templates = db.studentDao().getAllFormTemplates()
 
         // 1. Build Header: Core attributes + custom templates
-        val coreHeader = "Last Name,First Name,Gender,Birthday,Address,Student Contact,Classrooms,Guardian Name,Guardian Contact"
-        val dynamicHeader = if (templates.isNotEmpty()) {
-            "," + templates.joinToString(",") { it.fieldName.replace("_", " ") }
-        } else ""
+        val headerFields = listOf(
+            "Last Name", "First Name", "Gender", "Birthday", "Address",
+            "Student Contact", "Classrooms", "Guardian Name", "Guardian Contact"
+        ) + templates.map { it.fieldName.replace("_", " ") }
 
-        val csvHeader = "$coreHeader$dynamicHeader\n"
+        val csvHeader = CsvWriter.row(headerFields)
         val csvContent = StringBuilder(csvHeader)
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
@@ -55,24 +55,23 @@ object CsvExportEngine {
             val primaryName = if (guardians.isNotEmpty()) guardians[0].name else "N/A"
             val primaryContact = if (guardians.isNotEmpty()) guardians[0].phones.firstOrNull() ?: "N/A" else "N/A"
 
-            val cleanAddress = student.address.replace(",", " ")
-            val cleanGuardian = primaryName.replace(",", " ")
+            // Several classes in one cell, separated by semicolons so the comma stays available
+            // as the field separator.
+            val classStr = student.getClassNamesList().joinToString("; ")
 
-            // Serializes multiple classroom associations into a quoted semicolon-separated CSV list
-            val classList = student.getClassNamesList()
-            val classStr = if (classList.isEmpty()) "" else classList.joinToString("; ").replace("\"", "\"\"")
-            val cleanClassStr = "\"$classStr\""
+            val fields = listOf(
+                student.lastName,
+                student.firstName,
+                student.gender,
+                birthdayStr,
+                student.address,
+                student.contactNumber,
+                classStr,
+                primaryName,
+                primaryContact
+            ) + templates.map { customJson.optString(it.fieldName, "") }
 
-            val coreRow = "${student.lastName},${student.firstName},${student.gender},$birthdayStr,$cleanAddress,${student.contactNumber},$cleanClassStr,$cleanGuardian,$primaryContact"
-
-            val dynamicRow = if (templates.isNotEmpty()) {
-                "," + templates.joinToString(",") { template ->
-                    val rawValue = customJson.optString(template.fieldName, "")
-                    rawValue.replace(",", " ")
-                }
-            } else ""
-
-            csvContent.append("$coreRow$dynamicRow\n")
+            csvContent.append(CsvWriter.row(fields))
         }
 
         val cacheDir = File(context.cacheDir, "csv_exports").apply { mkdirs() }

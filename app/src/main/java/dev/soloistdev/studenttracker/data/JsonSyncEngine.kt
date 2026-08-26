@@ -893,10 +893,17 @@ object JsonSyncEngine {
                 val name = rObj.optString("name", "").trim()
                 if (name.isEmpty()) continue
 
+                // Update in place for a rubric that already exists. A REPLACE insert would delete
+                // the row first, and rubric_levels cascades on delete - so the scale would be
+                // destroyed before the replacement levels below were written, and a failure part
+                // way through would leave a rubric that grades nothing.
                 val existingId = rubricIdByName[name.lowercase()]
-                val rubricId = repository.insertRubric(
-                    RubricEntity(id = existingId ?: 0, name = name)
-                ).toInt()
+                val rubricId = if (existingId != null) {
+                    repository.updateRubric(RubricEntity(id = existingId, name = name))
+                    existingId
+                } else {
+                    repository.insertRubric(RubricEntity(name = name)).toInt()
+                }
                 rubricIdByName[name.lowercase()] = rubricId
 
                 existingLevels.filter { it.rubricId == rubricId }.forEach {

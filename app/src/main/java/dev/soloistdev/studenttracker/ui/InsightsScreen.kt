@@ -38,6 +38,8 @@ fun InsightsScreen(
     val insights by viewModel.insights.collectAsState()
     val logs by viewModel.logs.collectAsState()
     val classFilter by viewModel.classFilter.collectAsState()
+    val terms by viewModel.terms.collectAsState()
+    val selectedTerm by viewModel.selectedTerm.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
 
     val ranked = remember(insights, classFilter) { viewModel.rankedStudents() }
@@ -76,6 +78,30 @@ fun InsightsScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            // Grading period first: it decides which weeks every number below is drawn from.
+            if (terms.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = selectedTerm == null,
+                        onClick = { viewModel.setTerm(null) },
+                        label = { Text(stringResource(R.string.insights_whole_year)) }
+                    )
+                    terms.forEach { term ->
+                        FilterChip(
+                            selected = selectedTerm?.id == term.id,
+                            onClick = { viewModel.setTerm(term) },
+                            label = { Text(term.name) }
+                        )
+                    }
+                }
+            }
+
             if (classes.isNotEmpty()) {
                 Row(
                     modifier = Modifier
@@ -133,8 +159,10 @@ fun InsightsScreen(
                         InsightRow(
                             name = "${student.lastName}, ${student.firstName}",
                             insight = insight,
+                            // Scoped by the ViewModel, so the strip covers the same weeks the
+                            // flags above it were calculated from.
                             timeline = if (expandedStudentId == student.id) {
-                                StudentInsights.attendanceTimeline(student.id, logs)
+                                viewModel.timelineFor(student.id)
                             } else emptyList(),
                             isExpanded = expandedStudentId == student.id,
                             onToggle = {

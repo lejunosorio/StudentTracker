@@ -4,6 +4,7 @@ import dev.soloistdev.studenttracker.ui.FilterEngine
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -399,6 +400,49 @@ class SampleDataTest {
                 val value = custom.getString(key)
                 assertTrue("'$value' is not one of the options for '$key'", value.isEmpty() || allowed.contains(value))
             }
+        }
+    }
+
+    @Test
+    fun messageTemplateTokensAreOnesTheMergeEngineResolves() {
+        // Run the real engine. The tokens are {{double braced}}; a single-braced "{guardian}"
+        // parses as ordinary text and goes out to a parent verbatim, which no test of the JSON
+        // shape alone would notice.
+        val student = StudentEntity(
+            id = 1,
+            firstName = "Ana",
+            lastName = "Cruz",
+            gender = "F",
+            birthday = 0L,
+            classNamesJson = "[\"Grade 7 - Sampaguita\"]"
+        )
+        val data = MessageMerge.MergeData(
+            student = student,
+            guardianName = "Maria Cruz",
+            absences = 2,
+            present = 40,
+            attendanceRate = 95.0,
+            grade = "88%"
+        )
+
+        val templates = array("messageTemplates").map { it }
+        assertTrue("expected message templates", templates.isNotEmpty())
+
+        templates.forEach { template ->
+            val name = template.getString("name")
+            val text = template.getString("text")
+
+            assertTrue("template '$name' has no merge token at all", MessageMerge.hasTokens(text))
+
+            val rendered = MessageMerge.render(text, data)
+            assertFalse(
+                "template '$name' left a token unresolved: $rendered",
+                rendered.contains("{{") || rendered.contains("}}")
+            )
+            assertFalse(
+                "template '$name' has single-braced text the engine ignores: $text",
+                Regex("""(?<!\{)\{[A-Za-z0-9_ ]+}(?!})""").containsMatchIn(text)
+            )
         }
     }
 

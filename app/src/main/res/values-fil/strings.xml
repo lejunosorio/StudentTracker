@@ -587,4 +587,13 @@
     <string name="share_opt_guardians">Pangalan at numero ng tagapag-alaga</string>
     <string name="share_classes_summary">Magpapadala ng %1$d mag-aaral, %2$d attendance sheet, %3$d pagsusulit at %4$d tala sa pag-uugali.</string>
     <string name="warning_rooted_device">Mukhang naka-root ang device na ito. Mas madaling maabot ng ibang app ang datos ng mga mag-aaral dito — mag-ingat sa iniimbak mo.</string>
+    <string name="s_share">Ibahagi</string>
+    <string name="share_action_p2p">Ipadala sa device</string>
+    <string name="share_student_title">Ibahagi ang mag-aaral na ito</string>
+    <string name="share_student_body">Ang PDF ay pambasa lamang. Ang pagpapadala sa kalapit na device ay naglilipat ng mismong tala, kaya nabubuksan at nae-edit ito ng kabilang telepono.</string>
+    <string name="share_student_needs_class">Idagdag muna ang mag-aaral sa isang klase bago ipadala sa ibang device.</string>
+    <string name="sync_outbox_ready">Handa nang ipadala: %1$s</string>
+    <string name="sync_outbox_detail">%1$d mag-aaral, ayon mismo sa pinili mo noong nagbahagi ka. Pumili ng device sa ibaba.</string>
+    <string name="sync_outbox_clear">Ipadala na lang ang buong roster</string>
+    <string name="insights_whole_year">Buong taon</string>
 </resources>
