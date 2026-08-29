@@ -100,7 +100,8 @@ fun AddEditStudentScreen(
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        text = if (studentId == -1) stringResource(R.string.title_add_student) else stringResource(R.string.title_edit_student),
+                        text = if (studentId == -1) stringResource(R.string.term_add, terms.learner)
+                               else stringResource(R.string.term_edit, terms.learner),
                         fontWeight = FontWeight.Bold
                     )
                 },

@@ -882,4 +882,55 @@
     <string name="projection_explain">Worked out by running a hypothetical score through the same calculation as the gradebook, so it cannot disagree with the grade above.</string>
     <string name="projection_whatif_heading">Or try a score</string>
     <string name="projection_whatif_result">Scoring %1$s would make it %2$s</string>
+
+    <!-- ===== Terminology: the built-in wording, used until it is overridden ===== -->
+    <string name="term_default_learner">Student</string>
+    <string name="term_default_learners">Students</string>
+    <string name="term_default_group">Class</string>
+    <string name="term_default_groups">Classes</string>
+    <string name="term_default_guardian">Guardian</string>
+    <string name="term_default_guardians">Guardians</string>
+
+    <!-- Placeholders take the configured noun, so word order stays translatable. -->
+    <string name="term_directory">%1$s Directory</string>
+    <string name="term_add">Add %1$s</string>
+    <string name="term_edit">Edit %1$s</string>
+    <string name="term_all">All %1$s</string>
+    <string name="term_none_yet">No %1$s yet</string>
+    <string name="term_profile_report">%1$s PROFILE REPORT</string>
+    <string name="term_count">%1$d %2$s</string>
+
+    <!-- ===== Organization settings ===== -->
+    <string name="settings_cat_organization">Organization</string>
+    <string name="settings_cat_organization_desc">Your name and logo, what you call people, and which features you use</string>
+    <string name="org_title">Organization</string>
+
+    <string name="org_section_identity">Identity</string>
+    <string name="org_name_label">Organization name</string>
+    <string name="org_name_hint">Springfield High, Grace Learning Centre…</string>
+    <string name="org_owner_label">Your name or role</string>
+    <string name="org_owner_hint">Ms. Reyes · Grade 7 Adviser</string>
+    <string name="org_identity_note">Shown at the top of the menu and printed on every PDF and CSV you export.</string>
+
+    <string name="org_logo">Logo</string>
+    <string name="org_logo_add">Add a logo</string>
+    <string name="org_logo_replace">Replace</string>
+    <string name="org_logo_remove">Remove</string>
+    <string name="org_logo_note">The logo stays on this device. Like photos, it is not included in backups, exports or transfers.</string>
+    <string name="org_logo_failed">That image could not be read. Try another.</string>
+
+    <string name="org_section_terminology">Terminology</string>
+    <string name="org_preset_heading">Start from a preset</string>
+    <string name="org_term_learner">One is called</string>
+    <string name="org_term_learners">Many are called</string>
+    <string name="org_term_group">A group is called</string>
+    <string name="org_term_groups">Groups are called</string>
+    <string name="org_term_guardian">A contact is called</string>
+    <string name="org_term_guardians">Contacts are called</string>
+    <string name="org_terms_reset">Reset to the built-in wording</string>
+    <string name="org_terms_note">Changes the wording across the app and on anything you export. It does not touch your records, so you can change your mind at any time.</string>
+
+    <string name="org_section_modules">Features</string>
+    <string name="org_modules_note">Turning a feature off only removes it from the menus. Nothing is deleted, and turning it back on brings everything with it.</string>
+    <string name="org_module_last_warning">At least one feature stays on, so the app still has somewhere to go.</string>
 </resources>

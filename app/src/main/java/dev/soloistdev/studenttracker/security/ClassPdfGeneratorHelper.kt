@@ -1,5 +1,7 @@
 package dev.soloistdev.studenttracker.security
 
+import dev.soloistdev.studenttracker.R
+import dev.soloistdev.studenttracker.data.OrganizationSettings
 import android.content.Context
 import android.content.Intent
 import android.graphics.Canvas
@@ -160,13 +162,23 @@ object ClassPdfGeneratorHelper {
         tracker.startNewPage()
 
         tracker.ensureSpace(120f)
-        tracker.canvas?.drawText("CLASSROOM COHORT REPORT", 40f, tracker.yPos, headerPaint)
+        // Organisation name first: this report leaves the app, and one headed only
+        // "CLASSROOM COHORT REPORT" gives no clue who produced it.
+        val orgName = OrganizationSettings.organizationName(context)
+        if (orgName.isNotBlank()) {
+            tracker.canvas?.drawText(orgName.uppercase(Locale.getDefault()), 40f, tracker.yPos, headerPaint)
+            tracker.yPos += 24f
+        }
+        val groupTerm = OrganizationSettings.group(context, context.getString(R.string.term_default_group))
+        tracker.canvas?.drawText(
+            groupTerm.uppercase(Locale.getDefault()) + " REPORT", 40f, tracker.yPos, headerPaint
+        )
         tracker.yPos += 20f
         paint.color = Color.DKGRAY
         tracker.canvas?.drawRect(40f, tracker.yPos, 555f, tracker.yPos + 2f, paint)
         tracker.yPos += 25f
 
-        tracker.canvas?.drawText("Classroom Cohort: $className", 40f, tracker.yPos, sectionTitlePaint)
+        tracker.canvas?.drawText("$groupTerm: $className", 40f, tracker.yPos, sectionTitlePaint)
 
         val classroomDetails = db.studentDao().getAllClassrooms().find { it.name == className }
         val startTime = classroomDetails?.startTime ?: "08:00 AM"

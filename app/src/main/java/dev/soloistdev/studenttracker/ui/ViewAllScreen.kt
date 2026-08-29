@@ -52,6 +52,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.ClassSchedule
 import dev.soloistdev.studenttracker.data.ClassroomEntity
+import dev.soloistdev.studenttracker.data.OrganizationSettings
 import dev.soloistdev.studenttracker.data.GradingTermEntity
 import dev.soloistdev.studenttracker.data.ImportResult
 import dev.soloistdev.studenttracker.data.JsonSyncEngine
@@ -105,6 +106,10 @@ fun ViewAllScreen(
 
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedStudentIds by viewModel.selectedStudentIds.collectAsState()
+
+    // The organisation's own identity and vocabulary, and which features it has switched on.
+    val orgProfile = LocalOrgProfile.current
+    val t = orgProfile.terms
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -250,8 +255,38 @@ fun ViewAllScreen(
                             .fillMaxWidth()
                             .padding(start = 24.dp, top = 16.dp, bottom = 12.dp)
                     ) {
-                        Text(stringResource(R.string.drawer_proctor_portal), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                        Text(stringResource(R.string.drawer_school_name), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        // The organisation's own name and logo, falling back to the built-in
+                        // placeholders until they set them. This is the first thing on screen when
+                        // the menu opens, so it is where "generic school app" is most obvious.
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (orgProfile.logoPath.isNotBlank()) {
+                                LocalImageLoader(
+                                    imagePath = orgProfile.logoPath,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(8.dp)),
+                                    displaySize = 40.dp,
+                                    fallback = { Box(modifier = Modifier.size(40.dp)) }
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                            }
+                            Column {
+                                Text(
+                                    text = orgProfile.organizationName,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 2
+                                )
+                                Text(
+                                    text = orgProfile.ownerName,
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1
+                                )
+                            }
+                        }
                     }
 
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
@@ -275,7 +310,7 @@ fun ViewAllScreen(
 
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.People, contentDescription = null) },
-                        label = { Text(stringResource(R.string.menu_student_directory)) },
+                        label = { Text(stringResource(R.string.term_directory, t.learner)) },
                         selected = true,
                         onClick = { scope.launch { drawerState.close() } },
                         colors = drawerItemColors,
@@ -284,7 +319,7 @@ fun ViewAllScreen(
 
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.School, contentDescription = null) },
-                        label = { Text(stringResource(R.string.menu_classrooms)) },
+                        label = { Text(t.groups) },
                         selected = false,
                         onClick = {
                             scope.launch {
@@ -296,7 +331,7 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
-                    NavigationDrawerItem(
+                    if (orgProfile.isEnabled(OrganizationSettings.Module.ATTENDANCE)) NavigationDrawerItem(
                         icon = { Icon(Icons.Default.EventAvailable, contentDescription = null) },
                         label = { Text(stringResource(R.string.menu_attendance_system)) },
                         selected = false,
@@ -310,7 +345,7 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
-                    NavigationDrawerItem(
+                    if (orgProfile.isEnabled(OrganizationSettings.Module.ATTENDANCE)) NavigationDrawerItem(
                         icon = { Icon(Icons.Default.QrCodeScanner, contentDescription = null) },
                         label = { Text(stringResource(R.string.s_scan_attendance)) },
                         selected = false,
@@ -324,7 +359,7 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
-                    NavigationDrawerItem(
+                    if (orgProfile.isEnabled(OrganizationSettings.Module.GRADEBOOK)) NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Book, contentDescription = null) },
                         label = { Text(stringResource(R.string.menu_gradebook_matrix)) },
                         selected = false,
@@ -352,7 +387,7 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
-                    NavigationDrawerItem(
+                    if (orgProfile.isEnabled(OrganizationSettings.Module.INSIGHTS)) NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Insights, contentDescription = null) },
                         label = { Text(stringResource(R.string.s_early_warning)) },
                         selected = false,
@@ -377,7 +412,7 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 4.dp)
                     )
 
-                    NavigationDrawerItem(
+                    if (orgProfile.isEnabled(OrganizationSettings.Module.MESSAGING)) NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Build, contentDescription = null) },
                         label = { Text(stringResource(R.string.menu_template_manager)) },
                         selected = false,
@@ -391,7 +426,7 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
-                    NavigationDrawerItem(
+                    if (orgProfile.isEnabled(OrganizationSettings.Module.GRADEBOOK)) NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Rule, contentDescription = null) },
                         label = { Text(stringResource(R.string.s_rubrics)) },
                         selected = false,
@@ -405,7 +440,7 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
-                    NavigationDrawerItem(
+                    if (orgProfile.isEnabled(OrganizationSettings.Module.QUERIES)) NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Bookmarks, contentDescription = null) },
                         label = { Text(stringResource(R.string.menu_saved_filters)) },
                         selected = false,
@@ -419,7 +454,7 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
-                    NavigationDrawerItem(
+                    if (orgProfile.isEnabled(OrganizationSettings.Module.QUERIES)) NavigationDrawerItem(
                         icon = { Icon(Icons.AutoMirrored.Filled.ManageSearch, contentDescription = null) },
                         label = { Text(stringResource(R.string.menu_query_builder)) },
                         selected = false,
@@ -556,9 +591,9 @@ fun ViewAllScreen(
                         title = {
                             Text(
                                 text = if (selectedClassroomForView != null) {
-                                    if (selectedClassroomForView == "All") "All Classrooms" else selectedClassroomForView!!
+                                    if (selectedClassroomForView == "All") stringResource(R.string.term_all, t.groups) else selectedClassroomForView!!
                                 } else {
-                                    stringResource(R.string.menu_student_directory)
+                                    stringResource(R.string.term_directory, t.learner)
                                 },
                                 fontWeight = FontWeight.Bold
                             )
@@ -703,7 +738,7 @@ fun ViewAllScreen(
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                     NavigationBarItem(
                         icon = { Icon(Icons.Default.People, contentDescription = stringResource(R.string.menu_students)) },
-                        label = { Text(stringResource(R.string.menu_students)) },
+                        label = { Text(t.learners) },
                         selected = true,
                         onClick = {}
                     )
@@ -764,7 +799,7 @@ fun ViewAllScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Column {
-                                        Text("All Students", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                        Text(stringResource(R.string.term_all, t.learners), fontWeight = FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text("Enrolled: ${students.size} students", fontSize = 13.sp, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
                                     }
@@ -1709,7 +1744,7 @@ fun ViewAllScreen(
                     showProgressSlipDialog = false
                     isGeneratingSlips = true
                     val roster = filteredDirectoryStudents.map { it.student }
-                    val classLabel = selectedClassroomForView ?: "All Students"
+                    val classLabel = selectedClassroomForView ?: context.getString(R.string.term_all, t.learners)
                     val title = if (termLabel.isBlank()) classLabel else "$classLabel — $termLabel"
                     scope.launch {
                         ProgressSlipGenerator.generateAndShare(context, roster, title, termId)

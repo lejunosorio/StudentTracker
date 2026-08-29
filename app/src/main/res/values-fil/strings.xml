@@ -807,4 +807,54 @@
     <string name="projection_explain">Kinuwenta sa pamamagitan ng parehong kalkulasyon ng gradebook gamit ang isang haka-hakang iskor, kaya hindi ito maaaring sumalungat sa gradong nasa itaas.</string>
     <string name="projection_whatif_heading">O sumubok ng iskor</string>
     <string name="projection_whatif_result">Kung %1$s ang iskor, magiging %2$s ito</string>
+
+    <!-- ===== Terminology: the built-in wording, used until it is overridden ===== -->
+    <string name="term_default_learner">Mag-aaral</string>
+    <string name="term_default_learners">Mga Mag-aaral</string>
+    <string name="term_default_group">Klase</string>
+    <string name="term_default_groups">Mga Klase</string>
+    <string name="term_default_guardian">Tagapag-alaga</string>
+    <string name="term_default_guardians">Mga Tagapag-alaga</string>
+
+    <string name="term_directory">Direktoryo ng %1$s</string>
+    <string name="term_add">Magdagdag ng %1$s</string>
+    <string name="term_edit">I-edit ang %1$s</string>
+    <string name="term_all">Lahat ng %1$s</string>
+    <string name="term_none_yet">Wala pang %1$s</string>
+    <string name="term_profile_report">ULAT NG PROFILE NG %1$s</string>
+    <string name="term_count">%1$d %2$s</string>
+
+    <!-- ===== Organization settings ===== -->
+    <string name="settings_cat_organization">Organisasyon</string>
+    <string name="settings_cat_organization_desc">Pangalan at logo mo, ang tawag mo sa mga tao, at kung aling mga feature ang ginagamit mo</string>
+    <string name="org_title">Organisasyon</string>
+
+    <string name="org_section_identity">Pagkakakilanlan</string>
+    <string name="org_name_label">Pangalan ng organisasyon</string>
+    <string name="org_name_hint">Springfield High, Grace Learning Centre…</string>
+    <string name="org_owner_label">Pangalan o tungkulin mo</string>
+    <string name="org_owner_hint">Bb. Reyes · Adviser ng Grade 7</string>
+    <string name="org_identity_note">Lalabas sa itaas ng menu at nakalimbag sa bawat PDF at CSV na ie-export mo.</string>
+
+    <string name="org_logo">Logo</string>
+    <string name="org_logo_add">Maglagay ng logo</string>
+    <string name="org_logo_replace">Palitan</string>
+    <string name="org_logo_remove">Alisin</string>
+    <string name="org_logo_note">Nananatili sa device na ito ang logo. Tulad ng mga litrato, hindi ito kasama sa backup, export o paglilipat.</string>
+    <string name="org_logo_failed">Hindi mabasa ang larawang iyon. Sumubok ng iba.</string>
+
+    <string name="org_section_terminology">Terminolohiya</string>
+    <string name="org_preset_heading">Magsimula sa isang preset</string>
+    <string name="org_term_learner">Ang tawag sa isa</string>
+    <string name="org_term_learners">Ang tawag sa marami</string>
+    <string name="org_term_group">Ang tawag sa isang grupo</string>
+    <string name="org_term_groups">Ang tawag sa mga grupo</string>
+    <string name="org_term_guardian">Ang tawag sa isang kontak</string>
+    <string name="org_term_guardians">Ang tawag sa mga kontak</string>
+    <string name="org_terms_reset">Ibalik sa orihinal na salita</string>
+    <string name="org_terms_note">Binabago nito ang salitang ginagamit sa buong app at sa mga ie-export mo. Hindi nito ginagalaw ang iyong mga tala, kaya puwede kang magbago ng isip anumang oras.</string>
+
+    <string name="org_section_modules">Mga feature</string>
+    <string name="org_modules_note">Ang pag-off ng isang feature ay nag-aalis lamang nito sa mga menu. Walang binubura, at babalik ang lahat kapag binuksan mong muli.</string>
+    <string name="org_module_last_warning">Kahit isang feature ay mananatiling naka-on, upang may mapuntahan pa rin ang app.</string>
 </resources>

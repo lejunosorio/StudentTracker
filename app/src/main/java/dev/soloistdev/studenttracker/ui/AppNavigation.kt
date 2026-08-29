@@ -61,6 +61,10 @@ fun AppNavigation() {
         }
     }
 
+    // Wraps the whole graph, so any screen can read the organisation's own wording without it
+    // being threaded through every navigation callback to get there.
+    ProvideOrgProfile {
+
     NavHost(navController = navController, startDestination = ScreenRoute.SECURITY_GATE) {
 
         composable(ScreenRoute.SECURITY_GATE) {
@@ -369,6 +373,11 @@ fun AppNavigation() {
                         navController.navigate(ScreenRoute.SETTINGS_REMINDERS)
                     }
                 },
+                onNavigateToOrganization = {
+                    if (navController.currentDestination?.route == ScreenRoute.APP_SETTINGS) {
+                        navController.navigate(ScreenRoute.SETTINGS_ORGANIZATION)
+                    }
+                },
                 onNavigateToStorage = {
                     if (navController.currentDestination?.route == ScreenRoute.APP_SETTINGS) {
                         navController.navigate(ScreenRoute.SETTINGS_STORAGE)
@@ -423,6 +432,14 @@ fun AppNavigation() {
 
         composable(ScreenRoute.SETTINGS_REMINDERS) {
             RemindersSettingsScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) navController.popBackStack()
+                }
+            )
+        }
+
+        composable(ScreenRoute.SETTINGS_ORGANIZATION) {
+            OrganizationSettingsScreen(
                 onBack = {
                     if (navController.previousBackStackEntry != null) navController.popBackStack()
                 }
@@ -642,6 +659,8 @@ fun AppNavigation() {
             )
         }
     }
+
+    } // ProvideOrgProfile
 }
 
 /**
@@ -694,6 +713,7 @@ object ScreenRoute {
     const val SETTINGS_APPEARANCE = "settings_appearance"
     const val SETTINGS_BACKUP = "settings_backup"
     const val SETTINGS_REMINDERS = "settings_reminders"
+    const val SETTINGS_ORGANIZATION = "settings_organization"
     const val SETTINGS_STORAGE = "settings_storage"
     const val IMPORT_STUDENT = "import_student?id={id}&first={first}&last={last}&gender={gender}&birthday={birthday}&address={address}&contact={contact}&guardians={guardians}&custom={custom}&class={class}&seatingX={seatingX}&seatingY={seatingY}"
     const val SYNC = "sync" // Registered Running Sync route constant cleanly

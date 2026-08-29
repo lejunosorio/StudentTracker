@@ -6,6 +6,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Security
@@ -39,6 +40,7 @@ fun AppSettingsScreen(
     onNavigateToBiometrics: () -> Unit,
     onNavigateToBackup: () -> Unit,
     onNavigateToReminders: () -> Unit,
+    onNavigateToOrganization: () -> Unit,
     onNavigateToStorage: () -> Unit,
     onNavigateToSync: () -> Unit,
     onNavigateToCsvImport: () -> Unit
@@ -66,6 +68,15 @@ fun AppSettingsScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // First, because it is the thing that makes the rest of the app read as the teacher's
+            // own rather than as a generic school tool.
+            SettingsCategoryRow(
+                title = stringResource(R.string.settings_cat_organization),
+                subtitle = stringResource(R.string.settings_cat_organization_desc),
+                icon = Icons.Default.Badge,
+                onClick = onNavigateToOrganization
+            )
+
             SettingsCategoryRow(
                 title = stringResource(R.string.settings_appearance),
                 subtitle = stringResource(R.string.settings_cat_appearance_desc),

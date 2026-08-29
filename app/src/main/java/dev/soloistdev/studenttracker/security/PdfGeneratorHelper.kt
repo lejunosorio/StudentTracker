@@ -1,5 +1,8 @@
 package dev.soloistdev.studenttracker.security
 
+import dev.soloistdev.studenttracker.R
+import dev.soloistdev.studenttracker.data.OrganizationSettings
+import java.util.Locale
 import android.content.Context
 import android.content.Intent
 import android.graphics.Canvas
@@ -76,9 +79,23 @@ object PdfGeneratorHelper {
         val paint = Paint()
 
         // Page Header
-        canvas1.drawText("STUDENT PROFILE REPORT", 40f, 60f, headerPaint)
+        //
+        // The organisation name goes above the report title, because this is the page that
+        // leaves the app: it is handed to a parent or filed by an office, and a report headed
+        // only "STUDENT PROFILE REPORT" gives no clue who produced it.
+        val orgName = OrganizationSettings.organizationName(context)
+        val learnerTerm = OrganizationSettings.learner(context, context.getString(R.string.term_default_learner))
+        var headerY = 60f
+        if (orgName.isNotBlank()) {
+            canvas1.drawText(orgName.uppercase(Locale.getDefault()), 40f, headerY, headerPaint)
+            headerY += 24f
+        }
+        canvas1.drawText(
+            context.getString(R.string.term_profile_report, learnerTerm.uppercase(Locale.getDefault())),
+            40f, headerY, headerPaint
+        )
         paint.color = Color.DKGRAY
-        canvas1.drawRect(40f, 80f, 555f, 82f, paint)
+        canvas1.drawRect(40f, headerY + 20f, 555f, headerY + 22f, paint)
 
         // Dynamic deep-link optical QR payload setup
         val encodedFirst = Uri.encode(student.firstName)
