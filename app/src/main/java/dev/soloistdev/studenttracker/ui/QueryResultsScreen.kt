@@ -627,7 +627,9 @@ fun buildPersonalisedQueue(
     students: List<StudentEntity>,
     insights: Map<Int, StudentInsights.Insight>,
     template: String,
-    toGuardians: Boolean
+    toGuardians: Boolean,
+    /** Recorded against each send, so the log shows which template went out. */
+    templateName: String = ""
 ): List<PersonalisedMessage> {
     val queue = mutableListOf<PersonalisedMessage>()
 
@@ -649,7 +651,10 @@ fun buildPersonalisedQueue(
                         PersonalisedMessage(
                             recipientLabel = "${guardian.name.ifBlank { "Guardian" }} — ${student.firstName} ${student.lastName}",
                             phone = phone,
-                            body = MessageMerge.render(template, data)
+                            body = MessageMerge.render(template, data),
+                            studentId = student.id,
+                            guardianName = guardian.name,
+                            templateName = templateName
                         )
                     )
                 }
@@ -659,7 +664,9 @@ fun buildPersonalisedQueue(
                 PersonalisedMessage(
                     recipientLabel = "${student.firstName} ${student.lastName}",
                     phone = student.contactNumber,
-                    body = MessageMerge.render(template, baseData)
+                    body = MessageMerge.render(template, baseData),
+                    studentId = student.id,
+                    templateName = templateName
                 )
             )
         }

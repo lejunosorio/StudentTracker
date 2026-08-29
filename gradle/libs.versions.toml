@@ -26,6 +26,7 @@ uiText = "1.11.4"
 zxing = "3.5.3"
 zxingAndroidEmbedded = "4.3.0"
 foundation = "1.11.4"
+workRuntime = "2.10.1"
 
 [libraries]
 android-database-sqlcipher = { module = "net.zetetic:android-database-sqlcipher", version.ref = "androidDatabaseSqlcipher" }
@@ -69,6 +70,9 @@ androidx-compose-ui-text = { group = "androidx.compose.ui", name = "ui-text", ve
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 zxing-android-embedded = { module = "com.journeyapps:zxing-android-embedded", version.ref = "zxingAndroidEmbedded" }
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
+# Backups that keep running with the app closed. An alarm cannot promise that across a reboot,
+# a force-stop and doze; this can.
+androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "workRuntime" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -187,6 +187,32 @@ class StudentRepository(private val context: Context) {
         studentDao.deleteIncident(incidentId)
     }
 
+    suspend fun updateIncident(incident: BehaviorIncidentEntity) = withContext(Dispatchers.IO) {
+        studentDao.updateIncident(incident)
+    }
+
+    // Contact log
+    suspend fun getAllContactLog(): List<ContactLogEntity> = withContext(Dispatchers.IO) {
+        studentDao.getAllContactLog()
+    }
+
+    suspend fun getContactLogForStudent(studentId: Int): List<ContactLogEntity> = withContext(Dispatchers.IO) {
+        studentDao.getContactLogForStudent(studentId)
+    }
+
+    suspend fun logContact(entry: ContactLogEntity): Long = withContext(Dispatchers.IO) {
+        studentDao.insertContactLog(entry)
+    }
+
+    /** One transaction for a bulk send, which is how most messages go out. */
+    suspend fun logContacts(entries: List<ContactLogEntity>) = withContext(Dispatchers.IO) {
+        if (entries.isNotEmpty()) studentDao.insertContactLogEntries(entries)
+    }
+
+    suspend fun deleteContactLogEntry(entryId: Int) = withContext(Dispatchers.IO) {
+        studentDao.deleteContactLogEntry(entryId)
+    }
+
     // Message Templates Accessors
     suspend fun getAllMessageTemplates(): List<MessageTemplateEntity> = withContext(Dispatchers.IO) {
         studentDao.getAllMessageTemplates()

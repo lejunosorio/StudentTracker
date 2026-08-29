@@ -6,6 +6,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Storage
@@ -37,6 +38,7 @@ fun AppSettingsScreen(
     onNavigateToAppearance: () -> Unit,
     onNavigateToBiometrics: () -> Unit,
     onNavigateToBackup: () -> Unit,
+    onNavigateToReminders: () -> Unit,
     onNavigateToStorage: () -> Unit,
     onNavigateToSync: () -> Unit,
     onNavigateToCsvImport: () -> Unit
@@ -76,6 +78,13 @@ fun AppSettingsScreen(
                 subtitle = stringResource(R.string.settings_cat_security_desc),
                 icon = Icons.Default.Security,
                 onClick = onNavigateToBiometrics
+            )
+
+            SettingsCategoryRow(
+                title = stringResource(R.string.settings_cat_reminders),
+                subtitle = stringResource(R.string.settings_cat_reminders_desc),
+                icon = Icons.Default.NotificationsActive,
+                onClick = onNavigateToReminders
             )
 
             SettingsCategoryRow(

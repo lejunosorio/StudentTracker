@@ -9,6 +9,20 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!--
+      Class reminders and the morning briefing. Runtime-requested on API 33+, and the reminders
+      feature stays off until the teacher turns it on, so this is never asked for on first launch.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Alarms do not survive a reboot, so the reminders are re-armed once the device is back. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
+      Note there is deliberately no SCHEDULE_EXACT_ALARM. Play restricts it to alarm clocks and
+      calendars, and a reminder that lands within a few minutes of the bell is all this needs.
+    -->
+
     <application
         android:name=".StudentTrackerApplication"
         android:allowBackup="false"
@@ -51,6 +65,40 @@
                 <data android:scheme="studenttracker" android:host="student" />
             </intent-filter>
         </activity>
+
+        <!--
+          Turns a fired alarm into a notification. Not exported: nothing outside this app has any
+          business making it post about a child.
+        -->
+        <receiver
+            android:name=".notifications.ReminderReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".notifications.BootReceiver"
+            android:exported="false"
+            android:directBootAware="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+          Home-screen widget. Exported because the launcher is a different app and has to be able
+          to bind it; it renders a cached summary and holds no way to reach the database.
+        -->
+        <receiver
+            android:name=".widget.TodayWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_today_info" />
+        </receiver>
     </application>
 
 </manifest>

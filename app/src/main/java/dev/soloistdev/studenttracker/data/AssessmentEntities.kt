@@ -43,6 +43,15 @@ data class AssessmentColumnEntity(
     val maxPoints: Double = 100.0,
     val examDate: Long,                // Timestamp of the exam
     val checkDate: Long,               // Timestamp of checking/evaluation
+
+    /**
+     * When work is due back, for assessments that are set rather than sat - homework, a project,
+     * an essay. 0 means nothing is outstanding.
+     *
+     * examDate says when it happened and checkDate when it was marked; neither answers "who has
+     * not handed this in yet", which is a daily question.
+     */
+    val dueDate: Long = 0L,
     val savedFilterId: Int = 0,        // Links to SavedFilterEntity.id (0 = All active students)
     val termId: Int = 0,               // Links to GradingTermEntity.id (0 = unassigned)
     val categoryId: Int = 0,           // Links to AssessmentCategoryEntity.id (0 = uncategorised)

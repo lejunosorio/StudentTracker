@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.SettingsCell
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -73,7 +74,18 @@ fun SavedFiltersScreen(
     var personalisedQueue by remember { mutableStateOf<List<PersonalisedMessage>>(emptyList()) }
     val templates by viewModel.templates.collectAsState()
 
-    var selectedFilterForView by remember { mutableStateOf<SavedFilterEntity?>(null) }
+    // Which filter is drilled into; 0 = the list of filters.
+    //
+    // The id is what survives, not the row. This screen stays on the back stack while a student
+    // profile is open, but Navigation disposes its composition - so a plain `remember` was gone by
+    // the time the teacher pressed Back and the drill-down reset to the list. A SavedFilterEntity
+    // cannot go in a Bundle, and resolving it from the loaded list each time is better anyway:
+    // editing the filter updates the header and the roster instead of leaving a stale copy behind,
+    // and deleting it falls back to the list rather than showing a filter that no longer exists.
+    var selectedFilterId by rememberSaveable { mutableIntStateOf(0) }
+    val selectedFilterForView = remember(filters, selectedFilterId) {
+        filters.firstOrNull { it.id == selectedFilterId }
+    }
 
     var showFilterDialog by remember { mutableStateOf(false) }
     var editingFilter by remember { mutableStateOf<SavedFilterEntity?>(null) }
@@ -125,7 +137,7 @@ fun SavedFiltersScreen(
                 navigationIcon = {
                     IconButton(onClick = {
                         if (selectedFilterForView != null) {
-                            selectedFilterForView = null
+                            selectedFilterId = 0
                         } else {
                             onBack()
                         }
@@ -228,7 +240,7 @@ fun SavedFiltersScreen(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { selectedFilterForView = filter },
+                                    .clickable { selectedFilterId = filter.id },
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                             ) {
                                 Row(

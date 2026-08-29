@@ -17,10 +17,12 @@ import java.util.Locale
  * into a managed risk rather than an unspoken one, by writing a dated snapshot whenever the app
  * goes to the background and keeping the most recent few.
  *
- * Deliberately dependency-free. A background scheduler such as WorkManager would let backups run
- * with the app closed, but that means a persistent background worker for something that only ever
- * needs to happen after the teacher has actually changed data. Hooking the activity lifecycle
- * covers the real case at zero cost, and never runs when there is nothing new to save.
+ * Two things drive it. Backgrounding the app calls [maybeAutoBackup], which catches the data the
+ * teacher just entered at zero cost. That was originally the only trigger, on the reasoning that a
+ * backup is only needed after a change - but it means the last snapshot is always as old as the
+ * last launch, so a teacher who marks a set of papers and then loses the phone before reopening
+ * the app loses the lot. [BackupWorkScheduler] therefore also runs it on a schedule with the app
+ * closed, which is the half of the promise the lifecycle hook could never keep.
  */
 object BackupScheduler {
 
@@ -97,8 +99,28 @@ object BackupScheduler {
         runBackup(context, repository)
     }
 
+    /**
+     * Why a backup run produced no file.
+     *
+     * A caller in the foreground can treat both empty outcomes the same and shrug. A background
+     * worker cannot: "there was nothing to save" is a finished job, and "the key store would not
+     * open" is a job to retry - and eventually to tell the teacher about, because a backup that
+     * has been silently failing for a month is worse than one that was never switched on.
+     */
+    sealed interface Outcome {
+        data class Written(val file: File) : Outcome
+        data object NothingToSave : Outcome
+        data class Failed(val error: Exception?) : Outcome
+    }
+
     /** Writes a snapshot immediately, regardless of the throttle. */
-    suspend fun runBackup(context: Context, repository: StudentRepository): File? = withContext(Dispatchers.IO) {
+    suspend fun runBackup(context: Context, repository: StudentRepository): File? =
+        (runBackupWithOutcome(context, repository) as? Outcome.Written)?.file
+
+    suspend fun runBackupWithOutcome(
+        context: Context,
+        repository: StudentRepository
+    ): Outcome = withContext(Dispatchers.IO) {
         try {
             // Skip a genuinely empty database: a snapshot of nothing would rotate a real backup
             // out of the retention window. Checked across every table the backup carries, so a
@@ -109,21 +131,21 @@ object BackupScheduler {
                     repository.getAllAssessmentColumns().isNotEmpty() ||
                     repository.getAllFormTemplates().isNotEmpty() ||
                     repository.getAllSavedFilters().isNotEmpty()
-            if (!hasAnything) return@withContext null
+            if (!hasAnything) return@withContext Outcome.NothingToSave
 
             val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
             val target = File(backupDir(context), "$FILE_PREFIX$stamp$FILE_SUFFIX")
 
             val ok = JsonSyncEngine.writeEncryptedBackupTo(context, repository, target)
-            if (!ok) return@withContext null
+            if (!ok) return@withContext Outcome.Failed(null)
 
             prefs(context).edit().putLong(KEY_LAST_RUN, System.currentTimeMillis()).apply()
             sealLegacyPlaintextBackups(context)
             pruneOldBackups(context)
-            target
+            Outcome.Written(target)
         } catch (e: Exception) {
             e.printStackTrace()
-            null
+            Outcome.Failed(e)
         }
     }
 

@@ -16,13 +16,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
+import dev.soloistdev.studenttracker.data.ContactLogEntity
+import dev.soloistdev.studenttracker.data.StudentRepository
+import kotlinx.coroutines.launch
 import dev.soloistdev.studenttracker.R
 
 /** One rendered message bound to one phone number. */
 data class PersonalisedMessage(
     val recipientLabel: String,
     val phone: String,
-    val body: String
+    val body: String,
+    /** Who this is about, so the send can be written to the contact log. */
+    val studentId: Int = 0,
+    val guardianName: String = "",
+    val templateName: String = ""
 )
 
 /**
@@ -39,6 +46,8 @@ fun PersonalisedSendDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val repository = remember { StudentRepository(context) }
     var index by remember { mutableIntStateOf(0) }
     var sentCount by remember { mutableIntStateOf(0) }
 
@@ -106,6 +115,22 @@ fun PersonalisedSendDialog(
             Button(onClick = {
                 if (openSms(context, current)) {
                     sentCount++
+                    // Recorded only when the messaging app actually opened. A skipped recipient
+                    // must not look contacted - the whole value of the log is that it is true.
+                    if (current.studentId > 0) {
+                        scope.launch {
+                            repository.logContact(
+                                ContactLogEntity(
+                                    studentId = current.studentId,
+                                    guardianName = current.guardianName,
+                                    phone = current.phone,
+                                    channel = ContactLogEntity.CHANNEL_SMS,
+                                    templateName = current.templateName,
+                                    body = current.body
+                                )
+                            )
+                        }
+                    }
                 }
                 index++
             }) {

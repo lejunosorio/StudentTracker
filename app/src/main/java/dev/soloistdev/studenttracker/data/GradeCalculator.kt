@@ -155,4 +155,152 @@ object GradeCalculator {
         val scored = grades.mapNotNull { it.percent }
         return if (scored.isEmpty()) null else scored.average()
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Projection
+    //
+    // "What do I need on the final to pass?" is the single most-asked question a gradebook gets,
+    // from students and from guardians on report day, and it is the one thing this class could not
+    // answer: everything above runs forwards from scores to a grade, never backwards.
+    //
+    // The inverse is deliberately not re-derived in closed form. Weighted terms renormalise across
+    // categories holding graded work, uncategorised work absorbs the leftover weight, and an
+    // all-unweighted term falls back to total points - three rules that a second implementation
+    // would drift from within a release, at which point the projection quietly contradicts the
+    // grade printed next to it. Instead a hypothetical assessment is fed through
+    // [computeForStudent] itself, so the two can never disagree by construction.
+    // ---------------------------------------------------------------------------------------
+
+    /** An assessment that has not happened yet. */
+    data class Hypothetical(
+        val maxPoints: Double,
+        /** Which bucket it would count towards; 0 for uncategorised. */
+        val categoryId: Int = UNCATEGORISED_ID
+    )
+
+    data class Projection(
+        val targetPercent: Double,
+        val currentPercent: Double?,
+        /** Raw points needed on the hypothetical assessment, clamped to what it is worth. */
+        val requiredScore: Double,
+        val maxPoints: Double,
+        /** The best overall grade this assessment could produce, scoring full marks. */
+        val bestPossiblePercent: Double?,
+        /** True when the target is already met even scoring zero. */
+        val alreadySecured: Boolean,
+        /** True when full marks still fall short of the target. */
+        val unreachable: Boolean
+    ) {
+        /** Required score as a share of the assessment, for wording it as a percentage. */
+        val requiredPercent: Double?
+            get() = if (maxPoints > 0.0) (requiredScore / maxPoints) * 100.0 else null
+    }
+
+    /**
+     * The running grade this student would hold if [hypothetical] were marked [score].
+     *
+     * The synthetic column is given an id far above anything Room will have issued so it cannot
+     * collide with a real one and silently replace its score.
+     */
+    fun gradeWithHypothetical(
+        studentId: Int,
+        columns: List<AssessmentColumnEntity>,
+        scores: List<AssessmentScoreEntity>,
+        categories: List<AssessmentCategoryEntity>,
+        termId: Int,
+        hypothetical: Hypothetical,
+        score: Double
+    ): Double? {
+        val syntheticId = (columns.maxOfOrNull { it.id } ?: 0) + 1_000_000
+
+        val projectedColumns = columns + AssessmentColumnEntity(
+            id = syntheticId,
+            name = "",
+            maxPoints = hypothetical.maxPoints,
+            examDate = 0L,
+            checkDate = 0L,
+            // Must land inside the period being projected, or the scoping in computeForStudent
+            // would drop it and the projection would report no change at all.
+            termId = termId,
+            categoryId = hypothetical.categoryId
+        )
+        val projectedScores = scores + AssessmentScoreEntity(
+            id = syntheticId,
+            columnId = syntheticId,
+            studentId = studentId,
+            score = score.toString()
+        )
+
+        return computeForStudent(studentId, projectedColumns, projectedScores, categories, termId).percent
+    }
+
+    /**
+     * What this student must score on [hypothetical] to finish the period on [targetPercent].
+     *
+     * Solved by bisection rather than algebra, for the reason given above. The grade is monotonic
+     * in the score, so sixty halvings of the interval land well inside a tenth of a point - far
+     * finer than a mark a teacher can actually award.
+     */
+    fun scoreNeededFor(
+        studentId: Int,
+        columns: List<AssessmentColumnEntity>,
+        scores: List<AssessmentScoreEntity>,
+        categories: List<AssessmentCategoryEntity>,
+        termId: Int,
+        hypothetical: Hypothetical,
+        targetPercent: Double
+    ): Projection {
+        val current = computeForStudent(studentId, columns, scores, categories, termId).percent
+        val max = hypothetical.maxPoints.coerceAtLeast(0.0)
+
+        fun gradeAt(score: Double): Double? =
+            gradeWithHypothetical(studentId, columns, scores, categories, termId, hypothetical, score)
+
+        val atZero = gradeAt(0.0)
+        val atMax = gradeAt(max)
+
+        if (atZero != null && atZero >= targetPercent) {
+            return Projection(
+                targetPercent = targetPercent,
+                currentPercent = current,
+                requiredScore = 0.0,
+                maxPoints = max,
+                bestPossiblePercent = atMax,
+                alreadySecured = true,
+                unreachable = false
+            )
+        }
+
+        // Covers both "full marks is not enough" and the case where this assessment carries no
+        // weight at all, so scoring it cannot move the grade in either direction.
+        if (atMax == null || atMax < targetPercent) {
+            return Projection(
+                targetPercent = targetPercent,
+                currentPercent = current,
+                requiredScore = max,
+                maxPoints = max,
+                bestPossiblePercent = atMax,
+                alreadySecured = false,
+                unreachable = true
+            )
+        }
+
+        var low = 0.0
+        var high = max
+        repeat(60) {
+            val mid = (low + high) / 2.0
+            val grade = gradeAt(mid)
+            if (grade != null && grade >= targetPercent) high = mid else low = mid
+        }
+
+        return Projection(
+            targetPercent = targetPercent,
+            currentPercent = current,
+            requiredScore = high,
+            maxPoints = max,
+            bestPossiblePercent = atMax,
+            alreadySecured = false,
+            unreachable = false
+        )
+    }
 }

@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,24 +71,38 @@ fun SeatingChartScreen(
     // Taking the roll from the chart matches how a teacher actually scans a room: read the
     // seats, mark the gaps. Seats become status swatches and dragging is suspended so a roll
     // call cannot accidentally rearrange the layout.
-    var attendanceMode by remember { mutableStateOf(false) }
+    //
+    // Saveable, because opening a student profile from a seat disposes this screen's composition
+    // while it waits on the back stack. Everything below was a plain `remember`, so pressing Back
+    // dropped the teacher out of attendance mode mid-roll with the sheet and date unpicked - the
+    // marks were safely in the database, but the screen had forgotten which register they were in.
+    //
+    // The sheet is held as an id and a name rather than the row itself: an AttendanceRecordEntity
+    // cannot go in a Bundle, and every operation here only ever needed the id anyway. Keeping the
+    // name alongside it means the banner is correct on restore without reloading the record list,
+    // which is only ever fetched when the picker is opened.
+    var attendanceMode by rememberSaveable { mutableStateOf(false) }
     var showRecordPicker by remember { mutableStateOf(false) }
     var attendanceRecords by remember { mutableStateOf<List<AttendanceRecordEntity>>(emptyList()) }
-    var activeRecord by remember { mutableStateOf<AttendanceRecordEntity?>(null) }
-    var activeDateMillis by remember { mutableLongStateOf(0L) }
+    var activeRecordId by rememberSaveable { mutableIntStateOf(0) }
+    var activeRecordName by rememberSaveable { mutableStateOf("") }
+    var activeDateMillis by rememberSaveable { mutableLongStateOf(0L) }
+
+    // Not saveable, and does not need to be: these are rows in the database, re-read below
+    // whenever the sheet or the date changes - including on the way back from a profile.
     val seatStatuses = remember { mutableStateMapOf<Int, String>() }
 
     fun loadSeatStatuses() {
-        val record = activeRecord ?: return
+        if (activeRecordId == 0) return
         scope.launch {
-            val logs = repository.getLogsForDate(record.id, activeDateMillis)
+            val logs = repository.getLogsForDate(activeRecordId, activeDateMillis)
             seatStatuses.clear()
             logs.forEach { seatStatuses[it.studentId] = it.status }
         }
     }
 
     fun cycleSeatStatus(studentId: Int) {
-        val record = activeRecord ?: return
+        if (activeRecordId == 0) return
         val next = when (seatStatuses[studentId] ?: "NOT_SET") {
             "NOT_SET" -> "PRESENT"
             "PRESENT" -> "ABSENT"
@@ -98,11 +113,11 @@ fun SeatingChartScreen(
         scope.launch {
             // The roster for a sheet is materialised as logs up front, but a student added to
             // the class afterwards has no row yet, so fall back to an insert.
-            val updated = repository.updateAttendanceStatus(record.id, activeDateMillis, studentId, next)
+            val updated = repository.updateAttendanceStatus(activeRecordId, activeDateMillis, studentId, next)
             if (updated == 0) {
                 repository.insertAttendanceLog(
                     AttendanceLogEntity(
-                        recordId = record.id,
+                        recordId = activeRecordId,
                         dateMillis = activeDateMillis,
                         studentId = studentId,
                         status = next
@@ -112,9 +127,13 @@ fun SeatingChartScreen(
         }
     }
 
-    // Tracks the active row and column grid counts to draw the background grid
-    var activeGridRows by remember { mutableIntStateOf(0) }
-    var activeGridCols by remember { mutableIntStateOf(0) }
+    // Tracks the active row and column grid counts to draw the background grid.
+    //
+    // Saveable for the same reason as the attendance state: these also drive snap-to-grid and the
+    // seat sizing, so losing them on the way back from a profile left the chart looking the same
+    // but quietly no longer snapping.
+    var activeGridRows by rememberSaveable { mutableIntStateOf(0) }
+    var activeGridCols by rememberSaveable { mutableIntStateOf(0) }
 
     fun refreshStudents() {
         scope.launch {
@@ -128,6 +147,12 @@ fun SeatingChartScreen(
 
     LaunchedEffect(Unit) {
         refreshStudents()
+    }
+
+    // Re-reads the marks whenever the sheet or the date changes, which also covers coming back
+    // from a student profile: the ids above survive that, the seat colours themselves do not.
+    LaunchedEffect(activeRecordId, activeDateMillis) {
+        loadSeatStatuses()
     }
 
     // Filter placed/unplaced students according to active classroom coordinate configurations
@@ -222,7 +247,8 @@ fun SeatingChartScreen(
                     IconButton(onClick = {
                         if (attendanceMode) {
                             attendanceMode = false
-                            activeRecord = null
+                            activeRecordId = 0
+                            activeRecordName = ""
                             seatStatuses.clear()
                         } else {
                             scope.launch {
@@ -254,9 +280,9 @@ fun SeatingChartScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            if (attendanceMode && activeRecord != null) {
+            if (attendanceMode && activeRecordId != 0) {
                 AttendanceSeatBanner(
-                    recordName = activeRecord!!.name,
+                    recordName = activeRecordName,
                     dateMillis = activeDateMillis,
                     placedCount = placedStudents.size,
                     unplacedCount = unplacedStudents.size,
@@ -512,11 +538,13 @@ fun SeatingChartScreen(
             AttendanceRecordPickerDialog(
                 records = attendanceRecords,
                 onPick = { record, dateMillis ->
-                    activeRecord = record
+                    activeRecordId = record.id
+                    activeRecordName = record.name
                     activeDateMillis = dateMillis
                     attendanceMode = true
                     showRecordPicker = false
-                    loadSeatStatuses()
+                    // No explicit load: the effect keyed on the sheet and date covers this and
+                    // the return from a profile through one path rather than two.
                 },
                 onDismiss = { showRecordPicker = false }
             )

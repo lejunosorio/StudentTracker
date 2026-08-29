@@ -110,10 +110,20 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                         FilterEngine.evaluateCondition(value, filter.comparison, filter.value1, filter.value2)
                     }
 
+                    // Only the days these classes actually meet. A filter scoped to one classroom
+                    // takes that classroom's days; anything broader falls back to every day, since
+                    // there is no single timetable to honour.
+                    val classrooms = repository.getAllClassrooms()
+                    val scopedClassroom = classrooms.firstOrNull {
+                        filter.fieldName in setOf("Class", "Classroom") &&
+                                it.name.equals(filter.value1.trim(), ignoreCase = true)
+                    }
+                    val meetingDays = scopedClassroom?.meetingDaySet() ?: emptySet()
+
                     // Built in memory and committed once. A term-long sheet is thousands of
                     // cells, and inserting them one statement at a time took long enough that
                     // creating a record looked like the app had hung.
-                    val daysList = generateDateList(start, end)
+                    val daysList = generateDateList(start, end, meetingDays)
                     val logs = daysList.flatMap { date ->
                         matchedStudents.map { student ->
                             AttendanceLogEntity(
@@ -131,6 +141,34 @@ class AttendanceViewModel(application: Application) : AndroidViewModel(applicati
                 // Suppressed
             }
         }
+    }
+
+    /**
+     * Creates a new sheet with the same name and roster as [record], over a new date range.
+     *
+     * Most sheets are the same shape every term - same class, same filter - and rebuilding one
+     * meant re-picking the filter and both dates from scratch each time.
+     */
+    fun repeatRecord(record: AttendanceRecordEntity, start: Long, end: Long, onDone: (Int) -> Unit = {}) {
+        val label = nextSheetName(record.name)
+        createRecord(label, record.savedFilterId, start, end)
+        onDone(record.savedFilterId)
+    }
+
+    /**
+     * "Quarter 3 - Grade 7" becomes "Quarter 3 - Grade 7 (2)", then "(3)".
+     *
+     * Two sheets with the same name and different dates are indistinguishable in a list, and the
+     * importer matches records on name plus range - so a duplicate name is confusing rather than
+     * harmful, but confusing is enough.
+     */
+    private fun nextSheetName(base: String): String {
+        val stripped = base.replace(Regex("""\s*\(\d+\)$"""), "").trim()
+        val taken = _records.value.map { it.name }.toSet()
+        if (!taken.contains(stripped)) return stripped
+        var n = 2
+        while (taken.contains("$stripped ($n)")) n++
+        return "$stripped ($n)"
     }
 
     fun deleteRecord(recordId: Int) {

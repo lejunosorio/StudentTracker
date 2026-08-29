@@ -151,9 +151,12 @@ object JsonSyncEngine {
                     put("name", c.name)
                     put("start", c.startTime)
                     put("end", c.endTime)
+                    put("meetingDays", c.meetingDays)
                 })
             }
             put("classrooms", classroomsArr)
+
+            val contactLogByStudent = repository.getAllContactLog().groupBy { it.studentId }
 
             val studentsArr = JSONArray()
             activeRoster.forEach { s ->
@@ -165,6 +168,20 @@ object JsonSyncEngine {
                         put("category", b.category)
                         put("description", b.description)
                         put("date", sdfDate.format(Date(b.incidentDate)))
+                        put("actionTaken", b.actionTaken)
+                        put("resolvedAt", b.resolvedAt)
+                    })
+                }
+
+                val contactArr = JSONArray()
+                contactLogByStudent[s.id].orEmpty().forEach { entry ->
+                    contactArr.put(JSONObject().apply {
+                        put("guardianName", entry.guardianName)
+                        put("phone", entry.phone)
+                        put("channel", entry.channel)
+                        put("templateName", entry.templateName)
+                        put("body", entry.body)
+                        put("sentAt", entry.sentAt)
                     })
                 }
 
@@ -183,6 +200,8 @@ object JsonSyncEngine {
                     put("guardiansJson", JSONArray(s.guardiansJson))
                     put("customDataJson", JSONObject(s.customDataJson))
                     put("behaviorIncidents", behaviorArr)
+                    put("contactLog", contactArr)
+                    // picturePath is absent on purpose: photos live on the device that took them.
                 })
             }
             put("students", studentsArr)
@@ -323,6 +342,7 @@ object JsonSyncEngine {
                     put("maxPoints", col.maxPoints)
                     put("examDate", sdfDate.format(Date(col.examDate)))
                     put("checkDate", sdfDate.format(Date(col.checkDate)))
+                    put("dueDate", if (col.dueDate > 0L) sdfDate.format(Date(col.dueDate)) else "")
                     // By name: which grading period this assessment belongs to, which weighted
                     // bucket it counts toward, and which marking scale it is graded against.
                     put("term", termNameById[col.termId] ?: "")
@@ -602,7 +622,8 @@ object JsonSyncEngine {
                         id = existingClassrooms[name.lowercase()]?.id ?: 0,
                         name = name,
                         startTime = cObj.optString("start", "08:00 AM"),
-                        endTime = cObj.optString("end", "04:00 PM")
+                        endTime = cObj.optString("end", "04:00 PM"),
+                        meetingDays = cObj.optString("meetingDays", "")
                     )
                 )
                 classroomsLoaded++
@@ -699,7 +720,10 @@ object JsonSyncEngine {
                 birthday = bdayMillis,
                 address = sObj.optString("address", ""),
                 contactNumber = sObj.optString("contactNumber", ""),
-                picturePath = sObj.optString("picturePath", ""),
+                // Deliberately not read from the payload. A picturePath is a file path on the
+                // device that wrote it, so importing one elsewhere produces a student whose photo
+                // is a broken link. Photos are device-local; the app says so where it matters.
+                picturePath = "",
                 guardiansJson = resolvedGuardiansJson,
                 customDataJson = resolvedCustomDataJson,
                 isDeleted = false,
@@ -717,7 +741,14 @@ object JsonSyncEngine {
                 // now would make this device look newer than every peer, so the next sync in the
                 // other direction would decline to bring anything back.
                 repository.saveStudent(
-                    student.copy(id = existing.id, lastModified = incomingLastModified)
+                    student.copy(
+                        id = existing.id,
+                        lastModified = incomingLastModified,
+                        // The photo stays whatever this device already had. It is not in the
+                        // payload, so carrying the blank across would erase a picture the teacher
+                        // took, every time they imported a backup.
+                        picturePath = existing.picturePath
+                    )
                 )
                 resolvedStudentId = existing.id
                 studentsLoaded++
@@ -754,7 +785,36 @@ object JsonSyncEngine {
                             title = title,
                             category = bObj.optString("category", "Neutral"),
                             description = bObj.optString("description", ""),
-                            incidentDate = bDateMillis
+                            incidentDate = bDateMillis,
+                            actionTaken = bObj.optString("actionTaken", ""),
+                            resolvedAt = bObj.optLong("resolvedAt", 0L)
+                        )
+                    )
+                }
+            }
+
+            // Contact history, de-duplicated on who and when so a re-import does not double it up
+            val contactArr = sObj.optJSONArray("contactLog")
+            if (contactArr != null) {
+                val seenContacts = repository.getContactLogForStudent(resolvedStudentId)
+                    .map { "${it.phone}|${it.sentAt}" }
+                    .toMutableSet()
+
+                for (c in 0 until contactArr.length()) {
+                    val cLog = contactArr.getJSONObject(c)
+                    val phone = cLog.optString("phone", "")
+                    val sentAt = cLog.optLong("sentAt", 0L)
+                    if (!seenContacts.add("$phone|$sentAt")) continue
+
+                    repository.logContact(
+                        ContactLogEntity(
+                            studentId = resolvedStudentId,
+                            guardianName = cLog.optString("guardianName", ""),
+                            phone = phone,
+                            channel = cLog.optString("channel", ContactLogEntity.CHANNEL_SMS),
+                            templateName = cLog.optString("templateName", ""),
+                            body = cLog.optString("body", ""),
+                            sentAt = if (sentAt > 0L) sentAt else System.currentTimeMillis()
                         )
                     )
                 }
@@ -1037,6 +1097,9 @@ object JsonSyncEngine {
                     System.currentTimeMillis()
                 }
 
+                // Blank or unreadable means nothing is outstanding, not "due at the epoch".
+                val dueMillis = parseDateOrZero(sdfBday, gObj.optString("dueDate", ""))
+
                 val termId = termIdByName[gObj.optString("term", "").trim().lowercase()] ?: 0
                 val categoryId = categoryIdByName[gObj.optString("category", "").trim().lowercase()] ?: 0
                 val rubricId = rubricIdByName[gObj.optString("rubric", "").trim().lowercase()] ?: 0
@@ -1050,6 +1113,7 @@ object JsonSyncEngine {
                             examDate = examMillis,
                             checkDate = checkMillis,
                             savedFilterId = 0,
+                            dueDate = dueMillis,
                             termId = termId,
                             categoryId = categoryId,
                             rubricId = rubricId
@@ -1063,6 +1127,7 @@ object JsonSyncEngine {
                         existingColumn.copy(
                             maxPoints = gObj.optDouble("maxPoints", existingColumn.maxPoints),
                             checkDate = checkMillis,
+                            dueDate = dueMillis,
                             termId = termId,
                             categoryId = categoryId,
                             rubricId = rubricId

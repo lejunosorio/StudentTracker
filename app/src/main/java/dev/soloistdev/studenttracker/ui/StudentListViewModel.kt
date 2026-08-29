@@ -47,20 +47,31 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
 
     private val sharedPrefs = application.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
 
+    /** Every student's behaviour notes flattened into one searchable string, keyed by student. */
+    private val _incidentText = MutableStateFlow<Map<Int, String>>(emptyMap())
+
     val students: StateFlow<List<StudentUiState>> = combine(
-        _rawStudents, _searchQuery, _sortOrder, _activeFilter
-    ) { rawList, query, sort, filter ->
+        _rawStudents, _searchQuery, _sortOrder, _activeFilter, _incidentText
+    ) { rawList, query, sort, filter, incidentText ->
 
         var processedList = if (query.isBlank()) {
             rawList
         } else {
+            // Behaviour notes are searchable too. They are often the most useful free text in the
+            // app - "who was the one who helped with the science fair" - and were the one field
+            // search could not reach.
+            val matchedByNote = incidentText
+                .filterValues { it.contains(query, ignoreCase = true) }
+                .keys
+
             rawList.filter { student ->
                 val classes = student.getClassNamesList()
                 student.firstName.contains(query, ignoreCase = true) ||
                         student.lastName.contains(query, ignoreCase = true) ||
                         student.address.contains(query, ignoreCase = true) ||
                         student.contactNumber.contains(query, ignoreCase = true) ||
-                        classes.any { it.contains(query, ignoreCase = true) }
+                        classes.any { it.contains(query, ignoreCase = true) } ||
+                        matchedByNote.contains(student.id)
             }
         }
 
@@ -122,6 +133,14 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             _rawStudents.value = repository.getAllActiveStudents()
             _isInitialLoadCompleted.value = true
+
+            // One pass over the incidents, joined per student, so searching does not re-read the
+            // table on every keystroke.
+            _incidentText.value = repository.getAllIncidents()
+                .groupBy { it.studentId }
+                .mapValues { (_, list) ->
+                    list.joinToString(" ") { "${it.title} ${it.description} ${it.actionTaken}" }
+                }
         }
     }
 
@@ -268,31 +287,59 @@ class StudentListViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    /**
+     * The students as they were before the last bulk edit, so it can be taken back.
+     *
+     * Bulk delete lands in the recycle bin and bulk classroom changes are visible, but a bulk
+     * field edit overwrites a value on dozens of students at once with nothing kept - one wrong
+     * tap and the previous values are gone. Held in memory only: undo is for the seconds after a
+     * mistake, not a second history.
+     */
+    private var lastBulkEditSnapshot: List<StudentEntity> = emptyList()
+
+    private val _undoableEditCount = MutableStateFlow(0)
+    val undoableEditCount: StateFlow<Int> = _undoableEditCount
+
     fun updateCustomFieldForSelected(fieldName: String, newValue: String) {
         val selectedIds = _selectedStudentIds.value
         if (selectedIds.isEmpty()) return
 
         viewModelScope.launch {
             val activeStudents = repository.getAllActiveStudents()
-            selectedIds.forEach { studentId ->
-                val targetStudent = activeStudents.find { it.id == studentId }
-                targetStudent?.let { currentStudent ->
-                    try {
-                        val json = JSONObject(currentStudent.customDataJson)
-                        json.put(fieldName, newValue.trim())
+            val affected = activeStudents.filter { it.id in selectedIds }
+            lastBulkEditSnapshot = affected
 
-                        val updatedStudent = currentStudent.copy(
-                            customDataJson = json.toString()
-                        )
-                        repository.saveStudent(updatedStudent)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
+            affected.forEach { currentStudent ->
+                try {
+                    val json = JSONObject(currentStudent.customDataJson)
+                    json.put(fieldName, newValue.trim())
+                    repository.saveStudent(currentStudent.copy(customDataJson = json.toString()))
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
             }
+            _undoableEditCount.value = affected.size
             clearSelection()
             loadStudents()
         }
+    }
+
+    /** Puts every student in the snapshot back exactly as they were. */
+    fun undoLastBulkEdit(onDone: () -> Unit = {}) {
+        val snapshot = lastBulkEditSnapshot
+        if (snapshot.isEmpty()) return
+        viewModelScope.launch {
+            snapshot.forEach { repository.saveStudent(it) }
+            lastBulkEditSnapshot = emptyList()
+            _undoableEditCount.value = 0
+            loadStudents()
+            onDone()
+        }
+    }
+
+    fun clearUndo() {
+        lastBulkEditSnapshot = emptyList()
+        _undoableEditCount.value = 0
     }
 
     fun createManualGradebookRecord(

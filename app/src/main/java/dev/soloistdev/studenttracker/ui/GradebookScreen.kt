@@ -62,6 +62,7 @@ fun GradebookScreen(
     var showTermEditor by remember { mutableStateOf(false) }
     var showCategoryEditor by remember { mutableStateOf(false) }
     var expandedGradeStudentId by remember { mutableIntStateOf(-1) }
+    var projectingStudent by remember { mutableStateOf<StudentEntity?>(null) }
 
     // Sheet currently open in the edit dialog
     var editingColumn by remember { mutableStateOf<AssessmentColumnEntity?>(null) }
@@ -187,7 +188,8 @@ fun GradebookScreen(
                 classAverage = classAverage,
                 expandedStudentId = expandedGradeStudentId,
                 onToggleExpand = { id -> expandedGradeStudentId = if (expandedGradeStudentId == id) -1 else id },
-                onSelectTerm = { viewModel.selectTerm(it) }
+                onSelectTerm = { viewModel.selectTerm(it) },
+                onProject = { projectingStudent = it }
             )
         } else if (activeColumn == null) {
             // ==========================================
@@ -443,6 +445,17 @@ fun GradebookScreen(
                     editingColumn = null
                 },
                 onDismiss = { editingColumn = null }
+            )
+        }
+
+        projectingStudent?.let { target ->
+            GradeProjectionDialog(
+                student = target,
+                columns = columns,
+                scores = scores,
+                categories = categories,
+                termId = selectedTermId,
+                onDismiss = { projectingStudent = null }
             )
         }
 
@@ -802,7 +815,8 @@ private fun GradesRoster(
     classAverage: Double?,
     expandedStudentId: Int,
     onToggleExpand: (Int) -> Unit,
-    onSelectTerm: (Int) -> Unit
+    onSelectTerm: (Int) -> Unit,
+    onProject: (StudentEntity) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -929,6 +943,17 @@ private fun GradesRoster(
                                     fontSize = 10.sp,
                                     color = MaterialTheme.colorScheme.error
                                 )
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+                            TextButton(onClick = { onProject(student) }) {
+                                Icon(
+                                    Icons.Default.Calculate,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(stringResource(R.string.gradebook_whatif), fontSize = 12.sp)
                             }
                         }
                     }

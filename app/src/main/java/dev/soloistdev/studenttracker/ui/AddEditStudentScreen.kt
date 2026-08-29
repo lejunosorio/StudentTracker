@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -169,6 +170,7 @@ fun AddEditStudentScreen(
                                 Text(
                                     text = stringResource(R.string.add_photo),
                                     fontSize = 12.sp,
+
                                     color = MaterialTheme.colorScheme.onSecondaryContainer
                                 )
                             }
@@ -176,6 +178,19 @@ fun AddEditStudentScreen(
                     )
                 }
             }
+
+            // Said plainly, because the app carries everything else off the device and this is the
+            // one thing it cannot. A restored student showing initials would otherwise look broken.
+            Text(
+                text = stringResource(R.string.photos_device_local),
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+            )
 
             // LAST NAME
             OutlinedTextField(

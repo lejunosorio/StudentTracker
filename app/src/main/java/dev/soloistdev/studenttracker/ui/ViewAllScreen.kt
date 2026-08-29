@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ManageSearch
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +34,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,6 +77,7 @@ fun ViewAllScreen(
     onOpenScanAttendance: () -> Unit,
     onOpenAttendanceWithArgs: (Int, Long) -> Unit,
     onOpenGradebook: () -> Unit,
+    onOpenToday: () -> Unit,
     onOpenInsights: () -> Unit,
     onOpenClassrooms: () -> Unit,
     onOpenQueryBuilder: () -> Unit,
@@ -109,7 +112,13 @@ fun ViewAllScreen(
     val repository = remember { StudentRepository(context) }
 
     // null = State A (Classrooms Board), non-null = State B (Directory List)
-    var selectedClassroomForView by remember { mutableStateOf<String?>(null) }
+    //
+    // Saveable, not just remembered. This screen stays on the back stack while a profile is open,
+    // but Navigation disposes its composition - so a plain `remember` is gone by the time the
+    // teacher presses Back, and the drill-down into a classroom silently reset to the board.
+    // Search, sort and filter never had the bug because they live in the ViewModel, which is
+    // scoped to the back stack entry and survives on its own.
+    var selectedClassroomForView by rememberSaveable { mutableStateOf<String?>(null) }
 
     // Dynamically compile a distinct, sorted list of registered classrooms from the student database by flatMapping classroom list
     val distinctClassrooms = remember(students) {
@@ -182,6 +191,7 @@ fun ViewAllScreen(
     LaunchedEffect(Unit) {
         viewModel.loadData()
     }
+    val snackbarHostState = remember { SnackbarHostState() }
     var showFilterSheet by remember { mutableStateOf(false) }
     var showSortSheet by remember { mutableStateOf(false) }
     var showBulkDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -213,6 +223,7 @@ fun ViewAllScreen(
     var showAddStudentsToClassDialog by remember { mutableStateOf(false) }
     var showClassroomAddOptionsDialog by remember { mutableStateOf(false) }
     var showColdCallDialog by remember { mutableStateOf(false) }
+    var showGroupDialog by remember { mutableStateOf(false) }
     var showProgressSlipDialog by remember { mutableStateOf(false) }
     var showShareClassesDialog by remember { mutableStateOf(false) }
     var isGeneratingSlips by remember { mutableStateOf(false) }
@@ -321,6 +332,20 @@ fun ViewAllScreen(
                             scope.launch {
                                 drawerState.close()
                                 onOpenGradebook()
+                            }
+                        },
+                        colors = drawerItemColors,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                    )
+
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.Today, contentDescription = null) },
+                        label = { Text(stringResource(R.string.menu_today)) },
+                        selected = false,
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                onOpenToday()
                             }
                         },
                         colors = drawerItemColors,
@@ -455,6 +480,7 @@ fun ViewAllScreen(
         }
     ) {
         Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
                 if (isSelectionMode) {
                     TopAppBar(
@@ -607,6 +633,14 @@ fun ViewAllScreen(
                                         onClick = {
                                             normalMenuExpanded = false
                                             showColdCallDialog = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.s_make_groups)) },
+                                        leadingIcon = { Icon(Icons.Default.Groups, null, tint = MaterialTheme.colorScheme.primary) },
+                                        onClick = {
+                                            normalMenuExpanded = false
+                                            showGroupDialog = true
                                         }
                                     )
                                     DropdownMenuItem(
@@ -1096,8 +1130,25 @@ fun ViewAllScreen(
                 selectedCount = selectedStudentIds.size,
                 availableTemplates = availableTemplates,
                 onApplyChanges = { fieldName, newValue ->
+                    val count = selectedStudentIds.size
                     viewModel.updateCustomFieldForSelected(fieldName, newValue)
-                    Toast.makeText(context, R.string.toast_bulk_edit_success, Toast.LENGTH_SHORT).show()
+                    // A bulk field edit overwrites a value on dozens of students with nothing
+                    // kept, unlike a bulk delete which lands in the recycle bin. The offer to
+                    // undo is what makes it safe to try.
+                    scope.launch {
+                        val result = snackbarHostState.showSnackbar(
+                            message = context.getString(R.string.bulk_edit_applied, count),
+                            actionLabel = context.getString(R.string.bulk_undo),
+                            duration = SnackbarDuration.Long
+                        )
+                        if (result == SnackbarResult.ActionPerformed) {
+                            viewModel.undoLastBulkEdit {
+                                Toast.makeText(context, R.string.bulk_undone, Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            viewModel.clearUndo()
+                        }
+                    }
                 },
                 onDismiss = { showBulkEditSheet = false }
             )
@@ -1673,6 +1724,13 @@ fun ViewAllScreen(
                 className = selectedClassroomForView.takeIf { it != null && it != "All" } ?: "",
                 students = filteredDirectoryStudents.map { it.student },
                 onDismiss = { showColdCallDialog = false }
+            )
+        }
+        if (showGroupDialog) {
+            GroupGeneratorDialog(
+                className = selectedClassroomForView.takeIf { it != null && it != "All" } ?: "",
+                students = filteredDirectoryStudents.map { it.student },
+                onDismiss = { showGroupDialog = false }
             )
         }
         // DATABASE BULK REMOVE FROM CLASS COHORT DIALOG

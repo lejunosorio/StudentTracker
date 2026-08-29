@@ -7,4 +7,15 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!--
+      Widget palette. A widget draws outside the Compose theme, so it cannot read the app's
+      colour scheme and has to carry its own - mirrored in values-night so it follows the system
+      rather than sitting as a white slab on a dark home screen.
+    -->
+    <color name="widget_background">#FFF3EDF7</color>
+    <color name="widget_accent">#FF6750A4</color>
+    <color name="widget_on_background">#FF1D1B20</color>
+    <color name="widget_on_background_muted">#991D1B20</color>
+    <color name="widget_action_background">#FFE8DEF8</color>
 </resources>

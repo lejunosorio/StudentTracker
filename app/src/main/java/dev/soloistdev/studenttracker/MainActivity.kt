@@ -15,9 +15,13 @@ import androidx.compose.ui.Modifier
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import dev.soloistdev.studenttracker.data.BackupScheduler
+import dev.soloistdev.studenttracker.data.BackupWorkScheduler
 import dev.soloistdev.studenttracker.data.StudentRepository
+import dev.soloistdev.studenttracker.notifications.Notifier
+import dev.soloistdev.studenttracker.notifications.ReminderScheduler
 import dev.soloistdev.studenttracker.security.IntegrityChecker
 import dev.soloistdev.studenttracker.ui.AppNavigation
+import dev.soloistdev.studenttracker.ui.PendingDestination
 import dev.soloistdev.studenttracker.ui.theme.StudentTrackerTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -54,6 +58,26 @@ class MainActivity : FragmentActivity() {
         }
 
         window.decorView.filterTouchesWhenObscured = true
+
+        // Where the teacher asked to land, if they arrived from a notification or the widget.
+        // Held rather than acted on: AppNavigation releases it only after the security gate.
+        PendingDestination.request(intent?.getStringExtra(Notifier.EXTRA_ROUTE))
+
+        val appContext = applicationContext
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // Channels have to exist before anything is posted, and they are cheap to
+                // re-declare - which also picks up a renamed channel after a language change.
+                Notifier.ensureChannels(appContext)
+                // Alarms are lost to reboots and updates, and the schedule they are derived from
+                // changes whenever a classroom is edited. Re-arming on every launch is the cheapest
+                // way to keep them honest.
+                ReminderScheduler.reschedule(appContext)
+                BackupWorkScheduler.sync(appContext)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
 
         setContent {
             val context = this
@@ -106,6 +130,7 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        PendingDestination.request(intent.getStringExtra(Notifier.EXTRA_ROUTE))
     }
 
     /**

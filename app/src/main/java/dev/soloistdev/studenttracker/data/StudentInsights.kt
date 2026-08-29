@@ -27,6 +27,15 @@ object StudentInsights {
     private const val REPEATED_INCIDENTS_THRESHOLD = 2
 
     /**
+     * Consecutive absences that warrant a call today.
+     *
+     * An absence *rate* is the right long-run measure and completely blind to pattern: three days
+     * in a row inside a good term barely moves the percentage, and it is the thing schools
+     * actually act on. Counted over marked days only, so an untaken sheet does not break a run.
+     */
+    const val CONSECUTIVE_ABSENCE_THRESHOLD = 3
+
+    /**
      * Marked days needed before an absence rate means anything.
      *
      * Without this, one absence on the only day taken so far reads as 100% absent and the student
@@ -66,8 +75,66 @@ object StudentInsights {
         val incidentCount: Int,
         val negativeIncidents: Int,
         val riskLevel: RiskLevel,
-        val reasons: List<String>
+        val reasons: List<String>,
+        /** Absences in a row as of the most recent marked day. */
+        val currentAbsenceStreak: Int = 0,
+        /** Negative incidents with no action recorded against them. */
+        val openConcerns: Int = 0,
+        /** Millis since a guardian was last contacted, or null if never. */
+        val millisSinceLastContact: Long? = null
+    ) {
+        val isOnAbsenceStreak: Boolean get() = currentAbsenceStreak >= CONSECUTIVE_ABSENCE_THRESHOLD
+    }
+
+    /**
+     * How a whole class is doing, rather than one child at a time.
+     *
+     * Everything here was per-student, which answers "who needs help" but never "did that paper
+     * land". A class average of 51% on one assessment is a fact about the assessment.
+     */
+    data class ClassSummary(
+        val students: Int,
+        val atRisk: Int,
+        val watch: Int,
+        val attendanceRate: Double?,
+        val averageGrade: Double?,
+        val openConcerns: Int,
+        val onAbsenceStreak: Int
     )
+
+    fun summarise(insights: Collection<Insight>): ClassSummary {
+        val marked = insights.sumOf { it.attendance.marked }
+        val present = insights.sumOf { it.attendance.present }
+        val grades = insights.mapNotNull { it.gradePercent }
+
+        return ClassSummary(
+            students = insights.size,
+            atRisk = insights.count { it.riskLevel == RiskLevel.AT_RISK },
+            watch = insights.count { it.riskLevel == RiskLevel.WATCH },
+            attendanceRate = if (marked == 0) null else present.toDouble() / marked * 100.0,
+            averageGrade = if (grades.isEmpty()) null else grades.average(),
+            openConcerns = insights.sumOf { it.openConcerns },
+            onAbsenceStreak = insights.count { it.isOnAbsenceStreak }
+        )
+    }
+
+    /**
+     * Absences at the end of the marked run, oldest-to-newest.
+     *
+     * Unmarked days are skipped rather than treated as present: a sheet nobody filled in is
+     * missing information, not evidence the student turned up.
+     */
+    fun currentAbsenceStreak(logs: List<AttendanceLogEntity>): Int {
+        var streak = 0
+        logs.sortedByDescending { it.dateMillis }.forEach { log ->
+            when (log.status) {
+                "NOT_SET" -> return@forEach
+                "ABSENT" -> streak++
+                else -> return streak
+            }
+        }
+        return streak
+    }
 
     /**
      * @param term restricts every part of the picture to one grading period. Grades are scoped by
@@ -84,7 +151,8 @@ object StudentInsights {
         scores: List<AssessmentScoreEntity>,
         categories: List<AssessmentCategoryEntity>,
         incidents: List<BehaviorIncidentEntity>,
-        term: GradingTermEntity? = null
+        term: GradingTermEntity? = null,
+        contactLog: List<ContactLogEntity> = emptyList()
     ): Map<Int, Insight> {
         val window = term?.let { dateWindowOf(it) }
         val termId = term?.id ?: 0
@@ -94,6 +162,11 @@ object StudentInsights {
 
         val logsByStudent = scopedLogs.groupBy { it.studentId }
         val incidentsByStudent = scopedIncidents.groupBy { it.studentId }
+        // Contact is never scoped to a term: "when did anyone last speak to this family" is a
+        // question about now, not about a quarter.
+        val lastContactByStudent = contactLog.groupBy { it.studentId }
+            .mapValues { (_, entries) -> entries.maxOf { it.sentAt } }
+        val now = System.currentTimeMillis()
 
         return students.associate { student ->
             val studentLogs = logsByStudent[student.id].orEmpty()
@@ -111,11 +184,26 @@ object StudentInsights {
             val studentIncidents = incidentsByStudent[student.id].orEmpty()
             val negative = studentIncidents.count { it.category.equals("Negative", ignoreCase = true) }
 
+            val streak = currentAbsenceStreak(studentLogs)
+            val openConcerns = studentIncidents.count { it.isOpenConcern }
+            val lastContact = lastContactByStudent[student.id]
+
             val reasons = mutableListOf<String>()
-            if (attendance.isChronicallyAbsent) {
-                val pct = (attendance.absenceRate ?: 0.0) * 100.0
-                reasons.add("Absent ${String.format(java.util.Locale.US, "%.0f", pct)}% of marked days")
+
+            // Attendance contributes at most one reason. A run of absences and a high absence
+            // rate are usually the same problem described twice, and counting both would push a
+            // student to AT_RISK over a single concern - which is how a risk level stops meaning
+            // anything. The streak wins the wording: it is happening now and can be acted on
+            // today, where a percentage describes the term.
+            val attendanceReason = when {
+                streak >= CONSECUTIVE_ABSENCE_THRESHOLD -> "Absent $streak days running"
+                attendance.isChronicallyAbsent -> {
+                    val pct = (attendance.absenceRate ?: 0.0) * 100.0
+                    "Absent ${String.format(java.util.Locale.US, "%.0f", pct)}% of marked days"
+                }
+                else -> null
             }
+            attendanceReason?.let { reasons.add(it) }
             if (grade != null && grade < FAILING_GRADE_THRESHOLD) {
                 reasons.add("Running grade ${String.format(java.util.Locale.US, "%.1f", grade)}%")
             }
@@ -136,7 +224,10 @@ object StudentInsights {
                 incidentCount = studentIncidents.size,
                 negativeIncidents = negative,
                 riskLevel = level,
-                reasons = reasons
+                reasons = reasons,
+                currentAbsenceStreak = streak,
+                openConcerns = openConcerns,
+                millisSinceLastContact = lastContact?.let { now - it }
             )
         }
     }

@@ -25,5 +25,23 @@ data class BehaviorIncidentEntity(
     val description: String,
     val timestamp: Long = System.currentTimeMillis(),
     val incidentDate: Long = System.currentTimeMillis(),
-    val photoPath: String = ""
-)
+    val photoPath: String = "",
+
+    /**
+     * What was done about it, and when it was closed.
+     *
+     * The log recorded what happened and nothing else, which answers half the question. At a
+     * parent conference or a referral the useful part is what the school did next, and an
+     * incident left open is a reminder rather than a note.
+     */
+    val actionTaken: String = "",
+
+    /** Epoch millis when this was closed off; 0 means still open. */
+    val resolvedAt: Long = 0L
+) {
+    val isResolved: Boolean get() = resolvedAt > 0L
+
+    /** Open concerns worth chasing. Positive notes are records, not tasks. */
+    val isOpenConcern: Boolean
+        get() = !isResolved && category.equals("Negative", ignoreCase = true)
+}

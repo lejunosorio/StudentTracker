@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
@@ -152,6 +153,16 @@ fun ClassroomsScreen(onBack: () -> Unit) {
             var name by remember { mutableStateOf(editingClassroom?.name ?: "") }
             var startTime by remember { mutableStateOf(editingClassroom?.startTime ?: "08:00 AM") }
             var endTime by remember { mutableStateOf(editingClassroom?.endTime ?: "04:00 PM") }
+            // A new classroom defaults to the ordinary school week; an existing one keeps whatever
+            // it had, including "unspecified", which still means every day.
+            val selectedDays = remember {
+                mutableStateListOf<Int>().apply {
+                    addAll(
+                        editingClassroom?.meetingDaySet()
+                            ?: ClassroomEntity.WEEKDAYS
+                    )
+                }
+            }
 
             AlertDialog(
                 onDismissRequest = { showDialog = false },
@@ -192,6 +203,35 @@ fun ClassroomsScreen(onBack: () -> Unit) {
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
+
+                        // Which days it actually meets. Without this the app assumed every class
+                        // ran every day, so attendance sheets grew weekend columns and "up next"
+                        // offered Monday's class on a Sunday.
+                        Text(
+                            text = stringResource(R.string.classroom_meeting_days),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            ClassroomEntity.DAY_ORDER.forEach { day ->
+                                val on = selectedDays.contains(day)
+                                FilterChip(
+                                    selected = on,
+                                    onClick = {
+                                        if (on) selectedDays.remove(day) else selectedDays.add(day)
+                                    },
+                                    label = { Text(ClassroomEntity.shortLabel(day), fontSize = 11.sp) }
+                                )
+                            }
+                        }
+                        if (selectedDays.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.classroom_meeting_days_all),
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
                     }
                 },
                 confirmButton = {
@@ -205,7 +245,8 @@ fun ClassroomsScreen(onBack: () -> Unit) {
                                         id = editingClassroom?.id ?: 0,
                                         name = name.trim(),
                                         startTime = startTime.trim(),
-                                        endTime = endTime.trim()
+                                        endTime = endTime.trim(),
+                                        meetingDays = ClassroomEntity.encode(selectedDays)
                                     )
                                     repository.insertClassroom(entity)
                                     refreshClassrooms()

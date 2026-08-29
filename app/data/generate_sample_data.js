@@ -20,12 +20,12 @@ const dateOf = (y, m, d) => new Date(y, m - 1, d);
 // --- classrooms -------------------------------------------------------------
 // Section names follow the usual Philippine public-school convention.
 const CLASSROOMS = [
-  { name: 'Grade 7 - Sampaguita', start: '07:30 AM', end: '12:00 PM' },
-  { name: 'Grade 7 - Ilang-Ilang', start: '07:30 AM', end: '12:00 PM' },
-  { name: 'Grade 8 - Rizal', start: '08:00 AM', end: '01:00 PM' },
-  { name: 'Grade 8 - Mabini', start: '10:00 AM', end: '03:00 PM' },
-  { name: 'Grade 9 - Narra', start: '12:30 PM', end: '05:30 PM' },
-  { name: 'Grade 10 - Molave', start: '01:00 PM', end: '06:00 PM' },
+  { name: 'Grade 7 - Sampaguita', start: '07:30 AM', end: '12:00 PM', meetingDays: '2,3,4,5,6' },
+  { name: 'Grade 7 - Ilang-Ilang', start: '07:30 AM', end: '12:00 PM', meetingDays: '2,3,4,5,6' },
+  { name: 'Grade 8 - Rizal', start: '08:00 AM', end: '01:00 PM', meetingDays: '2,3,4,5,6' },
+  { name: 'Grade 8 - Mabini', start: '10:00 AM', end: '03:00 PM', meetingDays: '2,3,4,5,6' },
+  { name: 'Grade 9 - Narra', start: '12:30 PM', end: '05:30 PM', meetingDays: '2,3,4,5,6' },
+  { name: 'Grade 10 - Molave', start: '01:00 PM', end: '06:00 PM', meetingDays: '2,3,4,5,6' },
 ];
 
 // --- real, mappable Metro Manila addresses ----------------------------------
@@ -242,11 +242,50 @@ for (const s of students) {
     if (roll < 0.55) { category = 'Positive'; source = pick(POSITIVE); }
     else if (roll < 0.85) { category = 'Negative'; source = pick(NEGATIVE); }
     else { category = 'Neutral'; source = pick(NEUTRAL); }
-    s.behavior.push({
+    const note = {
       title: source[0],
       category,
       description: source[1],
       date: incidentDate(),
+    };
+    // Most negative notes get followed up; a few stay open so the screen has something to show.
+    if (category === 'Negative' && rnd() < 0.6) {
+      note.actionTaken = pick([
+        'Spoke with the student after class.',
+        'Called home and agreed a plan with the guardian.',
+        'Referred to guidance for follow-up.',
+        'Moved seat and checked in the next day.',
+      ]);
+      note.resolvedAt = Date.parse(note.date.slice(6) + '-' + note.date.slice(0, 2) + '-' + note.date.slice(3, 5)) + 86400000;
+    }
+    s.behavior.push(note);
+  }
+}
+
+// --- contact history ---
+// Roughly half the roster has been contacted at some point, weighted toward students with
+// negative notes - which is what a real log looks like.
+const CONTACT_BODIES = [
+  'Called about the recent absences. Guardian will follow up at home.',
+  'Discussed the missing requirement in Science.',
+  'Shared good news about the improvement this quarter.',
+  'Left a message; no answer.',
+];
+for (const s of students) {
+  const negatives = s.behavior.filter((b) => b.category === 'Negative').length;
+  const chance = negatives > 0 ? 0.75 : 0.3;
+  if (rnd() > chance) continue;
+  const count = negatives > 1 ? rint(1, 3) : 1;
+  s.contactLog = [];
+  for (let i = 0; i < count; i++) {
+    const g = s.guardians[0];
+    s.contactLog.push({
+      guardianName: g.name,
+      phone: g.phones[0],
+      channel: rnd() < 0.7 ? 'SMS' : 'Call',
+      templateName: rnd() < 0.5 ? 'Absence follow-up' : '',
+      body: pick(CONTACT_BODIES),
+      sentAt: dateOf(2026, rint(1, 3), rint(1, 27)).getTime(),
     });
   }
 }
@@ -342,13 +381,16 @@ const ASSESSMENT_PLAN = [
 ];
 
 const gradeBook = ASSESSMENT_PLAN.map(([name, maxPoints, category, term, rubric, examDate, checkDate, difficulty]) => {
+  // Performance tasks and essays are handed in; quizzes and exams are sat. Only the former
+  // carry a due date, which is what "who has not handed this in" is asking about.
+  const isHandedIn = category === 'Performance Task';
   const isFuture = term === 'Quarter 4';
   const grades = students.map((s) => {
     // A few blanks in the live quarter; earlier quarters are fully marked.
     if (isFuture && rnd() < 0.25) return { studentIdentifier: idOf(s), score: '' };
     return { studentIdentifier: idOf(s), score: scoreFor(s, maxPoints, difficulty) };
   });
-  return { name, maxPoints, examDate, checkDate, term, category, rubric, grades };
+  return { name, maxPoints, examDate, checkDate, dueDate: isHandedIn ? checkDate : '', term, category, rubric, grades };
 });
 
 // --- attendance -------------------------------------------------------------
@@ -465,6 +507,7 @@ const payload = {
     guardiansJson: s.guardians,
     customDataJson: s.custom,
     behaviorIncidents: s.behavior,
+    contactLog: s.contactLog || [],
   })),
   formTemplates,
   savedFilters,

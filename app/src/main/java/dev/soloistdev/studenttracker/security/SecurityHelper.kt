@@ -70,6 +70,20 @@ object SecurityHelper {
         return generated.toCharArray()
     }
 
+    /**
+     * Whether the app asks for biometrics or a PIN on launch.
+     *
+     * Read by anything that puts student data somewhere the gate does not cover - a notification,
+     * a home-screen widget - so it can fall back to counts instead of names. Fails closed: if the
+     * key store will not open, assume the gate is on rather than leaking names on a guess.
+     */
+    fun isSecurityGateEnabled(context: Context): Boolean =
+        try {
+            openPrefs(context, buildMasterKey(context)).getBoolean("security_gate_enabled", true)
+        } catch (_: Exception) {
+            true
+        }
+
     private fun buildMasterKey(context: Context): MasterKey =
         try {
             // Enforce maximum hardware isolation via StrongBox (Secure Element) with standard TEE Fallback

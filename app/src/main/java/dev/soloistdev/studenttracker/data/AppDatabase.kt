@@ -26,9 +26,10 @@ import java.io.IOException
         AssessmentCategoryEntity::class,
         RubricEntity::class,
         RubricLevelEntity::class,
-        ParticipationCountEntity::class
+        ParticipationCountEntity::class,
+        ContactLogEntity::class
     ],
-    version = 19, // Version 19: attendance_logs indices
+    version = 20, // Version 20: meeting days, incident follow-up, due dates, contact log
     // Exported so each version is checked in and future migrations can be validated against a
     // known-good schema instead of by inspection.
     exportSchema = true
@@ -120,6 +121,12 @@ abstract class AppDatabase : RoomDatabase() {
                         SecurityHelper.DATABASE_NAME
                     )
                         .openHelperFactory(factory)
+                        // No migrations are registered while the app is pre-release, so a schema
+                        // change has to be allowed to recreate the database rather than throwing
+                        // "a migration from N to N+1 was required but not found" on every launch.
+                        // This DISCARDS local data on a version bump - fine before release, and
+                        // the thing to replace with real migrations before anyone else installs it.
+                        .fallbackToDestructiveMigration(dropAllTables = true)
                         .build().also {
                             it.openHelper.writableDatabase
                         }

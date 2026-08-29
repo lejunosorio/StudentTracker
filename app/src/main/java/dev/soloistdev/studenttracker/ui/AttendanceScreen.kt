@@ -53,6 +53,7 @@ fun AttendanceScreen(
 
     // Sheet open in the rename / date-range editor
     var editingRecord by remember { mutableStateOf<AttendanceRecordEntity?>(null) }
+    var repeatingRecord by remember { mutableStateOf<AttendanceRecordEntity?>(null) }
 
     val errorSavedFilterMsg = stringResource(R.string.error_create_saved_filter)
     val attendanceCreatedMsg = stringResource(R.string.toast_attendance_created)
@@ -199,6 +200,16 @@ fun AttendanceScreen(
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(record.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                                             Text("Filter: $filterName • Date: $rangeStr", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                                        }
+                                        // Same class, same roster, new dates. Most sheets are the
+                                        // same shape every term, and rebuilding one meant picking
+                                        // the filter and both dates again from scratch.
+                                        IconButton(onClick = { repeatingRecord = record }) {
+                                            Icon(
+                                                Icons.Default.ContentCopy,
+                                                contentDescription = stringResource(R.string.attendance_repeat),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
                                         }
                                         IconButton(onClick = { editingRecord = record }) {
                                             Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.cd_edit_sheet), tint = MaterialTheme.colorScheme.primary)
@@ -402,6 +413,68 @@ fun AttendanceScreen(
                     showCreateDialog = false
                     Toast.makeText(context, attendanceCreatedMsg, Toast.LENGTH_SHORT).show()
                 }
+            )
+        }
+    }
+
+    repeatingRecord?.let { source ->
+        // Defaults to the same span as the sheet being repeated, starting today - a term-length
+        // sheet repeats as a term, a week repeats as a week.
+        val span = (source.endDate - source.startDate).coerceAtLeast(0L)
+        var newStart by remember(source.id) { mutableLongStateOf(System.currentTimeMillis()) }
+        var newEnd by remember(source.id) { mutableLongStateOf(System.currentTimeMillis() + span) }
+        var pickingStart by remember(source.id) { mutableStateOf(false) }
+        var pickingEnd by remember(source.id) { mutableStateOf(false) }
+        val sdf = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
+
+        AlertDialog(
+            onDismissRequest = { repeatingRecord = null },
+            title = { Text(stringResource(R.string.attendance_repeat), fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(source.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text(
+                        text = stringResource(R.string.attendance_repeat_desc),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                    OutlinedButton(
+                        onClick = { pickingStart = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(stringResource(R.string.attendance_start_date_label, sdf.format(Date(newStart)))) }
+                    OutlinedButton(
+                        onClick = { pickingEnd = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(stringResource(R.string.attendance_end_date_label, sdf.format(Date(newEnd)))) }
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = newStart <= newEnd,
+                    onClick = {
+                        viewModel.repeatRecord(source, newStart, newEnd)
+                        repeatingRecord = null
+                    }
+                ) { Text(stringResource(R.string.action_save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { repeatingRecord = null }) { Text(stringResource(R.string.action_cancel)) }
+            },
+            shape = RoundedCornerShape(28.dp)
+        )
+
+        if (pickingStart) {
+            WheelDatePickerDialog(
+                initialDateMillis = newStart,
+                onDismiss = { pickingStart = false },
+                onConfirm = { picked -> newStart = picked; pickingStart = false }
+            )
+        }
+        if (pickingEnd) {
+            WheelDatePickerDialog(
+                initialDateMillis = newEnd,
+                onDismiss = { pickingEnd = false },
+                onConfirm = { picked -> newEnd = picked; pickingEnd = false }
             )
         }
     }

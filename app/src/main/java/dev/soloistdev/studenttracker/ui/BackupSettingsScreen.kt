@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.ui.text.input.KeyboardType
 import dev.soloistdev.studenttracker.data.BackupScheduler
+import dev.soloistdev.studenttracker.data.BackupWorkScheduler
 import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.CsvExportEngine
 import dev.soloistdev.studenttracker.data.ImportResult
@@ -149,6 +150,13 @@ fun BackupSettingsScreen(onBack: () -> Unit) {
                     onClick = { promptExport("CSV") }
                 )
             }
+
+            Text(
+                text = stringResource(R.string.photos_device_local),
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
 
             SettingsSection(stringResource(R.string.settings_cat_backup_restore)) {
                 SettingsActionRow(
@@ -410,12 +418,13 @@ internal fun AutoBackupCard(
                     onCheckedChange = {
                         enabled = it
                         BackupScheduler.setEnabled(context, it)
+                        BackupWorkScheduler.sync(context)
                     }
                 )
             }
 
             Text(
-                text = "A snapshot is written when the app goes to the background, at most once every $intervalHours hours. The newest $retention are kept.",
+                text = "A snapshot is written when the app goes to the background, and on a schedule every $intervalHours hours even with the app closed. The newest $retention are kept.",
                 fontSize = 11.sp,
                 lineHeight = 15.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
@@ -428,6 +437,9 @@ internal fun AutoBackupCard(
                         val v = input.filter { it.isDigit() }.toIntOrNull() ?: 1
                         intervalHours = v.coerceIn(1, 168)
                         BackupScheduler.setIntervalHours(context, intervalHours)
+                        // The periodic work carries its own copy of the interval, so it has to be
+                        // re-declared or the change would not take effect until the next launch.
+                        BackupWorkScheduler.sync(context)
                     },
                     label = { Text("Every (hrs)", fontSize = 11.sp) },
                     singleLine = true,

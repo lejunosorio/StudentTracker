@@ -154,6 +154,124 @@ class StudentInsightsTest {
         assertTrue(insight.reasons.isEmpty())
     }
 
+    // --- consecutive absences -----------------------------------------------------------------
+
+    @Test
+    fun aRunOfAbsencesIsCountedFromTheMostRecentMarkedDay() {
+        // logs() lays present days first, then absences, so these five are the trailing run.
+        assertEquals(5, StudentInsights.currentAbsenceStreak(logs(1, present = 15, absent = 5)))
+        assertEquals(0, StudentInsights.currentAbsenceStreak(logs(1, present = 15, absent = 0)))
+    }
+
+    @Test
+    fun anUnmarkedDayDoesNotBreakARun() {
+        // A sheet nobody filled in is missing information, not evidence the student turned up.
+        val withGap = listOf(
+            AttendanceLogEntity(recordId = 1, dateMillis = 1, studentId = 1, status = "ABSENT"),
+            AttendanceLogEntity(recordId = 1, dateMillis = 2, studentId = 1, status = "NOT_SET"),
+            AttendanceLogEntity(recordId = 1, dateMillis = 3, studentId = 1, status = "ABSENT")
+        )
+        assertEquals(2, StudentInsights.currentAbsenceStreak(withGap))
+    }
+
+    @Test
+    fun aPresentDayEndsTheRun() {
+        val backAgain = listOf(
+            AttendanceLogEntity(recordId = 1, dateMillis = 1, studentId = 1, status = "ABSENT"),
+            AttendanceLogEntity(recordId = 1, dateMillis = 2, studentId = 1, status = "ABSENT"),
+            AttendanceLogEntity(recordId = 1, dateMillis = 3, studentId = 1, status = "PRESENT")
+        )
+        assertEquals(0, StudentInsights.currentAbsenceStreak(backAgain))
+    }
+
+    @Test
+    fun aRunOfAbsencesFlagsAStudentTheRateWouldMiss() {
+        // Three days running inside an otherwise good term barely moves the percentage.
+        val insight = computeOne(logs(1, present = 60, absent = 3))
+
+        assertFalse("the rate alone would not flag this", insight.attendance.isChronicallyAbsent)
+        assertTrue(insight.isOnAbsenceStreak)
+        assertEquals(StudentInsights.RiskLevel.WATCH, insight.riskLevel)
+        assertTrue(insight.reasons.single().contains("3 days running"))
+    }
+
+    @Test
+    fun attendanceIsOnlyEverOneConcern() {
+        // A run and a high rate are the same problem described twice. Counting both would make a
+        // single concern read as AT_RISK.
+        val insight = computeOne(logs(1, present = 15, absent = 5))
+
+        assertTrue(insight.isOnAbsenceStreak)
+        assertTrue(insight.attendance.isChronicallyAbsent)
+        assertEquals(1, insight.reasons.size)
+        assertEquals(StudentInsights.RiskLevel.WATCH, insight.riskLevel)
+    }
+
+    // --- open concerns and contact ------------------------------------------------------------
+
+    @Test
+    fun anUnresolvedNegativeNoteIsAnOpenConcern() {
+        val incidents = listOf(
+            BehaviorIncidentEntity(studentId = 1, title = "a", category = "Negative", description = "d"),
+            BehaviorIncidentEntity(studentId = 1, title = "b", category = "Negative", description = "d", resolvedAt = 500L),
+            BehaviorIncidentEntity(studentId = 1, title = "c", category = "Positive", description = "d")
+        )
+        assertEquals(1, computeOne(incidents = incidents).openConcerns)
+    }
+
+    @Test
+    fun timeSinceLastContactComesFromTheMostRecentEntry() {
+        val now = System.currentTimeMillis()
+        val log = listOf(
+            ContactLogEntity(studentId = 1, phone = "1", sentAt = now - 10_000L),
+            ContactLogEntity(studentId = 1, phone = "2", sentAt = now - 500L)
+        )
+        val insight = StudentInsights.compute(
+            students = listOf(student(1)),
+            logs = emptyList(),
+            columns = emptyList(),
+            scores = emptyList(),
+            categories = emptyList(),
+            incidents = emptyList(),
+            contactLog = log
+        ).getValue(1)
+
+        assertTrue(insight.millisSinceLastContact!! < 5_000L)
+    }
+
+    @Test
+    fun aStudentNeverContactedHasNoElapsedTime() {
+        assertNull(computeOne().millisSinceLastContact)
+    }
+
+    // --- class summary ------------------------------------------------------------------------
+
+    @Test
+    fun theClassSummaryAggregatesWhatTheRowsShow() {
+        // Student 1 ends on a 3-day run; student 2 has a clean record.
+        val insights = StudentInsights.compute(
+            students = listOf(student(1), student(2)),
+            logs = logs(1, present = 8, absent = 3) + logs(2, present = 10, absent = 0),
+            columns = emptyList(),
+            scores = emptyList(),
+            categories = emptyList(),
+            incidents = emptyList()
+        )
+        val summary = StudentInsights.summarise(insights.values)
+
+        assertEquals(2, summary.students)
+        assertEquals("18 present of 21 marked", 18.0 / 21.0 * 100.0, summary.attendanceRate!!, 0.001)
+        assertEquals(1, summary.onAbsenceStreak)
+    }
+
+    @Test
+    fun anEmptyClassSummarisesWithoutDividingByZero() {
+        val summary = StudentInsights.summarise(emptyList())
+        assertEquals(0, summary.students)
+        assertNull(summary.attendanceRate)
+        assertNull(summary.averageGrade)
+    }
+
     // --- term scoping -------------------------------------------------------------------------
 
     private fun day(year: Int, month: Int, dayOfMonth: Int, hour: Int = 0): Long =

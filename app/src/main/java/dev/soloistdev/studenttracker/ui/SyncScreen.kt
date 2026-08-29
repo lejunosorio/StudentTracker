@@ -130,7 +130,8 @@ fun SyncScreen(onBack: () -> Unit) {
                             put("birthday", s.birthday)
                             put("address", s.address)
                             put("contactNumber", s.contactNumber)
-                            put("picturePath", s.picturePath)
+                            // picturePath is deliberately omitted: it is a path on this device and
+                            // means nothing on the one receiving it.
                             put("guardiansJson", s.guardiansJson)
                             put("customDataJson", s.customDataJson)
                             put("lastModified", s.lastModified)

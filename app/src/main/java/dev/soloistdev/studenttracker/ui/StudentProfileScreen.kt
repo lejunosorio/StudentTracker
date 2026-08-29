@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.ClassShareEngine
+import dev.soloistdev.studenttracker.data.ContactLogEntity
 import dev.soloistdev.studenttracker.data.FormTemplateEntity
 import dev.soloistdev.studenttracker.data.Guardian
 import dev.soloistdev.studenttracker.data.StudentEntity
@@ -87,6 +88,17 @@ fun StudentProfileScreen(
     var showAddIncidentDialog by remember { mutableStateOf(false) }
     var showShareChoice by remember { mutableStateOf(false) }
 
+    // Contact history and incident follow-up
+    var contactLog by remember { mutableStateOf<List<ContactLogEntity>>(emptyList()) }
+    var incidentBeingResolved by remember { mutableStateOf<BehaviorIncidentEntity?>(null) }
+    var resolutionText by remember { mutableStateOf("") }
+    var showLogContactDialog by remember { mutableStateOf(false) }
+    var contactNoteText by remember { mutableStateOf("") }
+
+    fun refreshContactLog() {
+        scope.launch { contactLog = repository.getContactLogForStudent(studentId) }
+    }
+
     // Automated Communication States
     var showNotificationDialog by remember { mutableStateOf(false) }
     var selectedGuardianForNotification by remember { mutableStateOf<Guardian?>(null) }
@@ -103,6 +115,7 @@ fun StudentProfileScreen(
         student = list.find { studentEntity -> studentEntity.id == studentId }
         activeTemplates = repository.getAllFormTemplates()
         refreshIncidents()
+        refreshContactLog()
 
         // Computed with the same engines the gradebook and Early Warning screens use, so this
         // card can never disagree with them.
@@ -515,6 +528,61 @@ fun StudentProfileScreen(
                                                     fontSize = 11.sp,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                                                 )
+
+                                                // What was done about it. A log that records only
+                                                // what happened answers half the question, and the
+                                                // half that matters at a conference is the other one.
+                                                if (incident.actionTaken.isNotBlank()) {
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    Text(
+                                                        text = stringResource(R.string.incident_action_label) + ": " + incident.actionTaken,
+                                                        fontSize = 12.sp,
+                                                        lineHeight = 16.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+
+                                                Spacer(modifier = Modifier.height(6.dp))
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    if (incident.isResolved) {
+                                                        AssistChip(
+                                                            onClick = {
+                                                                scope.launch {
+                                                                    repository.updateIncident(incident.copy(resolvedAt = 0L))
+                                                                    refreshIncidents()
+                                                                }
+                                                            },
+                                                            label = {
+                                                                Text(
+                                                                    stringResource(
+                                                                        R.string.incident_resolved_badge,
+                                                                        logSdf.format(Date(incident.resolvedAt))
+                                                                    ),
+                                                                    fontSize = 10.sp
+                                                                )
+                                                            }
+                                                        )
+                                                    } else {
+                                                        AssistChip(
+                                                            onClick = { incidentBeingResolved = incident },
+                                                            label = {
+                                                                Text(
+                                                                    stringResource(R.string.incident_mark_resolved),
+                                                                    fontSize = 10.sp
+                                                                )
+                                                            }
+                                                        )
+                                                        if (incident.isOpenConcern) {
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                            Text(
+                                                                text = stringResource(R.string.incident_open_badge),
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = MaterialTheme.colorScheme.error
+                                                            )
+                                                        }
+                                                    }
+                                                }
                                             }
                                             IconButton(
                                                 onClick = {
@@ -556,6 +624,87 @@ fun StudentProfileScreen(
                                     )
                                 }
                             }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Contact history. Sending a message used to leave no trace in the app at all, so
+                // "have I already called about this?" had no answer, and switching phones lost
+                // whatever the SMS app happened to remember.
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        val contactSdf = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Call,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(R.string.contact_log_title),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        if (contactLog.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.contact_log_empty),
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        } else {
+                            contactLog.take(6).forEach { entry ->
+                                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.contact_log_via,
+                                            entry.channel,
+                                            contactSdf.format(Date(entry.sentAt))
+                                        ),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    if (entry.guardianName.isNotBlank()) {
+                                        Text(
+                                            text = entry.guardianName,
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    if (entry.body.isNotBlank()) {
+                                        Text(
+                                            text = entry.body,
+                                            fontSize = 11.sp,
+                                            lineHeight = 15.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedButton(
+                            onClick = { showLogContactDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(20.dp)
+                        ) {
+                            Text(stringResource(R.string.contact_log_add_note), fontSize = 13.sp)
                         }
                     }
                 }
@@ -1095,6 +1244,103 @@ fun StudentProfileScreen(
                     }
                 )
             }
+        }
+
+        incidentBeingResolved?.let { target ->
+            AlertDialog(
+                onDismissRequest = { incidentBeingResolved = null; resolutionText = "" },
+                title = { Text(stringResource(R.string.incident_mark_resolved), fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().imePadding(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(target.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        OutlinedTextField(
+                            value = resolutionText,
+                            onValueChange = { resolutionText = it },
+                            label = { Text(stringResource(R.string.incident_action_label)) },
+                            placeholder = { Text(stringResource(R.string.incident_action_hint), fontSize = 12.sp) },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        val text = resolutionText.trim()
+                        scope.launch {
+                            repository.updateIncident(
+                                target.copy(
+                                    actionTaken = text.ifEmpty { target.actionTaken },
+                                    resolvedAt = System.currentTimeMillis()
+                                )
+                            )
+                            refreshIncidents()
+                        }
+                        incidentBeingResolved = null
+                        resolutionText = ""
+                    }) { Text(stringResource(R.string.s_done)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { incidentBeingResolved = null; resolutionText = "" }) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
+        }
+
+        if (showLogContactDialog && student != null) {
+            val target = student!!
+            AlertDialog(
+                onDismissRequest = { showLogContactDialog = false; contactNoteText = "" },
+                title = { Text(stringResource(R.string.contact_log_add_note), fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().imePadding(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = contactNoteText,
+                            onValueChange = { contactNoteText = it },
+                            label = { Text(stringResource(R.string.contact_log_note_hint)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        enabled = contactNoteText.isNotBlank(),
+                        onClick = {
+                            val body = contactNoteText.trim()
+                            val guardian = Guardian.listFromJsonString(target.guardiansJson).firstOrNull()
+                            scope.launch {
+                                repository.logContact(
+                                    ContactLogEntity(
+                                        studentId = target.id,
+                                        guardianName = guardian?.name.orEmpty(),
+                                        phone = guardian?.phones?.firstOrNull().orEmpty(),
+                                        channel = ContactLogEntity.CHANNEL_CALL,
+                                        body = body
+                                    )
+                                )
+                                refreshContactLog()
+                                Toast.makeText(context, R.string.contact_log_saved, Toast.LENGTH_SHORT).show()
+                            }
+                            showLogContactDialog = false
+                            contactNoteText = ""
+                        }
+                    ) { Text(stringResource(R.string.s_done)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showLogContactDialog = false; contactNoteText = "" }) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
+                shape = RoundedCornerShape(28.dp)
+            )
         }
 
         if (showShareChoice && student != null) {

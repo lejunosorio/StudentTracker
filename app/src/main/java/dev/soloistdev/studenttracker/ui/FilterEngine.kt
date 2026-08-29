@@ -147,6 +147,19 @@ object FilterEngine {
 }
 
 /** Expands an inclusive start..end range into one midnight-normalised timestamp per day. */
+/**
+ * @param meetingDays Calendar.DAY_OF_WEEK values the class actually meets on. Empty means every
+ *   day, which is how classrooms behaved before they could say. Filtering here is what stops a
+ *   term-long sheet from generating weekend columns nobody will ever fill in.
+ */
+fun generateDateList(startDate: Long, endDate: Long, meetingDays: Set<Int>): List<Long> =
+    generateDateList(startDate, endDate).filter { millis ->
+        meetingDays.isEmpty() ||
+                meetingDays.contains(
+                    Calendar.getInstance().apply { timeInMillis = millis }.get(Calendar.DAY_OF_WEEK)
+                )
+    }
+
 fun generateDateList(startDate: Long, endDate: Long): List<Long> {
     val dates = mutableListOf<Long>()
     val startCal = Calendar.getInstance().apply {

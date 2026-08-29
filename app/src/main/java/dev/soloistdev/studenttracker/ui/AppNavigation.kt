@@ -8,7 +8,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -45,6 +47,17 @@ fun AppNavigation() {
             navController.navigate(ScreenRoute.SECURITY_GATE) {
                 popUpTo(0) { inclusive = true }
             }
+        }
+    }
+
+    // A notification or widget tap asked for somewhere specific. Pushed on top of the roster
+    // rather than replacing it, so Back still lands where the app normally opens - and only ever
+    // once unlocked, so a tap on a lock-screen notification is never a way around the gate.
+    LaunchedEffect(isUnlocked, PendingDestination.pending) {
+        if (!isUnlocked) return@LaunchedEffect
+        val route = PendingDestination.consume() ?: return@LaunchedEffect
+        if (navController.currentDestination?.route != route) {
+            navController.navigate(route)
         }
     }
 
@@ -114,6 +127,11 @@ fun AppNavigation() {
                 onOpenAttendanceWithArgs = { recordId, dateMillis ->
                     if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
                         navController.navigate("attendance?recordId=$recordId&dateMillis=$dateMillis")
+                    }
+                },
+                onOpenToday = {
+                    if (navController.currentDestination?.route == ScreenRoute.VIEW_ALL) {
+                        navController.navigate(ScreenRoute.TODAY)
                     }
                 },
                 onOpenInsights = {
@@ -339,9 +357,42 @@ fun AppNavigation() {
                         navController.navigate(ScreenRoute.SETTINGS_BACKUP)
                     }
                 },
+                onNavigateToReminders = {
+                    if (navController.currentDestination?.route == ScreenRoute.APP_SETTINGS) {
+                        navController.navigate(ScreenRoute.SETTINGS_REMINDERS)
+                    }
+                },
                 onNavigateToStorage = {
                     if (navController.currentDestination?.route == ScreenRoute.APP_SETTINGS) {
                         navController.navigate(ScreenRoute.SETTINGS_STORAGE)
+                    }
+                }
+            )
+        }
+
+        composable(ScreenRoute.TODAY) {
+            TodayScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) navController.popBackStack()
+                },
+                onOpenClass = { className ->
+                    if (navController.currentDestination?.route == ScreenRoute.TODAY) {
+                        navController.navigate("seating_chart/${Uri.encode(className)}")
+                    }
+                },
+                onOpenAttendance = {
+                    if (navController.currentDestination?.route == ScreenRoute.TODAY) {
+                        navController.navigate(ScreenRoute.ATTENDANCE)
+                    }
+                },
+                onStudentClick = { id ->
+                    if (navController.currentDestination?.route == ScreenRoute.TODAY) {
+                        navController.navigate("profile/$id")
+                    }
+                },
+                onOpenInsights = {
+                    if (navController.currentDestination?.route == ScreenRoute.TODAY) {
+                        navController.navigate(ScreenRoute.INSIGHTS)
                     }
                 }
             )
@@ -357,6 +408,14 @@ fun AppNavigation() {
 
         composable(ScreenRoute.SETTINGS_BACKUP) {
             BackupSettingsScreen(
+                onBack = {
+                    if (navController.previousBackStackEntry != null) navController.popBackStack()
+                }
+            )
+        }
+
+        composable(ScreenRoute.SETTINGS_REMINDERS) {
+            RemindersSettingsScreen(
                 onBack = {
                     if (navController.previousBackStackEntry != null) navController.popBackStack()
                 }
@@ -578,6 +637,40 @@ fun AppNavigation() {
     }
 }
 
+/**
+ * A route a notification or the home-screen widget asked for, held until the app is unlocked.
+ *
+ * Deliberately a plain object rather than an intent handed to the NavHost: the security gate runs
+ * before any of this, and a tap on a lock-screen notification must not be able to walk past it.
+ * The route is consumed once, so rotating the device does not send the teacher back there again.
+ */
+object PendingDestination {
+    /**
+     * Compose state rather than a plain field, so a tap arriving while the app is already open -
+     * which reaches onNewIntent and changes nothing else - still wakes the navigation effect.
+     */
+    var pending by mutableStateOf<String?>(null)
+        private set
+
+    /** Accepts only routes that take no arguments, so a crafted extra cannot build a destination. */
+    fun request(candidate: String?) {
+        pending = candidate?.takeIf { it in ALLOWED }
+    }
+
+    fun consume(): String? {
+        val current = pending
+        pending = null
+        return current
+    }
+
+    private val ALLOWED = setOf(
+        ScreenRoute.TODAY,
+        ScreenRoute.SCAN_ATTENDANCE,
+        ScreenRoute.INSIGHTS,
+        ScreenRoute.SETTINGS_BACKUP
+    )
+}
+
 object ScreenRoute {
     const val SECURITY_GATE = "security_gate"
     const val VIEW_ALL = "view_all"
@@ -590,8 +683,10 @@ object ScreenRoute {
     const val BIOMETRICS_PRIVACY = "biometrics_privacy"
     const val ATTENDANCE = "attendance?recordId={recordId}&dateMillis={dateMillis}"
     const val APP_SETTINGS = "app_settings"
+    const val TODAY = "today"
     const val SETTINGS_APPEARANCE = "settings_appearance"
     const val SETTINGS_BACKUP = "settings_backup"
+    const val SETTINGS_REMINDERS = "settings_reminders"
     const val SETTINGS_STORAGE = "settings_storage"
     const val IMPORT_STUDENT = "import_student?id={id}&first={first}&last={last}&gender={gender}&birthday={birthday}&address={address}&contact={contact}&guardians={guardians}&custom={custom}&class={class}&seatingX={seatingX}&seatingY={seatingY}"
     const val SYNC = "sync" // Registered Running Sync route constant cleanly

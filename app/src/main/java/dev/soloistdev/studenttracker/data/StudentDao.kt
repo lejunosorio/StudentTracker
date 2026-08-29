@@ -182,6 +182,26 @@ interface StudentDao {
     @Query("DELETE FROM behavior_incidents WHERE id = :incidentId")
     fun deleteIncident(incidentId: Int)
 
+    // In-place: an incident carries a follow-up now, and a REPLACE insert would churn its id.
+    @Update
+    fun updateIncident(incident: BehaviorIncidentEntity)
+
+    // --- CONTACT LOG ---
+    @Query("SELECT * FROM contact_log ORDER BY sentAt DESC")
+    fun getAllContactLog(): List<ContactLogEntity>
+
+    @Query("SELECT * FROM contact_log WHERE studentId = :studentId ORDER BY sentAt DESC")
+    fun getContactLogForStudent(studentId: Int): List<ContactLogEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertContactLog(entry: ContactLogEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertContactLogEntries(entries: List<ContactLogEntity>)
+
+    @Query("DELETE FROM contact_log WHERE id = :entryId")
+    fun deleteContactLogEntry(entryId: Int)
+
     // --- MESSAGE TEMPLATES QUERIES ---
     @Query("SELECT * FROM message_templates ORDER BY name ASC")
     fun getAllMessageTemplates(): List<MessageTemplateEntity>

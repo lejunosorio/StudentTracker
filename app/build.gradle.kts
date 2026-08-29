@@ -128,4 +128,7 @@ dependencies {
 
     // Camera barcode scanning for QR attendance
     implementation(libs.zxing.android.embedded)
+
+    // Periodic backups that survive reboots, updates and doze
+    implementation(libs.androidx.work.runtime.ktx)
 }

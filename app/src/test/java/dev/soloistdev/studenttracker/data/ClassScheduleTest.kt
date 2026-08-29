@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Calendar
 
 /**
  * The "in session / up next" card on the roster screen reads entirely from this, and the times it
@@ -21,6 +22,72 @@ class ClassScheduleTest {
     private val midday = classroom("Grade 8 - Rizal", "08:00 AM", "01:00 PM")
     private val afternoon = classroom("Grade 10 - Molave", "01:00 PM", "06:00 PM")
     private val roster = listOf(afternoon, morning, midday)
+
+    // --- meeting days ----------------------------------------------------------------------
+
+    private fun weekdayClass(name: String, start: String, end: String) =
+        ClassroomEntity(
+            name = name,
+            startTime = start,
+            endTime = end,
+            meetingDays = ClassroomEntity.encode(ClassroomEntity.WEEKDAYS)
+        )
+
+    @Test
+    fun aClassroomWithNoDaysSetStillMeetsEveryDay() {
+        // Existing classrooms have no meetingDays, and must behave exactly as they always did.
+        val legacy = classroom("Legacy", "08:00 AM", "09:00 AM")
+        assertTrue(legacy.meetsOn(Calendar.SUNDAY))
+        assertTrue(legacy.meetsOn(Calendar.WEDNESDAY))
+    }
+
+    @Test
+    fun aWeekdayClassDoesNotMeetAtTheWeekend() {
+        val weekday = weekdayClass("Grade 7", "07:30 AM", "12:00 PM")
+        assertTrue(weekday.meetsOn(Calendar.MONDAY))
+        assertTrue(weekday.meetsOn(Calendar.FRIDAY))
+        assertFalse(weekday.meetsOn(Calendar.SATURDAY))
+        assertFalse(weekday.meetsOn(Calendar.SUNDAY))
+    }
+
+    @Test
+    fun aClassIsNeverInSessionOnADayItDoesNotMeet() {
+        val weekday = weekdayClass("Grade 7", "07:30 AM", "12:00 PM")
+        // 9am on a Saturday is inside the time window but not a school day.
+        assertNull(ClassSchedule.inSession(listOf(weekday), at(9), Calendar.SATURDAY))
+        assertEquals(weekday.name, ClassSchedule.inSession(listOf(weekday), at(9), Calendar.MONDAY)?.classroom?.name)
+    }
+
+    @Test
+    fun onFridayEveningTheNextClassIsMondayNotTomorrow() {
+        // The rollover used to say "tomorrow" unconditionally, which on a Friday meant offering
+        // a class that does not run on Saturday.
+        val weekday = weekdayClass("Grade 7", "07:30 AM", "12:00 PM")
+        val next = ClassSchedule.upNext(listOf(weekday), at(19), Calendar.FRIDAY)
+
+        assertEquals(weekday.name, next?.classroom?.name)
+        assertTrue(next!!.isTomorrow)
+        assertEquals("Saturday and Sunday are skipped", 3, next.daysAhead)
+    }
+
+    @Test
+    fun theCountdownAcrossAWeekendSpansThreeNights() {
+        val weekday = weekdayClass("Grade 7", "07:30 AM", "12:00 PM")
+        val next = ClassSchedule.upNext(listOf(weekday), at(19), Calendar.FRIDAY)!!
+
+        // 19:00 Friday to 07:30 Monday is 60.5 hours.
+        assertEquals((60 * 60 + 30), next.minutesUntilStart(at(19)))
+    }
+
+    @Test
+    fun aClassThatMeetsTomorrowIsStillJustTomorrow() {
+        val weekday = weekdayClass("Grade 7", "07:30 AM", "12:00 PM")
+        val next = ClassSchedule.upNext(listOf(weekday), at(19), Calendar.MONDAY)
+
+        assertTrue(next!!.isTomorrow)
+        assertEquals(1, next.daysAhead)
+        assertEquals(12 * 60 + 30, next.minutesUntilStart(at(19)))
+    }
 
     // --- parsing ---------------------------------------------------------------------------
 
