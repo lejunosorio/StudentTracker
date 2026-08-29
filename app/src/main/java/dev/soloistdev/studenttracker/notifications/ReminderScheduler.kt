@@ -73,11 +73,15 @@ object ReminderScheduler {
     private suspend fun scheduleClassNudge(context: Context, nowMillis: Long) {
         val classrooms = try {
             StudentRepository(context).getAllClassrooms()
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
             // The database may be unopenable at boot, before the user has unlocked the device and
             // the key store is available. Leaving the alarm unset is correct: the next app launch
             // reschedules.
-            e.printStackTrace()
+            //
+            // Throwable, because the native SQLCipher bindings fail with Errors as well as
+            // exceptions, and this runs from a boot receiver where anything escaping crashes the
+            // app before the teacher has touched it.
+            t.printStackTrace()
             return
         }
 

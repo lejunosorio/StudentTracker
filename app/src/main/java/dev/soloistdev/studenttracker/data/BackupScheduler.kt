@@ -143,9 +143,12 @@ object BackupScheduler {
             sealLegacyPlaintextBackups(context)
             pruneOldBackups(context)
             Outcome.Written(target)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Outcome.Failed(e)
+        } catch (t: Throwable) {
+            // Throwable: this runs from a WorkManager worker with the app closed, and the database
+            // it opens fails with Errors as well as exceptions. Reporting Failed lets the worker
+            // retry; letting an Error through would kill a background process instead.
+            t.printStackTrace()
+            Outcome.Failed(t as? Exception ?: RuntimeException(t))
         }
     }
 

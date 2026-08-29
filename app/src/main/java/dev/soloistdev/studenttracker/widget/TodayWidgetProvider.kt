@@ -12,6 +12,7 @@ import dev.soloistdev.studenttracker.R
 import dev.soloistdev.studenttracker.data.ReminderSettings
 import dev.soloistdev.studenttracker.data.StudentRepository
 import dev.soloistdev.studenttracker.data.TodayDigest
+import dev.soloistdev.studenttracker.guardBackgroundWork
 import dev.soloistdev.studenttracker.notifications.Notifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -53,9 +54,9 @@ class TodayWidgetProvider : AppWidgetProvider() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                publish(appContext, TodayDigest.compute(StudentRepository(appContext)))
-            } catch (e: Exception) {
-                e.printStackTrace()
+                guardBackgroundWork(TAG) {
+                    publish(appContext, TodayDigest.compute(StudentRepository(appContext)))
+                }
             } finally {
                 pending.finish()
             }
@@ -63,6 +64,7 @@ class TodayWidgetProvider : AppWidgetProvider() {
     }
 
     companion object {
+        private const val TAG = "TodayWidget"
         private const val ACTION_REFRESH = "dev.soloistdev.studenttracker.WIDGET_REFRESH"
 
         private const val PREFS = "today_widget"

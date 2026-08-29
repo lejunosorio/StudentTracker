@@ -17,6 +17,7 @@ import androidx.lifecycle.lifecycleScope
 import dev.soloistdev.studenttracker.data.BackupScheduler
 import dev.soloistdev.studenttracker.data.BackupWorkScheduler
 import dev.soloistdev.studenttracker.data.StudentRepository
+import dev.soloistdev.studenttracker.guardBackgroundWork
 import dev.soloistdev.studenttracker.notifications.Notifier
 import dev.soloistdev.studenttracker.notifications.ReminderScheduler
 import dev.soloistdev.studenttracker.security.IntegrityChecker
@@ -65,7 +66,7 @@ class MainActivity : FragmentActivity() {
 
         val appContext = applicationContext
         lifecycleScope.launch(Dispatchers.IO) {
-            try {
+            guardBackgroundWork("MainActivity") {
                 // Channels have to exist before anything is posted, and they are cheap to
                 // re-declare - which also picks up a renamed channel after a language change.
                 Notifier.ensureChannels(appContext)
@@ -74,8 +75,6 @@ class MainActivity : FragmentActivity() {
                 // way to keep them honest.
                 ReminderScheduler.reschedule(appContext)
                 BackupWorkScheduler.sync(appContext)
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
         }
 
@@ -142,10 +141,8 @@ class MainActivity : FragmentActivity() {
         super.onStop()
         val appContext = applicationContext
         lifecycleScope.launch(Dispatchers.IO) {
-            try {
+            guardBackgroundWork("MainActivity") {
                 BackupScheduler.maybeAutoBackup(appContext, StudentRepository(appContext))
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
         }
     }

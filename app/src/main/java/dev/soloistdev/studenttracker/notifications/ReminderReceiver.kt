@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import dev.soloistdev.studenttracker.data.ClassSchedule
+import dev.soloistdev.studenttracker.guardBackgroundWork
 import dev.soloistdev.studenttracker.data.ReminderSettings
 import dev.soloistdev.studenttracker.data.StudentRepository
 import dev.soloistdev.studenttracker.data.TodayDigest
@@ -23,6 +24,8 @@ import java.util.Calendar
  */
 class ReminderReceiver : BroadcastReceiver() {
 
+    private companion object { const val TAG = "ReminderReceiver" }
+
     override fun onReceive(context: Context, intent: Intent) {
         val appContext = context.applicationContext
         val action = intent.action ?: return
@@ -31,19 +34,19 @@ class ReminderReceiver : BroadcastReceiver() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                if (ReminderSettings.isEnabled(appContext) && Notifier.hasPermission(appContext)) {
-                    when (action) {
-                        ReminderScheduler.ACTION_CLASS_NUDGE -> postClassNudge(appContext, className)
-                        ReminderScheduler.ACTION_DAILY_DIGEST -> postDigest(appContext)
+                guardBackgroundWork(TAG) {
+                    if (ReminderSettings.isEnabled(appContext) && Notifier.hasPermission(appContext)) {
+                        when (action) {
+                            ReminderScheduler.ACTION_CLASS_NUDGE -> postClassNudge(appContext, className)
+                            ReminderScheduler.ACTION_DAILY_DIGEST -> postDigest(appContext)
+                        }
                     }
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
             } finally {
-                try {
+                // Separately guarded: re-arming has to happen even when posting failed, or one bad
+                // fire ends the chain and the reminders silently stop for good.
+                guardBackgroundWork(TAG) {
                     ReminderScheduler.reschedule(appContext)
-                } catch (e: Exception) {
-                    e.printStackTrace()
                 }
                 pending.finish()
             }

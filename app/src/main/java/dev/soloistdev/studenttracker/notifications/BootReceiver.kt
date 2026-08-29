@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import dev.soloistdev.studenttracker.data.BackupWorkScheduler
+import dev.soloistdev.studenttracker.guardBackgroundWork
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -15,6 +16,8 @@ import kotlinx.coroutines.launch
  * quietly never fire again - the kind of failure nobody reports, they just stop trusting the app.
  */
 class BootReceiver : BroadcastReceiver() {
+
+    private companion object { const val TAG = "BootReceiver" }
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
@@ -29,12 +32,14 @@ class BootReceiver : BroadcastReceiver() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                ReminderScheduler.reschedule(appContext)
-                // WorkManager persists its own schedule across reboots, but re-declaring it as
-                // KEEP is free and covers an install whose work was never enqueued.
-                BackupWorkScheduler.sync(appContext)
-            } catch (e: Exception) {
-                e.printStackTrace()
+                // Guarded because this runs on every boot: anything that throws here would crash
+                // the app at start-up, over and over, with the teacher never having opened it.
+                guardBackgroundWork(TAG) {
+                    ReminderScheduler.reschedule(appContext)
+                    // WorkManager persists its own schedule across reboots, but re-declaring it as
+                    // KEEP is free and covers an install whose work was never enqueued.
+                    BackupWorkScheduler.sync(appContext)
+                }
             } finally {
                 pending.finish()
             }

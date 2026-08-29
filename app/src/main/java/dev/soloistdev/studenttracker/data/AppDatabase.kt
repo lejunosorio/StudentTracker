@@ -103,10 +103,50 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Loads libsqlcipher.so.
+         *
+         * The legacy net.zetetic:android-database-sqlcipher artifact loaded its own native library;
+         * sqlcipher-android does not, and contains no System.loadLibrary call anywhere - verified
+         * by scanning every class in the AAR. Nothing loads it unless the app does.
+         *
+         * Getting this wrong is not obvious from the failure: the link error surfaces much later as
+         * an UnsatisfiedLinkError from SQLiteConnection.nativeOpen, inside Room's first query, with
+         * nothing in the stack pointing at the missing call. It is done here rather than in
+         * Application.onCreate so it cannot be missed by a future entry point - every component
+         * that touches the database comes through getDatabase, including the boot receiver, the
+         * alarm receiver, the widget and the backup worker.
+         *
+         * System.loadLibrary is idempotent, so the guard is only to keep repeat opens cheap.
+         */
+        @Volatile
+        private var nativeLibraryLoaded = false
+
+        private fun loadNativeLibrary() {
+            if (nativeLibraryLoaded) return
+            try {
+                System.loadLibrary("sqlcipher")
+                nativeLibraryLoaded = true
+            } catch (e: UnsatisfiedLinkError) {
+                // Deliberately its own message. Routing this through the decryption error below
+                // would tell a teacher to reboot and check their lock screen, which cannot help:
+                // the APK simply has no native library for this device.
+                throw IOException(
+                    "The SQLCipher native library could not be loaded, so the database cannot be " +
+                            "opened. The installed app appears to be missing the native library for " +
+                            "this device. Reinstalling it should fix this.",
+                    e
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 // Re-check inside the lock: two callers can both see a null INSTANCE outside it.
                 INSTANCE?.let { return it }
+
+                // Before the passphrase is read, so a failure here leaves no key material to wipe.
+                loadNativeLibrary()
 
                 val passphrase = SecurityHelper.getDatabasePassphrase(context)
                 // clearPassphrase = false. The factory otherwise zeroes the key bytes as soon as
@@ -134,11 +174,16 @@ abstract class AppDatabase : RoomDatabase() {
                         .build().also {
                             it.openHelper.writableDatabase
                         }
-                } catch (e: Exception) {
+                } catch (t: Throwable) {
+                    // Throwable, not Exception. The SQLCipher layer fails with Errors as well as
+                    // exceptions - an UnsatisfiedLinkError from the native bindings being the
+                    // obvious one - and those used to sail straight past this handler, taking the
+                    // key material with them unwiped and killing whichever background component
+                    // happened to open the database first.
                     MemoryHelper.zeroMemory(passphrase)
                     throw IOException(
                         "Local database decryption failed. This can happen due to transient Android KeyStore errors. Please reboot your device or verify lock screen settings.",
-                        e
+                        t
                     )
                 }
 
