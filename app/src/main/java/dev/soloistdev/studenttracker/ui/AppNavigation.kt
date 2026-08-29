@@ -66,8 +66,15 @@ fun AppNavigation() {
         composable(ScreenRoute.SECURITY_GATE) {
             SecurityGateScreen(
                 onUnlockSuccess = {
-                    navController.navigate(ScreenRoute.VIEW_ALL) {
-                        popUpTo(ScreenRoute.SECURITY_GATE) { inclusive = true }
+                    // Guarded, because unlocking flips isUnlocked and two effects react to it:
+                    // the gatekeeper above, which navigates to the roster, and this screen's own.
+                    // Whichever loses the race would otherwise push a second copy of the roster on
+                    // top of the destination a notification tap had just been sent to - landing the
+                    // teacher on the roster instead of the screen they asked for.
+                    if (navController.currentDestination?.route == ScreenRoute.SECURITY_GATE) {
+                        navController.navigate(ScreenRoute.VIEW_ALL) {
+                            popUpTo(ScreenRoute.SECURITY_GATE) { inclusive = true }
+                        }
                     }
                 },
                 viewModel = securityViewModel

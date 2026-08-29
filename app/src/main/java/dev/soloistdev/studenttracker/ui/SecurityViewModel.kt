@@ -109,6 +109,19 @@ class SecurityViewModel(application: Application) : AndroidViewModel(application
         return false
     }
 
+    /**
+     * Records that the device authenticated the teacher biometrically.
+     *
+     * The biometric callback used to navigate straight past the gate without telling the ViewModel,
+     * which left isUnlocked false for the rest of the session even though the app was open. That is
+     * the flag everything else keys off - the gate itself, and the deep link a notification or
+     * widget tap is holding - so unlocking by fingerprint quietly dropped that pending destination
+     * on the floor while unlocking by PIN honoured it. Both routes now end in the same place.
+     */
+    fun markUnlockedByBiometrics() {
+        _isUnlocked.value = true
+    }
+
     fun setBiometricEnabled(enabled: Boolean) {
         sharedPreferences.edit {
             putBoolean("biometric_enabled", enabled)

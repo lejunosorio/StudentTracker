@@ -28,8 +28,12 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.soloistdev.studenttracker.R // Resolved: Explicit R file import [1]
 
@@ -61,15 +65,39 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
         biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
     }
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     val launchBiometricPrompt = {
         val activity = context as? FragmentActivity
-        if (activity != null && isBiometricsAvailable) {
+        // The lifecycle check is what stops "Unable to start authentication. Called after
+        // onSaveInstanceState()". BiometricPrompt shows itself by committing a fragment
+        // transaction, which the framework refuses once the activity has saved its state - and it
+        // refuses silently, leaving the teacher looking at a lock screen where nothing happens.
+        if (activity != null && isBiometricsAvailable &&
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        ) {
             val executor = ContextCompat.getMainExecutor(activity)
             val biometricPrompt = BiometricPrompt(activity, executor,
                 object : BiometricPrompt.AuthenticationCallback() {
                     override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                         super.onAuthenticationSucceeded(result)
-                        onUnlockSuccess()
+                        // Through the ViewModel rather than navigating directly, so a fingerprint
+                        // unlock leaves exactly the same state behind as a PIN unlock. The gate
+                        // navigates itself when isUnlocked flips.
+                        viewModel.markUnlockedByBiometrics()
+                    }
+
+                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                        super.onAuthenticationError(errorCode, errString)
+                        // Dismissing the sheet, or choosing "use PIN instead", is a decision rather
+                        // than a fault; anything else is worth saying out loud. Without this, a
+                        // lockout after too many attempts looked identical to a broken app.
+                        val dismissed = errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
+                                errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
+                                errorCode == BiometricPrompt.ERROR_CANCELED
+                        if (!dismissed) {
+                            Toast.makeText(context, errString, Toast.LENGTH_LONG).show()
+                        }
                     }
                 })
 
@@ -88,10 +116,28 @@ fun SecurityGateScreen(onUnlockSuccess: () -> Unit, viewModel: SecurityViewModel
     val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
     val isSecurityGateEnabled by viewModel.isSecurityGateEnabled.collectAsState()
 
-    // Auto-launch biometrics on start ONLY if gate is active and biometrics are configured
+    // Auto-launch biometrics on start ONLY if gate is active and biometrics are configured.
+    //
+    // Waits for RESUMED rather than firing the moment this composes. A LaunchedEffect runs on
+    // composition regardless of what the activity is doing, so the prompt was being asked for while
+    // the activity was stopping - it never appeared, and nothing said why. repeatOnLifecycle also
+    // covers the opposite case: if the gate composes while the app is not yet resumed, the prompt
+    // is raised as soon as it is, instead of being lost.
+    //
+    // Once only, tracked across configuration changes, so rotating the phone does not throw a
+    // second sheet at the teacher and dismissing it does not immediately bring it back. The
+    // fingerprint button remains for a deliberate retry.
+    var autoPromptRaised by rememberSaveable { mutableStateOf(false) }
+
     LaunchedEffect(isAlreadyConfigured, isBiometricEnabled, isSecurityGateEnabled) {
-        if (isAlreadyConfigured && isBiometricsAvailable && isBiometricEnabled && isSecurityGateEnabled) {
-            launchBiometricPrompt()
+        if (!(isAlreadyConfigured && isBiometricsAvailable && isBiometricEnabled && isSecurityGateEnabled)) {
+            return@LaunchedEffect
+        }
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            if (!autoPromptRaised) {
+                autoPromptRaised = true
+                launchBiometricPrompt()
+            }
         }
     }
 
