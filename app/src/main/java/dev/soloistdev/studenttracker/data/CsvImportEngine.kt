@@ -80,16 +80,22 @@ object CsvImportEngine {
      * dependency.
      */
     fun parse(text: String): List<List<String>> {
+        // Excel writes a byte order mark whenever a sheet is saved as "CSV UTF-8", which is the
+        // obvious choice in its own save dialog. Left in place it becomes part of the first
+        // header, and the import screen maps columns by matching that text exactly - so the
+        // teacher silently loses the first column, which is almost always the name.
+        val source = text.removePrefix("﻿")
+
         val rows = mutableListOf<List<String>>()
         var row = mutableListOf<String>()
         val field = StringBuilder()
         var inQuotes = false
         var i = 0
 
-        while (i < text.length) {
-            val c = text[i]
+        while (i < source.length) {
+            val c = source[i]
             when {
-                inQuotes && c == '"' && i + 1 < text.length && text[i + 1] == '"' -> {
+                inQuotes && c == '"' && i + 1 < source.length && source[i + 1] == '"' -> {
                     field.append('"')
                     i++
                 }
@@ -99,7 +105,7 @@ object CsvImportEngine {
                     field.setLength(0)
                 }
                 (c == '\n' || c == '\r') && !inQuotes -> {
-                    if (c == '\r' && i + 1 < text.length && text[i + 1] == '\n') i++
+                    if (c == '\r' && i + 1 < source.length && source[i + 1] == '\n') i++
                     row.add(field.toString())
                     field.setLength(0)
                     rows.add(row)

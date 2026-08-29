@@ -127,8 +127,14 @@ object JsonSyncEngine {
      * Accepts either the current object form or the original bare students array, so files
      * written by any past version still import.
      */
-    private fun asPayloadObject(raw: String): JSONObject {
-        val trimmed = raw.trim()
+    internal fun asPayloadObject(raw: String): JSONObject {
+        // The byte order mark is stripped before anything is decided. It is not whitespace, so
+        // trim leaves it in place, and a single invisible character at the front is enough to make
+        // the check below miss the '{' - at which point a perfectly good backup is read as a
+        // legacy array, fails to parse, and is reported as corrupt. Any file that has been through
+        // a Windows editor can carry one, and the moment a teacher restores a backup is the worst
+        // possible moment to reject it.
+        val trimmed = raw.trim().removePrefix("﻿").trim()
         return if (trimmed.startsWith("{")) {
             JSONObject(trimmed)
         } else {
