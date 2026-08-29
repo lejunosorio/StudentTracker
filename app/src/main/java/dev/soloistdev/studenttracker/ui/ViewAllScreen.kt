@@ -401,16 +401,31 @@ fun ViewAllScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                    Text(
-                        text = "CUSTOMIZATION",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 4.dp)
+                    // A heading with nothing under it is worse than no heading: it reads as a
+                    // section that failed to load. Every item below is module-gated, so this whole
+                    // group can empty out - it is the only one that can, since the others each
+                    // hold at least one entry that is always present.
+                    //
+                    // The list is the union of the modules used by the items in this section. A
+                    // new item here needs its module adding to it, or the heading will disappear
+                    // while its own row is still showing.
+                    val customizationModules = listOf(
+                        OrganizationSettings.Module.MESSAGING,
+                        OrganizationSettings.Module.GRADEBOOK,
+                        OrganizationSettings.Module.QUERIES
                     )
+                    if (customizationModules.any { orgProfile.isEnabled(it) }) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                        Text(
+                            text = "CUSTOMIZATION",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 4.dp)
+                        )
+                    }
 
                     if (orgProfile.isEnabled(OrganizationSettings.Module.MESSAGING)) NavigationDrawerItem(
                         icon = { Icon(Icons.Default.Build, contentDescription = null) },
