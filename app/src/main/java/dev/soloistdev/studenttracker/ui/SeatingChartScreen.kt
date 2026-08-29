@@ -357,6 +357,41 @@ fun SeatingChartScreen(
                 }
             }
 
+            // Placement stats.
+            //
+            // Above the canvas, not inside it. This used to be drawn at the top of the seat area
+            // and before the seats themselves, so any student sitting near the front row covered
+            // it - which is most classrooms, and exactly the layout a teacher is most likely to
+            // build. Outside the canvas it stays readable no matter where the seats go.
+            //
+            // Hidden during a roll call because the attendance banner above already carries the
+            // placed and unplaced counts.
+            if (!attendanceMode) {
+                val properlyPlacedCount = placedStudents.size - overlappingStudentIds.size
+                val overlappedCount = overlappingStudentIds.size
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Text(
+                            text = "$properlyPlacedCount properly placed • $overlappedCount overlapped • ${unplacedStudents.size} unplaced",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+
             // Interactive 2D Workspace Canvas
             val gridLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
             Box(
@@ -409,33 +444,6 @@ fun SeatingChartScreen(
                             .background(MaterialTheme.colorScheme.outline)
                             .align(Alignment.TopCenter)
                     )
-
-                    // Live placement stats console
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 20.dp)
-                            .align(Alignment.TopCenter),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                        ) {
-                            val properlyPlacedCount = placedStudents.size - overlappingStudentIds.size
-                            val overlappedCount = overlappingStudentIds.size
-                            val unplacedCount = unplacedStudents.size
-
-                            Text(
-                                text = "$properlyPlacedCount properly placed • $overlappedCount overlapped • $unplacedCount unplaced",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                            )
-                        }
-                    }
 
                     // Draw Placed Student Nodes
                     placedStudents.forEach { student ->

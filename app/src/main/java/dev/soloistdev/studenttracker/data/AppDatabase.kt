@@ -7,7 +7,11 @@ import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import dev.soloistdev.studenttracker.MemoryHelper
 import dev.soloistdev.studenttracker.security.SecurityHelper
-import net.sqlcipher.database.SupportFactory
+// net.zetetic.database.sqlcipher, not the legacy net.sqlcipher. The old artifact
+// (net.zetetic:android-database-sqlcipher) stopped at 4.5.4 and ships a libsqlcipher.so whose LOAD
+// segments are 4 KB-aligned, which Android 15 and later refuse to load on a 16 KB-page device.
+// The replacement is the same SQLCipher 4 on-disk format, so existing databases open unchanged.
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import java.io.IOException
 
 @Database(
@@ -105,10 +109,10 @@ abstract class AppDatabase : RoomDatabase() {
                 INSTANCE?.let { return it }
 
                 val passphrase = SecurityHelper.getDatabasePassphrase(context)
-                // clearPassphrase = false. SupportFactory otherwise zeroes the key bytes as soon
-                // as the database is first opened, so any reopen of the helper - which Room does
-                // on its own after a close - fails with "file is not a database".
-                val factory = SupportFactory(
+                // clearPassphrase = false. The factory otherwise zeroes the key bytes as soon as
+                // the database is first opened, so any reopen of the helper - which Room does on
+                // its own after a close - fails with "file is not a database".
+                val factory = SupportOpenHelperFactory(
                     passphrase.map { it.code.toByte() }.toByteArray(),
                     null,
                     false

@@ -108,7 +108,7 @@ dependencies {
     ksp(libs.androidx.room.compiler.v261)
 
     // SQLCipher Community Edition (Encrypted DB)
-    implementation(libs.android.database.sqlcipher)
+    implementation(libs.sqlcipher.android)
     implementation(libs.androidx.sqlite.ktx)
 
     // Material Extended Icons

@@ -10,6 +10,13 @@
 
 # --- SQLCipher -------------------------------------------------------------------------------
 # The native layer looks these up by name across the JNI boundary.
+#
+# net.zetetic.database is the current artifact (sqlcipher-android). The net.sqlcipher rules are
+# kept because the legacy artifact used that package, and an old rule that matches nothing is
+# harmless where a missing one is a crash only reachable in a release build.
+-keep class net.zetetic.database.** { *; }
+-keep interface net.zetetic.database.** { *; }
+-dontwarn net.zetetic.database.**
 -keep class net.sqlcipher.** { *; }
 -keep interface net.sqlcipher.** { *; }
 -dontwarn net.sqlcipher.**
