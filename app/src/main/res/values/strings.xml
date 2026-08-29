@@ -852,7 +852,6 @@
     <string name="groups_by_size">By students per group</string>
     <string name="groups_count_value">%1$d groups</string>
     <string name="groups_size_value">%1$d per group</string>
-    <string name="groups_generate">Generate</string>
     <string name="groups_reroll">Re-roll</string>
     <string name="groups_group_label">Group %1$d</string>
     <string name="groups_group_meta">%1$d students · avg %2$s</string>
@@ -896,9 +895,7 @@
     <string name="term_add">Add %1$s</string>
     <string name="term_edit">Edit %1$s</string>
     <string name="term_all">All %1$s</string>
-    <string name="term_none_yet">No %1$s yet</string>
     <string name="term_profile_report">%1$s PROFILE REPORT</string>
-    <string name="term_count">%1$d %2$s</string>
 
     <!-- ===== Organization settings ===== -->
     <string name="settings_cat_organization">Organization</string>

@@ -120,6 +120,11 @@ dependencies {
     testImplementation(libs.sqlite.jdbc)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    // The BOM again, because androidTestImplementation does not inherit it from implementation.
+    // ui-test-junit4 is declared without a version and takes it from here; without this the
+    // instrumentation classpath cannot resolve at all - which never surfaced in a normal build,
+    // since nothing else reads that classpath, but stops Lint before it examines a single file.
+    androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

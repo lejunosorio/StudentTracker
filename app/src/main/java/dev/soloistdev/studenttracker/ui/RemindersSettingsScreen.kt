@@ -58,6 +58,12 @@ fun RemindersSettingsScreen(onBack: () -> Unit) {
     var showTimePicker by remember { mutableStateOf(false) }
     var showLeadPicker by remember { mutableStateOf(false) }
 
+    // Read during composition rather than from the Context inside the callback. Resolving a
+    // resource through LocalContext.current does not establish a dependency on the configuration,
+    // so the value would not follow a language change - and lint treats it as an error.
+    val testSentMsg = stringResource(R.string.reminders_test_sent)
+    val testEmptyMsg = stringResource(R.string.reminders_test_empty)
+
     fun reschedule() {
         scope.launch { ReminderScheduler.reschedule(context) }
     }
@@ -248,6 +254,16 @@ fun RemindersSettingsScreen(onBack: () -> Unit) {
                             ReminderSettings.setShowNames(context, it)
                         }
                     )
+                    // Explains why this defaulted to off, which is otherwise invisible: it is the
+                    // app's own lock that decided it, not a preference the teacher ever set.
+                    if (!showNames) {
+                        Text(
+                            text = stringResource(R.string.reminders_privacy_note),
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
                 }
 
                 SettingsSection(title = stringResource(R.string.reminders_test)) {
@@ -261,10 +277,7 @@ fun RemindersSettingsScreen(onBack: () -> Unit) {
                                 Notifier.postDigest(context, computed)
                                 Toast.makeText(
                                     context,
-                                    context.getString(
-                                        if (computed.hasAnythingToFlag) R.string.reminders_test_sent
-                                        else R.string.reminders_test_empty
-                                    ),
+                                    if (computed.hasAnythingToFlag) testSentMsg else testEmptyMsg,
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }

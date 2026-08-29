@@ -777,7 +777,6 @@
     <string name="groups_by_size">Ayon sa dami kada grupo</string>
     <string name="groups_count_value">%1$d na grupo</string>
     <string name="groups_size_value">%1$d kada grupo</string>
-    <string name="groups_generate">Gumawa</string>
     <string name="groups_reroll">Ulitin</string>
     <string name="groups_group_label">Grupo %1$d</string>
     <string name="groups_group_meta">%1$d mag-aaral · avg %2$s</string>
@@ -820,9 +819,7 @@
     <string name="term_add">Magdagdag ng %1$s</string>
     <string name="term_edit">I-edit ang %1$s</string>
     <string name="term_all">Lahat ng %1$s</string>
-    <string name="term_none_yet">Wala pang %1$s</string>
     <string name="term_profile_report">ULAT NG PROFILE NG %1$s</string>
-    <string name="term_count">%1$d %2$s</string>
 
     <!-- ===== Organization settings ===== -->
     <string name="settings_cat_organization">Organisasyon</string>
