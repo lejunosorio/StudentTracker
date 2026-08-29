@@ -1,6 +1,8 @@
 package dev.soloistdev.studenttracker.data
 
 import android.content.Context
+import androidx.annotation.StringRes
+import dev.soloistdev.studenttracker.R
 import java.io.File
 
 /**
@@ -34,23 +36,55 @@ object OrganizationSettings {
     /**
      * A ready-made vocabulary. Most people will recognise their setting in one of these and never
      * type anything; the custom fields are there for the ones who do not.
+     *
+     * Every field is a resource id, including the vocabulary itself. Holding literals here meant
+     * the chips stayed English in every locale, and - worse - a Filipino teacher picking a preset
+     * had English wording written into their app as though they had typed it. The caller resolves
+     * these against the current locale and stores the result.
      */
     data class Preset(
-        val label: String,
-        val learner: String,
-        val learners: String,
-        val group: String,
-        val groups: String,
-        val guardian: String,
-        val guardians: String
+        @StringRes val labelRes: Int,
+        @StringRes val learnerRes: Int,
+        @StringRes val learnersRes: Int,
+        @StringRes val groupRes: Int,
+        @StringRes val groupsRes: Int,
+        @StringRes val guardianRes: Int,
+        @StringRes val guardiansRes: Int
     )
 
     val PRESETS = listOf(
-        Preset("School", "Student", "Students", "Class", "Classes", "Guardian", "Guardians"),
-        Preset("Tutoring centre", "Learner", "Learners", "Session", "Sessions", "Parent", "Parents"),
-        Preset("Training provider", "Trainee", "Trainees", "Cohort", "Cohorts", "Sponsor", "Sponsors"),
-        Preset("Club or ministry", "Member", "Members", "Group", "Groups", "Contact", "Contacts"),
-        Preset("Sports team", "Player", "Players", "Team", "Teams", "Parent", "Parents")
+        // The school preset is the app's own default vocabulary, so it reuses those resources
+        // rather than duplicating them under another name.
+        Preset(
+            R.string.preset_school,
+            R.string.term_default_learner, R.string.term_default_learners,
+            R.string.term_default_group, R.string.term_default_groups,
+            R.string.term_default_guardian, R.string.term_default_guardians
+        ),
+        Preset(
+            R.string.preset_tutoring,
+            R.string.preset_tutoring_learner, R.string.preset_tutoring_learners,
+            R.string.preset_tutoring_group, R.string.preset_tutoring_groups,
+            R.string.preset_tutoring_guardian, R.string.preset_tutoring_guardians
+        ),
+        Preset(
+            R.string.preset_training,
+            R.string.preset_training_learner, R.string.preset_training_learners,
+            R.string.preset_training_group, R.string.preset_training_groups,
+            R.string.preset_training_guardian, R.string.preset_training_guardians
+        ),
+        Preset(
+            R.string.preset_club,
+            R.string.preset_club_learner, R.string.preset_club_learners,
+            R.string.preset_club_group, R.string.preset_club_groups,
+            R.string.preset_club_guardian, R.string.preset_club_guardians
+        ),
+        Preset(
+            R.string.preset_sports,
+            R.string.preset_sports_learner, R.string.preset_sports_learners,
+            R.string.preset_sports_group, R.string.preset_sports_groups,
+            R.string.preset_sports_guardian, R.string.preset_sports_guardians
+        )
     )
 
     // --- identity ---------------------------------------------------------------------------
@@ -114,16 +148,10 @@ object OrganizationSettings {
     fun guardian(context: Context, fallback: String): String = read(context, KEY_GUARDIAN, fallback)
     fun guardians(context: Context, fallback: String): String = read(context, KEY_GUARDIANS, fallback)
 
-    fun applyPreset(context: Context, preset: Preset) {
-        prefs(context).edit()
-            .putString(KEY_LEARNER, preset.learner)
-            .putString(KEY_LEARNERS, preset.learners)
-            .putString(KEY_GROUP, preset.group)
-            .putString(KEY_GROUPS, preset.groups)
-            .putString(KEY_GUARDIAN, preset.guardian)
-            .putString(KEY_GUARDIANS, preset.guardians)
-            .apply()
-    }
+    // A preset is applied through setTerms by whoever resolved its resources against the current
+    // locale. There is deliberately no applyPreset(Preset) here: it would have to resolve strings
+    // itself, and a data object reaching for a Context's resources is how the English-only leak
+    // happened in the first place.
 
     fun setTerms(
         context: Context,
@@ -168,14 +196,18 @@ object OrganizationSettings {
      * deep link or an existing record still works - so turning a module off and on again cannot
      * lose anything, and a teacher who hides the gradebook has not thrown their marks away.
      */
-    enum class Module(val key: String, val label: String, val description: String) {
-        ATTENDANCE("mod_attendance", "Attendance", "Registers, QR scanning and the roll call"),
-        GRADEBOOK("mod_gradebook", "Gradebook", "Marks, grading periods, weights and rubrics"),
-        SEATING("mod_seating", "Seating charts", "Room layouts and seat plans"),
-        BEHAVIOUR("mod_behaviour", "Behaviour notes", "Incidents, follow-ups and concerns"),
-        INSIGHTS("mod_insights", "Early warning", "Risk flags drawn from attendance, marks and behaviour"),
-        MESSAGING("mod_messaging", "Messaging", "Message templates and guardian contact"),
-        QUERIES("mod_queries", "Saved filters and queries", "The filter builder and saved searches")
+    enum class Module(
+        val key: String,
+        @StringRes val labelRes: Int,
+        @StringRes val descriptionRes: Int
+    ) {
+        ATTENDANCE("mod_attendance", R.string.module_attendance, R.string.module_attendance_desc),
+        GRADEBOOK("mod_gradebook", R.string.module_gradebook, R.string.module_gradebook_desc),
+        SEATING("mod_seating", R.string.module_seating, R.string.module_seating_desc),
+        BEHAVIOUR("mod_behaviour", R.string.module_behaviour, R.string.module_behaviour_desc),
+        INSIGHTS("mod_insights", R.string.module_insights, R.string.module_insights_desc),
+        MESSAGING("mod_messaging", R.string.module_messaging, R.string.module_messaging_desc),
+        QUERIES("mod_queries", R.string.module_queries, R.string.module_queries_desc)
     }
 
     fun isModuleEnabled(context: Context, module: Module): Boolean =

@@ -933,4 +933,60 @@
     <string name="org_section_modules">Features</string>
     <string name="org_modules_note">Turning a feature off only removes it from the menus. Nothing is deleted, and turning it back on brings everything with it.</string>
     <string name="org_module_last_warning">At least one feature stays on, so the app still has somewhere to go.</string>
+
+    <!-- Module names. Resources rather than enum literals, or they stay English in every locale. -->
+    <string name="module_attendance">Attendance</string>
+    <string name="module_attendance_desc">Registers, QR scanning and the roll call</string>
+    <string name="module_gradebook">Gradebook</string>
+    <string name="module_gradebook_desc">Marks, grading periods, weights and rubrics</string>
+    <string name="module_seating">Seating charts</string>
+    <string name="module_seating_desc">Room layouts and seat plans</string>
+    <string name="module_behaviour">Behaviour notes</string>
+    <string name="module_behaviour_desc">Incidents, follow-ups and concerns</string>
+    <string name="module_insights">Early warning</string>
+    <string name="module_insights_desc">Risk flags drawn from attendance, marks and behaviour</string>
+    <string name="module_messaging">Messaging</string>
+    <string name="module_messaging_desc">Message templates and guardian contact</string>
+    <string name="module_queries">Saved filters and queries</string>
+    <string name="module_queries_desc">The filter builder and saved searches</string>
+
+    <!--
+      Terminology presets. The vocabulary each one writes is translated too, so picking a preset in
+      Filipino sets Filipino wording rather than quietly switching the app to English.
+      The school preset reuses term_default_*, which is the same vocabulary by definition.
+    -->
+    <string name="preset_school">School</string>
+    <string name="preset_tutoring">Tutoring centre</string>
+    <string name="preset_tutoring_learner">Learner</string>
+    <string name="preset_tutoring_learners">Learners</string>
+    <string name="preset_tutoring_group">Session</string>
+    <string name="preset_tutoring_groups">Sessions</string>
+    <string name="preset_tutoring_guardian">Parent</string>
+    <string name="preset_tutoring_guardians">Parents</string>
+    <string name="preset_training">Training provider</string>
+    <string name="preset_training_learner">Trainee</string>
+    <string name="preset_training_learners">Trainees</string>
+    <string name="preset_training_group">Cohort</string>
+    <string name="preset_training_groups">Cohorts</string>
+    <string name="preset_training_guardian">Sponsor</string>
+    <string name="preset_training_guardians">Sponsors</string>
+    <string name="preset_club">Club or ministry</string>
+    <string name="preset_club_learner">Member</string>
+    <string name="preset_club_learners">Members</string>
+    <string name="preset_club_group">Group</string>
+    <string name="preset_club_groups">Groups</string>
+    <string name="preset_club_guardian">Contact</string>
+    <string name="preset_club_guardians">Contacts</string>
+    <string name="preset_sports">Sports team</string>
+    <string name="preset_sports_learner">Player</string>
+    <string name="preset_sports_learners">Players</string>
+    <string name="preset_sports_group">Team</string>
+    <string name="preset_sports_groups">Teams</string>
+    <string name="preset_sports_guardian">Parent</string>
+    <string name="preset_sports_guardians">Parents</string>
+
+    <!-- Navigation drawer section headings -->
+    <string name="drawer_section_daily">DAILY PORTAL</string>
+    <string name="drawer_section_customization">CUSTOMIZATION</string>
+    <string name="drawer_section_system">SYSTEM &amp; SETTINGS</string>
 </resources>

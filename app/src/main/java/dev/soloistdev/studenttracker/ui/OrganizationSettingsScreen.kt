@@ -214,19 +214,31 @@ fun OrganizationSettingsScreen(onBack: () -> Unit) {
                 )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     OrganizationSettings.PRESETS.forEach { preset ->
-                        val isActive = preset.learner == learner && preset.groups == groups
+                        // Resolved here, in composition, against the current locale - a preset
+                        // carries resource ids, not words, so picking one in Filipino stores
+                        // Filipino wording rather than switching the app to English.
+                        val presetLabel = stringResource(preset.labelRes)
+                        val pLearner = stringResource(preset.learnerRes)
+                        val pLearners = stringResource(preset.learnersRes)
+                        val pGroup = stringResource(preset.groupRes)
+                        val pGroups = stringResource(preset.groupsRes)
+                        val pGuardian = stringResource(preset.guardianRes)
+                        val pGuardians = stringResource(preset.guardiansRes)
+
                         FilterChip(
-                            selected = isActive,
+                            selected = pLearner == learner && pGroups == groups,
                             onClick = {
-                                learner = preset.learner
-                                learners = preset.learners
-                                group = preset.group
-                                groups = preset.groups
-                                guardian = preset.guardian
-                                guardians = preset.guardians
-                                OrganizationSettings.applyPreset(context, preset)
+                                learner = pLearner
+                                learners = pLearners
+                                group = pGroup
+                                groups = pGroups
+                                guardian = pGuardian
+                                guardians = pGuardians
+                                OrganizationSettings.setTerms(
+                                    context, pLearner, pLearners, pGroup, pGroups, pGuardian, pGuardians
+                                )
                             },
-                            label = { Text(preset.label, fontSize = 11.sp) }
+                            label = { Text(presetLabel, fontSize = 11.sp) }
                         )
                     }
                 }
@@ -280,13 +292,13 @@ fun OrganizationSettingsScreen(onBack: () -> Unit) {
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = module.label,
+                                text = stringResource(module.labelRes),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = module.description,
+                                text = stringResource(module.descriptionRes),
                                 fontSize = 11.sp,
                                 lineHeight = 15.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)

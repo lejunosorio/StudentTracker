@@ -857,4 +857,56 @@
     <string name="org_section_modules">Mga feature</string>
     <string name="org_modules_note">Ang pag-off ng isang feature ay nag-aalis lamang nito sa mga menu. Walang binubura, at babalik ang lahat kapag binuksan mong muli.</string>
     <string name="org_module_last_warning">Kahit isang feature ay mananatiling naka-on, upang may mapuntahan pa rin ang app.</string>
+
+    <!-- Module names -->
+    <string name="module_attendance">Attendance</string>
+    <string name="module_attendance_desc">Talaan ng pagpasok, QR scanning at roll call</string>
+    <string name="module_gradebook">Gradebook</string>
+    <string name="module_gradebook_desc">Mga marka, panahon ng pagmamarka, timbang at rubric</string>
+    <string name="module_seating">Seating chart</string>
+    <string name="module_seating_desc">Ayos ng silid at plano ng upuan</string>
+    <string name="module_behaviour">Tala ng pag-uugali</string>
+    <string name="module_behaviour_desc">Mga insidente, follow-up at alalahanin</string>
+    <string name="module_insights">Maagang Babala</string>
+    <string name="module_insights_desc">Mga babala mula sa pagpasok, marka at pag-uugali</string>
+    <string name="module_messaging">Pagmemensahe</string>
+    <string name="module_messaging_desc">Mga template ng mensahe at pakikipag-ugnayan sa tagapag-alaga</string>
+    <string name="module_queries">Mga naka-save na filter at query</string>
+    <string name="module_queries_desc">Ang filter builder at mga naka-save na paghahanap</string>
+
+    <!-- Terminology presets -->
+    <string name="preset_school">Paaralan</string>
+    <string name="preset_tutoring">Tutoring centre</string>
+    <string name="preset_tutoring_learner">Nag-aaral</string>
+    <string name="preset_tutoring_learners">Mga Nag-aaral</string>
+    <string name="preset_tutoring_group">Sesyon</string>
+    <string name="preset_tutoring_groups">Mga Sesyon</string>
+    <string name="preset_tutoring_guardian">Magulang</string>
+    <string name="preset_tutoring_guardians">Mga Magulang</string>
+    <string name="preset_training">Sanayan</string>
+    <string name="preset_training_learner">Sinasanay</string>
+    <string name="preset_training_learners">Mga Sinasanay</string>
+    <string name="preset_training_group">Pangkat</string>
+    <string name="preset_training_groups">Mga Pangkat</string>
+    <string name="preset_training_guardian">Tagatustos</string>
+    <string name="preset_training_guardians">Mga Tagatustos</string>
+    <string name="preset_club">Samahan o ministeryo</string>
+    <string name="preset_club_learner">Miyembro</string>
+    <string name="preset_club_learners">Mga Miyembro</string>
+    <string name="preset_club_group">Grupo</string>
+    <string name="preset_club_groups">Mga Grupo</string>
+    <string name="preset_club_guardian">Kontak</string>
+    <string name="preset_club_guardians">Mga Kontak</string>
+    <string name="preset_sports">Koponan sa isports</string>
+    <string name="preset_sports_learner">Manlalaro</string>
+    <string name="preset_sports_learners">Mga Manlalaro</string>
+    <string name="preset_sports_group">Koponan</string>
+    <string name="preset_sports_groups">Mga Koponan</string>
+    <string name="preset_sports_guardian">Magulang</string>
+    <string name="preset_sports_guardians">Mga Magulang</string>
+
+    <!-- Navigation drawer section headings -->
+    <string name="drawer_section_daily">ARAW-ARAW</string>
+    <string name="drawer_section_customization">PAGPAPASADYA</string>
+    <string name="drawer_section_system">SISTEMA AT SETTINGS</string>
 </resources>

@@ -301,7 +301,7 @@ fun ViewAllScreen(
                     )
 
                     Text(
-                        text = "DAILY PORTAL",
+                        text = stringResource(R.string.drawer_section_daily),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
@@ -419,7 +419,7 @@ fun ViewAllScreen(
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                         Text(
-                            text = "CUSTOMIZATION",
+                            text = stringResource(R.string.drawer_section_customization),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
@@ -487,7 +487,7 @@ fun ViewAllScreen(
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                     Text(
-                        text = "SYSTEM & SETTINGS",
+                        text = stringResource(R.string.drawer_section_system),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
